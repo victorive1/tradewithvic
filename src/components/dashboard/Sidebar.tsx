@@ -10,10 +10,22 @@ const navItems = [
     section: "Markets",
     items: [
       { label: "Market Radar", href: "/dashboard", icon: "radar" },
+      { label: "Market Direction", href: "/dashboard/market-direction", icon: "setups" },
+      { label: "Market Prediction", href: "/dashboard/screener", icon: "screener" },
+      { label: "Currency Strength", href: "/dashboard/strength", icon: "strength" },
+      { label: "Intelligence Chart", href: "/dashboard/intelligence-chart", icon: "radar" },
+    ],
+  },
+  {
+    section: "Signals",
+    items: [
+      { label: "Signal Channel", href: "/dashboard/signal-channel", icon: "alerts" },
+      { label: "Editors Pick", href: "/dashboard/editors-pick", icon: "watchlist" },
       { label: "Trade Setups", href: "/dashboard/setups", icon: "setups" },
       { label: "Setup Pro", href: "/dashboard/setup-pro", icon: "setups" },
-      { label: "Currency Strength", href: "/dashboard/strength", icon: "strength" },
-      { label: "Market Screener", href: "/dashboard/screener", icon: "screener" },
+      { label: "Order Block Signals", href: "/dashboard/order-blocks", icon: "liquidity" },
+      { label: "Breakout Signals", href: "/dashboard/breakouts", icon: "setups" },
+      { label: "Custom Signal Builder", href: "/dashboard/custom-signals", icon: "screener" },
     ],
   },
   {
@@ -21,16 +33,17 @@ const navItems = [
     items: [
       { label: "Sharp Money", href: "/dashboard/sharp-money", icon: "liquidity" },
       { label: "MTF Analyzer", href: "/dashboard/mtf", icon: "radar" },
+      { label: "Volume Profile", href: "/dashboard/volume-profile", icon: "strength" },
       { label: "Daily Brief", href: "/dashboard/brief", icon: "calendar" },
       { label: "Macro Heatmap", href: "/dashboard/macro", icon: "strength" },
       { label: "Central Banks", href: "/dashboard/central-banks", icon: "levels" },
+      { label: "Trade Outcomes", href: "/dashboard/trade-outcomes", icon: "risk" },
     ],
   },
   {
     section: "Scanners",
     items: [
       { label: "Volatility", href: "/dashboard/volatility", icon: "alerts" },
-      { label: "Breakouts", href: "/dashboard/breakouts", icon: "setups" },
       { label: "Engulfing", href: "/dashboard/engulfing", icon: "screener" },
       { label: "Correlation", href: "/dashboard/correlation", icon: "risk" },
     ],
@@ -45,12 +58,26 @@ const navItems = [
     ],
   },
   {
-    section: "Trading",
+    section: "Trading Hub",
     items: [
       { label: "Trading Hub", href: "/dashboard/trading-hub", icon: "setups" },
+      { label: "Multi MT5", href: "/dashboard/multi-mt5", icon: "radar" },
+      { label: "Copy Trading", href: "/dashboard/copy-trading", icon: "strength" },
+    ],
+  },
+  {
+    section: "Algo Bots",
+    items: [
       { label: "Algo Hub", href: "/dashboard/algo-hub", icon: "radar" },
-      { label: "Algo Vic", href: "/dashboard/algo-vic", icon: "screener" },
-      { label: "FX Commentary", href: "/dashboard/commentary", icon: "alerts" },
+      { label: "FX Strength Algo", href: "/dashboard/fx-strength-algo", icon: "setups" },
+      { label: "Order Block Algo", href: "/dashboard/ob-algo", icon: "liquidity" },
+      { label: "Market Direction Algo", href: "/dashboard/md-algo", icon: "screener" },
+      { label: "Breakout Algo", href: "/dashboard/breakout-algo", icon: "setups" },
+      { label: "US30 Algo", href: "/dashboard/us30-algo", icon: "radar" },
+      { label: "Silver & Gold Algo", href: "/dashboard/metals-algo", icon: "strength" },
+      { label: "Algo Vic (Scalper)", href: "/dashboard/algo-vic", icon: "screener" },
+      { label: "Custom Bot Builder", href: "/dashboard/custom-bot", icon: "risk" },
+      { label: "Bot Agents", href: "/dashboard/bot-agents", icon: "alerts" },
     ],
   },
   {
@@ -58,6 +85,7 @@ const navItems = [
     items: [
       { label: "Algo Investors", href: "/dashboard/algo-investors", icon: "risk" },
       { label: "Day Evaluator", href: "/dashboard/evaluator", icon: "watchlist" },
+      { label: "FX Commentary", href: "/dashboard/commentary", icon: "alerts" },
     ],
   },
   {
