@@ -45,6 +45,7 @@ const navItems = [
       { label: "Macro Heatmap", href: "/dashboard/macro", icon: "strength" },
       { label: "Central Banks", href: "/dashboard/central-banks", icon: "levels" },
       { label: "Trade Outcomes", href: "/dashboard/trade-outcomes", icon: "risk" },
+      { label: "Capital Flow", href: "/dashboard/capital-flow", icon: "setups" },
     ],
   },
   {
