@@ -20,8 +20,8 @@ export function WhyDifferent() {
               <span className="gradient-text-accent">Different</span>
             </h2>
             <p className="text-muted-light text-lg mb-8 leading-relaxed">
-              Most trading platforms overwhelm you with charts and noise. FX
-              Wonders turns complex market activity into clean, actionable
+              Most trading platforms overwhelm you with charts and noise.
+              TradeWithVic turns complex market activity into clean, actionable
               intelligence you can act on in seconds.
             </p>
             <div className="space-y-4">

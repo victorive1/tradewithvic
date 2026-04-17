@@ -39,7 +39,7 @@ export function Footer() {
         </div>
         <div className="border-t border-border/50 mt-12 pt-8 text-center">
           <p className="text-xs text-muted">
-            &copy; {new Date().getFullYear()} FX Wonders. All rights reserved.
+            &copy; {new Date().getFullYear()} TradeWithVic. All rights reserved.
           </p>
         </div>
       </div>

@@ -33,7 +33,7 @@ export default function SettingsPage() {
           </div>
           <div>
             <label className="text-xs text-muted-light mb-1.5 block">Email</label>
-            <input type="email" defaultValue="victor@fxwonders.com" className="w-full px-4 py-3 rounded-xl bg-surface-2 border border-border focus:border-accent focus:outline-none text-sm text-foreground" />
+            <input type="email" defaultValue="victor@tradewithvic.com" className="w-full px-4 py-3 rounded-xl bg-surface-2 border border-border focus:border-accent focus:outline-none text-sm text-foreground" />
           </div>
         </div>
       </div>

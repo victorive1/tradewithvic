@@ -156,7 +156,7 @@ export default function TradingHubPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Trading Hub</h1>
-        <p className="text-sm text-muted mt-1">Connect your MetaTrader account and execute trades directly from FX Wonders</p>
+        <p className="text-sm text-muted mt-1">Connect your MetaTrader account and execute trades directly from TradeWithVic</p>
       </div>
 
       <div className="flex flex-wrap gap-2">
