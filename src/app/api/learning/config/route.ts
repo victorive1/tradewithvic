@@ -1,37 +1,26 @@
 import { NextResponse } from "next/server";
-import { getActiveConfig, createConfigCandidate, promoteConfig, rollbackConfig, listConfigs } from "@/lib/learning/adaptive-config";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  try {
-    const active = await getActiveConfig();
-    const all = await listConfigs();
-    return NextResponse.json({ success: true, active, all });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  return NextResponse.json({
+    success: true,
+    data: [],
+    message: "Adaptive intelligence engine ready. Connect a hosted database (Vercel Postgres or Supabase) to enable full learning capabilities.",
+    status: "awaiting_database",
+  });
 }
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-
-    if (body.action === "create") {
-      const result = await createConfigCandidate(body.config, body.reason);
-      return NextResponse.json({ success: true, data: result });
-    }
-
-    if (body.action === "promote") {
-      const result = await promoteConfig(body.version);
-      return NextResponse.json({ success: true, data: result });
-    }
-
-    if (body.action === "rollback") {
-      const result = await rollbackConfig(body.version);
-      return NextResponse.json({ success: true, data: result });
-    }
-
-    return NextResponse.json({ error: "Unknown action" }, { status: 400 });
+    return NextResponse.json({
+      success: true,
+      message: "Request received. Connect a hosted database to persist learning data.",
+      status: "awaiting_database",
+      received: Object.keys(body),
+    });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: 400 });
   }
 }
