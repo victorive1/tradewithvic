@@ -1,0 +1,161 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ==================== AUTH ====================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          String    @default("user") // user, agent, admin
+  language      String    @default("en")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  watchlist     Watchlist[]
+  alerts        Alert[]
+  preferences   UserPreference?
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ==================== USER PREFERENCES ====================
+
+model UserPreference {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  favoriteMarkets String   @default("[]") // JSON array of symbols
+  defaultTimeframe String  @default("1h")
+  dashboardLayout String   @default("[]") // JSON array of widget configs
+  alertSettings   String   @default("{}") // JSON object
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ==================== MARKET DATA ====================
+
+model Instrument {
+  id          String @id @default(cuid())
+  symbol      String @unique
+  displayName String
+  category    String // forex, metals, energy, indices, crypto
+  baseCurrency  String?
+  quoteCurrency String?
+  decimalPlaces Int    @default(5)
+  isActive    Boolean @default(true)
+
+  setups      TradeSetup[]
+  alerts      Alert[]
+}
+
+// ==================== TRADE SETUPS ====================
+
+model TradeSetup {
+  id              String   @id @default(cuid())
+  instrumentId    String
+  symbol          String
+  direction       String   // buy, sell
+  setupType       String   // breakout, pullback, reversal, continuation, engulfing
+  timeframe       String   // 5m, 15m, 1h, 4h
+  entry           Float
+  stopLoss        Float
+  takeProfit1     Float
+  takeProfit2     Float?
+  takeProfit3     Float?
+  riskReward      Float
+  confidenceScore Int      // 0-100
+  qualityGrade    String   // A+, A, B+, B, C
+  explanation     String?
+  invalidation    String?
+  status          String   @default("active") // active, triggered, expired, invalidated
+  validUntil      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  instrument Instrument @relation(fields: [instrumentId], references: [id])
+
+  @@index([symbol, status])
+  @@index([createdAt])
+  @@index([qualityGrade])
+}
+
+// ==================== WATCHLIST ====================
+
+model Watchlist {
+  id        String   @id @default(cuid())
+  userId    String
+  symbol    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, symbol])
+}
+
+// ==================== ALERTS ====================
+
+model Alert {
+  id           String   @id @default(cuid())
+  userId       String
+  instrumentId String?
+  symbol       String
+  alertType    String   // price_level, setup, volatility, liquidity_sweep, event_risk
+  condition    String   // JSON: {type, value, direction}
+  message      String?
+  isTriggered  Boolean  @default(false)
+  triggeredAt  DateTime?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  instrument Instrument? @relation(fields: [instrumentId], references: [id])
+
+  @@index([userId, isActive])
+  @@index([symbol, isActive])
+}
