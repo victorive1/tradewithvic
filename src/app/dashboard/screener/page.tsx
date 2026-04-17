@@ -1,20 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 
-const screenerData = [
-  { symbol: "XAU/USD", category: "Metals", price: "3,284.50", trend: "Bullish", volatility: "High", setup: "Breakout", confidence: 87, keyLevel: "3,298", change: "+1.42%" },
-  { symbol: "GBP/JPY", category: "Forex", price: "191.42", trend: "Bearish", volatility: "High", setup: "Pullback", confidence: 79, keyLevel: "190.80", change: "-0.68%" },
-  { symbol: "NAS100", category: "Indices", price: "19,432", trend: "Bullish", volatility: "Medium", setup: "Continuation", confidence: 74, keyLevel: "19,500", change: "+0.85%" },
-  { symbol: "EUR/USD", category: "Forex", price: "1.0842", trend: "Bearish", volatility: "Low", setup: "Reversal", confidence: 68, keyLevel: "1.0800", change: "-0.32%" },
-  { symbol: "BTC/USD", category: "Crypto", price: "84,215", trend: "Range", volatility: "Medium", setup: "Compression", confidence: 61, keyLevel: "85,000", change: "+0.21%" },
-  { symbol: "US Oil", category: "Energy", price: "62.40", trend: "Bullish", volatility: "Medium", setup: "Breakout", confidence: 72, keyLevel: "63.50", change: "+1.15%" },
-  { symbol: "GBP/USD", category: "Forex", price: "1.3042", trend: "Bullish", volatility: "Low", setup: "Pullback", confidence: 65, keyLevel: "1.3080", change: "+0.18%" },
-  { symbol: "USD/JPY", category: "Forex", price: "142.85", trend: "Bearish", volatility: "Medium", setup: "Continuation", confidence: 71, keyLevel: "142.00", change: "-0.45%" },
-  { symbol: "ETH/USD", category: "Crypto", price: "1,625", trend: "Bearish", volatility: "High", setup: "Reversal", confidence: 58, keyLevel: "1,600", change: "-2.15%" },
-  { symbol: "XAG/USD", category: "Metals", price: "32.45", trend: "Bullish", volatility: "High", setup: "Breakout", confidence: 76, keyLevel: "33.00", change: "+1.88%" },
-];
+interface ScreenerRow {
+  symbol: string;
+  category: string;
+  price: string;
+  trend: string;
+  volatility: string;
+  setup: string;
+  confidence: number;
+  keyLevel: string;
+  change: string;
+}
+
+function buildScreenerRows(quotes: any[]): ScreenerRow[] {
+  return quotes.map((q: any) => {
+    const pct = q.changePercent ?? 0;
+    const absPct = Math.abs(pct);
+    const trend = pct > 0.3 ? "Bullish" : pct < -0.3 ? "Bearish" : "Range";
+    const volatility = absPct >= 1.5 ? "High" : absPct >= 0.5 ? "Medium" : "Low";
+    const confidence = Math.min(95, Math.round(40 + absPct * 20 + (trend !== "Range" ? 10 : 0)));
+    const setup = absPct >= 1.5 ? "Breakout" : trend === "Range" ? "Compression" : pct > 0 ? "Continuation" : "Pullback";
+    const keyLevel = q.high ? q.high.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "--";
+    return {
+      symbol: q.displayName || q.symbol,
+      category: q.category || "Forex",
+      price: q.price?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "--",
+      trend,
+      volatility,
+      setup,
+      confidence,
+      keyLevel,
+      change: `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`,
+    };
+  });
+}
 
 type SortKey = "confidence" | "volatility" | "change";
 
@@ -22,6 +44,22 @@ export default function ScreenerPage() {
   const [sortBy, setSortBy] = useState<SortKey>("confidence");
   const [filterCat, setFilterCat] = useState("all");
   const [filterTrend, setFilterTrend] = useState("all");
+  const [screenerData, setScreenerData] = useState<ScreenerRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<string>("");
+
+  useEffect(() => {
+    fetch("/api/market/quotes")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.quotes) {
+          setScreenerData(buildScreenerRows(data.quotes));
+          setLastUpdated(new Date(data.timestamp).toLocaleTimeString());
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
 
   let filtered = screenerData;
   if (filterCat !== "all") filtered = filtered.filter((d) => d.category.toLowerCase() === filterCat);
@@ -35,6 +73,8 @@ export default function ScreenerPage() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">Market Screener</h1>
         <p className="text-sm text-muted mt-1">Scan and filter all markets by trend, volatility, setup type, and confidence</p>
+        {lastUpdated && <p className="text-xs text-muted mt-1">Live data — last updated {lastUpdated}</p>}
+        {loading && <p className="text-xs text-accent-light mt-1">Loading live market data...</p>}
       </div>
 
       <div className="flex flex-wrap gap-2">

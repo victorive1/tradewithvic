@@ -21,6 +21,7 @@ export default function LevelsPage() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">Support & Resistance Engine</h1>
         <p className="text-sm text-muted mt-1">Auto-detected key levels ranked by strength, recency, and reaction count</p>
+        <p className="text-xs text-muted mt-1">Levels calculated from live market data</p>
       </div>
 
       <div className="flex flex-wrap gap-2">

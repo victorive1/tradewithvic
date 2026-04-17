@@ -39,8 +39,12 @@ export default function AlgoInvestorsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Algo Investors</h1>
+        <div className="flex items-center gap-3 mb-1">
+          <h1 className="text-2xl font-bold text-foreground">Algo Investors</h1>
+          <span className="text-xs bg-warn/10 text-warn px-2.5 py-1 rounded-full border border-warn/20 font-medium">Demo Data</span>
+        </div>
         <p className="text-sm text-muted mt-1">Investor dashboard and pool management for Algo Trading 2.0</p>
+        <p className="text-xs text-muted mt-1">Connect trading accounts to see real investor data</p>
       </div>
 
       <div className="flex flex-wrap gap-2">

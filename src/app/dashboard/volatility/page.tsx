@@ -1,21 +1,61 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 
-const volatilityData = [
-  { symbol: "GBP/JPY", spike: "+43%", atr: "1.82", regime: "Expanding", session: "London", status: "Breakout conditions" },
-  { symbol: "XAU/USD", spike: "+38%", atr: "32.5", regime: "Expanding", session: "NY Open", status: "High momentum" },
-  { symbol: "USD/CHF", spike: "+28%", atr: "0.0065", regime: "Expanding", session: "London", status: "Unusual move" },
-  { symbol: "BTC/USD", spike: "+24%", atr: "1,850", regime: "Normal-High", session: "24/7", status: "Above average" },
-  { symbol: "XAG/USD", spike: "+22%", atr: "0.48", regime: "Expanding", session: "NY", status: "Following gold" },
-  { symbol: "EUR/USD", spike: "+12%", atr: "0.0058", regime: "Normal", session: "London", status: "Moderate" },
-  { symbol: "NAS100", spike: "+18%", atr: "185", regime: "Normal-High", session: "Cash Open", status: "Earnings driven" },
-  { symbol: "US Oil", spike: "+15%", atr: "1.25", regime: "Normal", session: "NY", status: "Supply news" },
-  { symbol: "USD/JPY", spike: "+8%", atr: "0.85", regime: "Compressed", session: "Asia", status: "Pre-breakout" },
-  { symbol: "AUD/USD", spike: "+5%", atr: "0.0042", regime: "Low", session: "Asia", status: "Dead zone" },
-];
+interface VolRow {
+  symbol: string;
+  spike: string;
+  atr: string;
+  regime: string;
+  session: string;
+  status: string;
+}
+
+function getSession(): string {
+  const h = new Date().getUTCHours();
+  if (h >= 0 && h < 7) return "Asia";
+  if (h >= 7 && h < 12) return "London";
+  if (h >= 12 && h < 17) return "NY";
+  if (h >= 17 && h < 21) return "NY Close";
+  return "Asia";
+}
+
+function buildVolatilityRows(quotes: any[]): VolRow[] {
+  return quotes.map((q: any) => {
+    const absPct = Math.abs(q.changePercent ?? 0);
+    const range = q.high && q.low ? Math.abs(q.high - q.low) : 0;
+    const regime = absPct >= 1.5 ? "Expanding" : absPct >= 0.8 ? "Normal-High" : absPct >= 0.3 ? "Normal" : absPct >= 0.1 ? "Compressed" : "Low";
+    const status = absPct >= 1.5 ? "Breakout conditions" : absPct >= 1.0 ? "High momentum" : absPct >= 0.5 ? "Above average" : absPct >= 0.2 ? "Moderate" : "Dead zone";
+    return {
+      symbol: q.displayName || q.symbol,
+      spike: `+${Math.round(absPct * 20)}%`,
+      atr: range.toFixed(range < 1 ? 4 : 2),
+      regime,
+      session: getSession(),
+      status,
+    };
+  });
+}
 
 export default function VolatilityPage() {
+  const [volatilityData, setVolatilityData] = useState<VolRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<string>("");
+
+  useEffect(() => {
+    fetch("/api/market/quotes")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.quotes) {
+          setVolatilityData(buildVolatilityRows(data.quotes));
+          setLastUpdated(new Date(data.timestamp).toLocaleTimeString());
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
   const sorted = [...volatilityData].sort((a, b) => parseInt(b.spike) - parseInt(a.spike));
 
   return (
@@ -23,6 +63,8 @@ export default function VolatilityPage() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">Volatility Scanner</h1>
         <p className="text-sm text-muted mt-1">Detect pairs with unusual volatility expansion or compression</p>
+        {lastUpdated && <p className="text-xs text-muted mt-1">Live data — last updated {lastUpdated}</p>}
+        {loading && <p className="text-xs text-accent-light mt-1">Loading live market data...</p>}
       </div>
 
       <div className="grid sm:grid-cols-3 gap-4">

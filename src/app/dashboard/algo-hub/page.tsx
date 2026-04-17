@@ -36,8 +36,8 @@ function DashboardTab() {
     <div className="space-y-4">
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
         <div className="glass-card p-4 text-center"><div className="text-xs text-muted mb-1">Status</div><div className="flex items-center justify-center gap-2"><span className="w-2 h-2 rounded-full bg-bull pulse-live" /><span className="text-sm font-bold text-bull-light">Running</span></div></div>
-        <div className="glass-card p-4 text-center"><div className="text-xs text-muted mb-1">Today P&L</div><div className="text-lg font-bold text-bull-light">+$152.70</div></div>
-        <div className="glass-card p-4 text-center"><div className="text-xs text-muted mb-1">Trades Today</div><div className="text-lg font-bold">5</div></div>
+        <div className="glass-card p-4 text-center"><div className="text-xs text-muted mb-1">Today P&L</div><div className="text-lg font-bold text-muted">Paper: $0.00</div></div>
+        <div className="glass-card p-4 text-center"><div className="text-xs text-muted mb-1">Trades Today</div><div className="text-lg font-bold">0</div></div>
         <div className="glass-card p-4 text-center"><div className="text-xs text-muted mb-1">Win Rate</div><div className="text-lg font-bold text-accent-light">80%</div></div>
         <div className="glass-card p-4 text-center"><div className="text-xs text-muted mb-1">Active Strategies</div><div className="text-lg font-bold">3</div></div>
       </div>
@@ -158,10 +158,11 @@ export default function AlgoHubPage() {
     <div className="space-y-6">
       <div className="flex items-center gap-3">
         <h1 className="text-2xl font-bold text-foreground">Algo Trading Hub</h1>
-        <span className="flex items-center gap-1.5 text-xs bg-bull/10 text-bull-light px-2.5 py-1 rounded-full border border-bull/20">
-          <span className="w-1.5 h-1.5 rounded-full bg-bull pulse-live" />Running
+        <span className="flex items-center gap-1.5 text-xs bg-warn/10 text-warn px-2.5 py-1 rounded-full border border-warn/20 font-medium">
+          Paper Trade Mode
         </span>
       </div>
+      <p className="text-xs text-muted">Enable live trading to see real data</p>
 
       <div className="flex flex-wrap gap-2">
         {tabs.map((t) => (

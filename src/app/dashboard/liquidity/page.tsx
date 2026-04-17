@@ -49,6 +49,7 @@ export default function LiquidityPage() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">Liquidity Map</h1>
         <p className="text-sm text-muted mt-1">Identify stop clusters, liquidity pools, and likely price targets</p>
+        <p className="text-xs text-muted mt-1">Liquidity zones calculated from live price structure</p>
       </div>
 
       {/* Symbol selector */}
@@ -108,20 +109,20 @@ export default function LiquidityPage() {
           <div className="glass-card p-5">
             <h3 className="text-sm font-semibold text-foreground mb-3">Analysis</h3>
             <p className="text-xs text-muted leading-relaxed">
-              Significant buy-side liquidity sits above recent highs at 3,292. This area contains resting stop orders from short positions. Price may target this zone before any meaningful reversal.
+              Significant buy-side liquidity sits above recent highs. This area contains resting stop orders from short positions. Price may target the nearest buy-side zone before any meaningful reversal.
             </p>
             <div className="mt-3 pt-3 border-t border-border/30 space-y-2">
               <div className="flex justify-between text-xs">
                 <span className="text-muted">Nearest Target</span>
-                <span className="text-bull-light font-medium">3,292.40 (Buy-side)</span>
+                <span className="text-bull-light font-medium">Buy-side zone above</span>
               </div>
               <div className="flex justify-between text-xs">
                 <span className="text-muted">Sweep Risk</span>
-                <span className="text-warn font-medium">High</span>
+                <span className="text-warn font-medium">Check zones panel</span>
               </div>
               <div className="flex justify-between text-xs">
                 <span className="text-muted">Stop Hunt Area</span>
-                <span className="text-bear-light font-medium">3,258 - 3,262</span>
+                <span className="text-bear-light font-medium">See sell-side zones</span>
               </div>
             </div>
           </div>

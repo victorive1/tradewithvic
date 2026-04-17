@@ -4,11 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Logo } from "@/components/ui/Logo";
 
-const floatingCards = [
-  { symbol: "EUR/USD", bias: "Bearish", confidence: "78%" },
-  { symbol: "XAU/USD", bias: "Bullish", confidence: "85%" },
-  { symbol: "NAS100", bias: "Bullish", confidence: "72%" },
-];
+// No hardcoded market data - cards on this page are decorative labels only
 
 export default function SignInPage() {
   const [showPassword, setShowPassword] = useState(false);
@@ -62,22 +58,12 @@ export default function SignInPage() {
             clean setups, and a modern decision-focused trading experience.
           </p>
 
-          {/* Floating mini cards */}
+          {/* Market coverage indicators */}
           <div className="space-y-3">
-            {floatingCards.map((card) => (
-              <div
-                key={card.symbol}
-                className="glass-card p-3 flex items-center justify-between max-w-xs"
-              >
-                <span className="text-sm font-medium">{card.symbol}</span>
-                <span
-                  className={`text-xs ${
-                    card.bias === "Bullish" ? "text-bull-light" : "text-bear-light"
-                  }`}
-                >
-                  {card.bias}
-                </span>
-                <span className="text-xs text-accent-light">{card.confidence}</span>
+            {["Forex", "Metals & Energy", "Indices & Crypto"].map((market) => (
+              <div key={market} className="glass-card p-3 flex items-center justify-between max-w-xs">
+                <span className="text-sm font-medium">{market}</span>
+                <span className="text-xs text-bull-light">Live</span>
               </div>
             ))}
           </div>

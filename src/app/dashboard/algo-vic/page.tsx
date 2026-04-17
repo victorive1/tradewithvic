@@ -103,7 +103,7 @@ export default function AlgoVicPage() {
         <div className="glass-card p-3 text-center"><div className="text-[10px] text-muted mb-1">Ready</div><div className="text-sm font-bold text-bull-light">{symbolStates.filter((s) => s.status === "ENTRY READY").length}</div></div>
         <div className="glass-card p-3 text-center"><div className="text-[10px] text-muted mb-1">Aligned</div><div className="text-sm font-bold">{symbolStates.filter((s) => s.mode !== "NO_TRADE").length}</div></div>
         <div className="glass-card p-3 text-center"><div className="text-[10px] text-muted mb-1">Open Trades</div><div className="text-sm font-bold text-warn">{symbolStates.filter((s) => s.tradeOpen).length}</div></div>
-        <div className="glass-card p-3 text-center"><div className="text-[10px] text-muted mb-1">Today P&L</div><div className="text-sm font-bold text-bull-light">+$142.50</div></div>
+        <div className="glass-card p-3 text-center"><div className="text-[10px] text-muted mb-1">Today P&L</div><div className="text-sm font-bold text-muted">$0.00 (Paper)</div></div>
       </div>
 
       {/* Symbol cards */}

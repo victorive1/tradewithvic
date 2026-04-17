@@ -19,6 +19,7 @@ export default function CentralBanksPage() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">Central Bank Tracker</h1>
         <p className="text-sm text-muted mt-1">Track central bank policy bias, rate outlook, and market impact</p>
+        <p className="text-xs text-muted mb-4">Central bank analysis — updated after policy decisions</p>
       </div>
 
       <div className="grid sm:grid-cols-2 gap-4">

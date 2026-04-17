@@ -32,6 +32,7 @@ export default function CorrelationPage() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">Correlation Matrix</h1>
         <p className="text-sm text-muted mt-1">Cross-market correlations. Avoid doubling exposure on correlated positions.</p>
+        <p className="text-xs text-muted mb-4">Correlation analysis — calculated from recent price data</p>
       </div>
 
       <div className="glass-card overflow-hidden">

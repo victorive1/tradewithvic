@@ -51,6 +51,7 @@ export default function SentimentPage() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">Sentiment Dashboard</h1>
         <p className="text-sm text-muted mt-1">Retail vs institutional positioning — smart money traders often fade extreme retail sentiment</p>
+        <p className="text-xs text-muted mb-4">Analysis snapshot — updated periodically from positioning data</p>
       </div>
 
       <div className="grid sm:grid-cols-3 gap-4">

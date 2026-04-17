@@ -19,6 +19,7 @@ export default function MacroPage() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">Macro Heatmap</h1>
         <p className="text-sm text-muted mt-1">Global economic pressure across major economies</p>
+        <p className="text-xs text-muted mb-4">Macro analysis — updated with latest economic data releases</p>
       </div>
 
       {/* Heatmap grid */}

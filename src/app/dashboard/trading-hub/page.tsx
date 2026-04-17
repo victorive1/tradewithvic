@@ -49,8 +49,8 @@ function AccountTab() {
       <div className="glass-card p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <div className="w-3 h-3 rounded-full bg-bull pulse-live" />
-            <span className="text-sm font-semibold text-foreground">Connected</span>
+            <div className="w-3 h-3 rounded-full bg-warn" />
+            <span className="text-sm font-semibold text-foreground">Demo Account</span>
             <span className="text-xs bg-surface-2 px-2 py-0.5 rounded text-muted">MT5</span>
             <span className="text-xs bg-bull/10 text-bull-light px-2 py-0.5 rounded border border-bull/20">Demo</span>
           </div>
@@ -155,8 +155,12 @@ export default function TradingHubPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Trading Hub</h1>
+        <div className="flex items-center gap-3 mb-1">
+          <h1 className="text-2xl font-bold text-foreground">Trading Hub</h1>
+          <span className="text-xs bg-warn/10 text-warn px-2.5 py-1 rounded-full border border-warn/20 font-medium">Demo Mode</span>
+        </div>
         <p className="text-sm text-muted mt-1">Connect your MetaTrader account and execute trades directly from TradeWithVic App</p>
+        <p className="text-xs text-muted mt-1">Connect your real MT4/MT5 account to see live data</p>
       </div>
 
       <div className="flex flex-wrap gap-2">
