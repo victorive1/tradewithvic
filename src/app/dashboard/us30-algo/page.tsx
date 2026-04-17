@@ -1,7 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
+import { AlgoConfigPanel, useAlgoConfig } from "@/components/algo/AlgoConfig";
+
+interface MarketQuote {
+  symbol: string;
+  displayName: string;
+  category: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  high: number;
+  low: number;
+  open: number;
+  previousClose: number;
+  timestamp: number;
+}
+
+interface Signal {
+  time: string;
+  direction: "Bullish" | "Bearish";
+  changePct: number;
+  price: number;
+  mode: string;
+}
 
 const strategyModes = [
   { id: "continuation", label: "Continuation", desc: "Trades with the trend after deep pullback into value zone" },
@@ -10,7 +33,10 @@ const strategyModes = [
 ];
 
 export default function US30AlgoPage() {
+  const { settings: algoSettings, updateSettings: updateAlgoSettings } = useAlgoConfig("us30");
+  const [showConfig, setShowConfig] = useState(false);
   const [enabled, setEnabled] = useState(false);
+  const [running, setRunning] = useState(false);
   const [lotSize, setLotSize] = useState("0.05");
   const [maxTrades, setMaxTrades] = useState("3");
   const [maxLoss, setMaxLoss] = useState("300");
@@ -18,6 +44,113 @@ export default function US30AlgoPage() {
   const [atrMultiplier, setAtrMultiplier] = useState("1.5");
   const [activeMode, setActiveMode] = useState("continuation");
   const [sessionFilter, setSessionFilter] = useState("ny");
+
+  const [quotes, setQuotes] = useState<MarketQuote[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [signals, setSignals] = useState<Signal[]>([]);
+  const [eventLog, setEventLog] = useState<string[]>([]);
+  const logRef = useRef<HTMLDivElement>(null);
+
+  const addLog = useCallback((msg: string) => {
+    const ts = new Date().toLocaleTimeString();
+    setEventLog((prev) => [`[${ts}] ${msg}`, ...prev].slice(0, 50));
+  }, []);
+
+  const fetchQuotes = useCallback(async () => {
+    try {
+      const res = await fetch("/api/market/quotes");
+      const data = await res.json();
+      if (data.quotes && data.quotes.length > 0) {
+        setQuotes(data.quotes);
+        addLog(`Fetched ${data.quotes.length} quotes`);
+      }
+    } catch {
+      addLog("Failed to fetch quotes");
+    } finally {
+      setLoading(false);
+    }
+  }, [addLog]);
+
+  useEffect(() => {
+    fetchQuotes();
+    const interval = setInterval(fetchQuotes, 60000);
+    return () => clearInterval(interval);
+  }, [fetchQuotes]);
+
+  // Find US30 quote (could be US30, or indices category)
+  const us30 = quotes.find((q) => q.symbol === "US30" || q.symbol.includes("US30") || q.displayName.includes("US30") || q.displayName.includes("Dow"));
+
+  // Signal logic: if abs(changePercent) > 0.2 on US30 = active opportunity
+  useEffect(() => {
+    if (!enabled || !us30) {
+      if (!enabled) setSignals([]);
+      return;
+    }
+    // Check if US30 is in selectedPairs
+    const us30InPairs = algoSettings.selectedPairs.length === 0 || algoSettings.selectedPairs.some((p) => p.includes("US30") || p === us30.symbol);
+    if (!us30InPairs) {
+      setSignals([]);
+      return;
+    }
+    const now = new Date().toLocaleTimeString();
+    const detected: Signal[] = [];
+    if (Math.abs(us30.changePercent) > 0.2) {
+      const score = Math.min(100, Math.round(Math.abs(us30.changePercent) * 50));
+      if (score >= algoSettings.minScore) {
+        detected.push({
+          time: now,
+          direction: us30.changePercent > 0 ? "Bullish" : "Bearish",
+          changePct: us30.changePercent,
+          price: us30.price,
+          mode: activeMode,
+        });
+      }
+    }
+    setSignals(detected);
+    if (detected.length > 0) {
+      addLog(`US30 active opportunity: ${us30.changePercent > 0 ? "Bullish" : "Bearish"} (${us30.changePercent.toFixed(2)}%)`);
+    }
+  }, [enabled, quotes, activeMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleToggleEnabled = () => {
+    const next = !enabled;
+    setEnabled(next);
+    addLog(next ? "Algo ENABLED" : "Algo DISABLED");
+    if (!next) {
+      setRunning(false);
+      addLog("Bot stopped (disabled)");
+    }
+  };
+
+  const handleToggleRunning = () => {
+    if (!enabled) return;
+    const next = !running;
+    setRunning(next);
+    addLog(next ? "Bot STARTED - monitoring US30" : "Bot STOPPED");
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="h-8 w-64 bg-surface-2 rounded-lg animate-pulse" />
+            <div className="h-4 w-96 bg-surface-2 rounded-lg animate-pulse mt-2" />
+          </div>
+          <div className="w-12 h-6 bg-surface-2 rounded-full animate-pulse" />
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="glass-card p-4 h-20 animate-pulse bg-surface-2 rounded-xl" />
+          ))}
+        </div>
+        <div className="grid lg:grid-cols-2 gap-6">
+          <div className="glass-card p-6 h-64 animate-pulse bg-surface-2 rounded-xl" />
+          <div className="glass-card p-6 h-64 animate-pulse bg-surface-2 rounded-xl" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -30,7 +163,7 @@ export default function US30AlgoPage() {
           </div>
           <p className="text-sm text-muted">US30-specific framework for high volatility, deep pullbacks, ATR-normalized rules, and continuation/breakout-retest logic</p>
         </div>
-        <div onClick={() => setEnabled(!enabled)} className={cn("w-12 h-6 rounded-full relative cursor-pointer transition-smooth", enabled ? "bg-accent" : "bg-surface-3")}>
+        <div onClick={handleToggleEnabled} className={cn("w-12 h-6 rounded-full relative cursor-pointer transition-smooth", enabled ? "bg-accent" : "bg-surface-3")}>
           <div className={cn("absolute top-0.5 w-5 h-5 rounded-full bg-white transition-smooth", enabled ? "left-6" : "left-0.5")} />
         </div>
       </div>
@@ -40,18 +173,112 @@ export default function US30AlgoPage() {
         <div className="glass-card p-4 text-center">
           <div className="text-xs text-muted mb-1">Status</div>
           <div className="flex items-center justify-center gap-2">
-            <span className={cn("w-2 h-2 rounded-full", enabled ? "bg-bull pulse-live" : "bg-muted")} />
-            <span className={cn("text-sm font-bold", enabled ? "text-bull-light" : "text-muted")}>{enabled ? "Running" : "Idle"}</span>
+            <span className={cn("w-2 h-2 rounded-full", running ? "bg-bull pulse-live" : "bg-muted")} />
+            <span className={cn("text-sm font-bold", running ? "text-bull-light" : "text-muted")}>{running ? "Running" : "Idle"}</span>
           </div>
         </div>
-        <div className="glass-card p-4 text-center"><div className="text-xs text-muted mb-1">Today P&L</div><div className="text-lg font-bold text-muted">Paper: $0.00</div></div>
-        <div className="glass-card p-4 text-center"><div className="text-xs text-muted mb-1">Trades Today</div><div className="text-lg font-bold">0</div></div>
-        <div className="glass-card p-4 text-center"><div className="text-xs text-muted mb-1">ATR (14)</div><div className="text-lg font-bold text-muted">--</div></div>
-        <div className="glass-card p-4 text-center"><div className="text-xs text-muted mb-1">Session</div><div className="text-lg font-bold text-accent-light capitalize">{sessionFilter}</div></div>
+        <div className="glass-card p-4 text-center">
+          <div className="text-xs text-muted mb-1">Today P&L</div>
+          <div className="text-lg font-bold text-muted">Paper: $0.00</div>
+        </div>
+        <div className="glass-card p-4 text-center">
+          <div className="text-xs text-muted mb-1">Trades Today</div>
+          <div className="text-lg font-bold">0</div>
+        </div>
+        <div className="glass-card p-4 text-center">
+          <div className="text-xs text-muted mb-1">US30 Price</div>
+          <div className="text-lg font-bold">{us30 ? us30.price.toFixed(1) : "--"}</div>
+        </div>
+        <div className="glass-card p-4 text-center">
+          <div className="text-xs text-muted mb-1">Session</div>
+          <div className="text-lg font-bold text-accent-light capitalize">{sessionFilter}</div>
+        </div>
       </div>
 
+      {/* US30 Live Data Card */}
+      {us30 ? (
+        <div className="glass-card p-5">
+          <h3 className="text-sm font-semibold mb-3">US30 Live Data</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-4">
+            <div>
+              <div className="text-[10px] text-muted mb-0.5">Price</div>
+              <div className="text-sm font-bold text-foreground">{us30.price.toFixed(1)}</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-muted mb-0.5">Change</div>
+              <div className={cn("text-sm font-bold", us30.change >= 0 ? "text-bull-light" : "text-bear-light")}>
+                {us30.change >= 0 ? "+" : ""}{us30.change.toFixed(1)}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] text-muted mb-0.5">Change %</div>
+              <div className={cn("text-sm font-bold", us30.changePercent >= 0 ? "text-bull-light" : "text-bear-light")}>
+                {us30.changePercent >= 0 ? "+" : ""}{us30.changePercent.toFixed(2)}%
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] text-muted mb-0.5">High</div>
+              <div className="text-sm font-bold">{us30.high.toFixed(1)}</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-muted mb-0.5">Low</div>
+              <div className="text-sm font-bold">{us30.low.toFixed(1)}</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-muted mb-0.5">Range</div>
+              <div className="text-sm font-bold">{(us30.high - us30.low).toFixed(1)} pts</div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="glass-card p-5 text-center">
+          <div className="text-sm text-muted">US30 data not available in current feed</div>
+          <div className="text-xs text-muted mt-1">The API may not include index data. Algo will activate when US30 quotes become available.</div>
+        </div>
+      )}
+
+      {/* Start / Stop */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={handleToggleRunning}
+          disabled={!enabled}
+          className={cn(
+            "px-6 py-2.5 rounded-xl text-sm font-semibold transition-smooth",
+            !enabled
+              ? "bg-surface-3 text-muted cursor-not-allowed"
+              : running
+              ? "bg-bear/20 text-bear-light hover:bg-bear/30 border border-bear/30"
+              : "bg-accent/20 text-accent-light hover:bg-accent/30 border border-accent/30"
+          )}
+        >
+          {running ? "Stop Bot" : "Start Bot"}
+        </button>
+        {enabled && (
+          <span className="text-xs text-muted">
+            {us30 ? "Monitoring US30..." : "Waiting for US30 data..."}
+          </span>
+        )}
+      </div>
+
+      {/* Config Toggle */}
+      <button
+        onClick={() => setShowConfig(!showConfig)}
+        className={cn(
+          "px-4 py-2 rounded-xl text-xs font-medium transition-smooth",
+          showConfig
+            ? "bg-accent text-white"
+            : "bg-surface-2 text-muted-light border border-border/50 hover:border-border-light"
+        )}
+      >
+        {showConfig ? "Hide Config" : "Show Config"}
+      </button>
+
+      {showConfig && (
+        <AlgoConfigPanel settings={algoSettings} updateSettings={updateAlgoSettings} botName="US30 Algo" />
+      )}
+
       <div className="grid lg:grid-cols-2 gap-6">
-        {/* Strategy Modes */}
+        {/* Strategy Modes + Controls */}
         <div className="space-y-4">
           <div className="glass-card p-6">
             <h3 className="text-sm font-semibold mb-3">Strategy Mode</h3>
@@ -106,14 +333,36 @@ export default function US30AlgoPage() {
           </div>
         </div>
 
-        {/* Signals + Logic */}
+        {/* Signals + Logic + Log */}
         <div className="space-y-4">
           <div className="glass-card p-6">
-            <h3 className="text-sm font-semibold mb-3">Recent Signals</h3>
-            <div className="text-center py-8">
-              <div className="text-muted text-sm">{enabled ? "Monitoring US30..." : "Enable to see signals"}</div>
-              <div className="text-muted text-xs mt-1">US30 signals will appear based on the selected strategy mode</div>
-            </div>
+            <h3 className="text-sm font-semibold mb-3">Detected Signals ({signals.length})</h3>
+            {signals.length === 0 ? (
+              <div className="text-center py-8">
+                <div className="text-muted text-sm">{enabled ? (us30 ? "Monitoring US30..." : "Waiting for US30 data...") : "Enable to see signals"}</div>
+                <div className="text-muted text-xs mt-1">US30 signals will appear based on the selected strategy mode</div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {signals.map((s, i) => (
+                  <div key={i} className="flex items-center justify-between bg-surface-2 rounded-lg p-3">
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] font-mono text-muted">{s.time}</span>
+                      <span className="text-xs font-medium">US30</span>
+                      <span className={cn("text-[10px] font-bold", s.direction === "Bullish" ? "text-bull-light" : "text-bear-light")}>
+                        {s.direction}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs font-mono">{s.price.toFixed(1)}</div>
+                      <div className={cn("text-[10px] font-bold", s.changePct >= 0 ? "text-bull-light" : "text-bear-light")}>
+                        {s.changePct >= 0 ? "+" : ""}{s.changePct.toFixed(2)}%
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="glass-card p-5">
@@ -135,6 +384,20 @@ export default function US30AlgoPage() {
                 <p className="text-foreground font-medium mb-1">Session Awareness</p>
                 <p>Most US30 setups occur around NYSE open (09:30 ET). The algo weights signals during high-liquidity windows and filters out low-probability pre-market noise.</p>
               </div>
+            </div>
+          </div>
+
+          {/* Event Log */}
+          <div className="glass-card p-5">
+            <h3 className="text-sm font-semibold mb-3">Event Log</h3>
+            <div ref={logRef} className="space-y-1 max-h-40 overflow-y-auto font-mono">
+              {eventLog.length === 0 ? (
+                <div className="text-xs text-muted text-center py-3">No events yet</div>
+              ) : (
+                eventLog.map((entry, i) => (
+                  <div key={i} className="text-[10px] text-muted leading-relaxed">{entry}</div>
+                ))
+              )}
             </div>
           </div>
         </div>
