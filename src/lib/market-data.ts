@@ -63,11 +63,11 @@ export async function fetchQuotes(symbols: string[]): Promise<MarketQuote[]> {
     const quotes = Array.isArray(data) ? data : [data];
 
     return quotes
-      .filter((q: any) => q && !q.code) // Filter out errors
+      .filter((q: any) => q && !q.code && q.symbol && q.close) // Filter out errors and incomplete data
       .map((q: any) => {
         const internalSymbol = symbols.find(
           (s) => toTwelveDataSymbol(s) === q.symbol
-        ) || q.symbol.replace("/", "");
+        ) || (q.symbol ? q.symbol.replace("/", "") : "UNKNOWN");
         const instrument = ALL_INSTRUMENTS.find((i) => i.symbol === internalSymbol);
 
         return {

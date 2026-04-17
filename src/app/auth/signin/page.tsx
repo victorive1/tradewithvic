@@ -13,12 +13,34 @@ const floatingCards = [
 export default function SignInPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
-    // TODO: Wire up NextAuth credentials sign-in
-    setTimeout(() => setLoading(false), 1500);
+    setError("");
+
+    const form = new FormData(e.currentTarget);
+    const email = form.get("email") as string;
+    const password = form.get("password") as string;
+
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Invalid credentials");
+      } else {
+        localStorage.setItem("user", JSON.stringify(data));
+        window.location.href = "/dashboard";
+      }
+    } catch {
+      setError("Something went wrong");
+    }
+    setLoading(false);
   }
 
   return (
@@ -115,12 +137,14 @@ export default function SignInPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="text-sm text-muted-light mb-1.5 block">Email</label>
+              <label className="text-sm text-muted-light mb-1.5 block">Username or Email</label>
+              {error && <p className="text-xs text-bear-light mb-2">{error}</p>}
               <input
-                type="email"
+                type="text"
+                name="email"
                 required
                 className="w-full px-4 py-3 rounded-xl bg-surface-2 border border-border focus:border-accent focus:outline-none text-sm text-foreground placeholder-muted transition-smooth"
-                placeholder="you@example.com"
+                placeholder="Username or email"
               />
             </div>
 
@@ -129,6 +153,7 @@ export default function SignInPage() {
               <div className="relative">
                 <input
                   type={showPassword ? "text" : "password"}
+                  name="password"
                   required
                   className="w-full px-4 py-3 rounded-xl bg-surface-2 border border-border focus:border-accent focus:outline-none text-sm text-foreground placeholder-muted transition-smooth pr-12"
                   placeholder="Enter your password"
