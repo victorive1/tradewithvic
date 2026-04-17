@@ -155,15 +155,15 @@ export function DashboardSidebar() {
       </nav>
 
       <div className="p-4 border-t border-border/50">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center text-accent-light text-xs font-bold">
+        <Link href="/dashboard/profile" className="flex items-center gap-3 hover:opacity-80 transition-smooth">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-accent to-accent-light flex items-center justify-center text-white text-xs font-bold">
             V
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium truncate">Victor</p>
-            <p className="text-xs text-muted truncate">Admin</p>
+            <p className="text-xs text-muted truncate">Admin • Profile</p>
           </div>
-        </div>
+        </Link>
       </div>
     </aside>
   );
