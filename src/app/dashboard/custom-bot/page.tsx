@@ -8,6 +8,7 @@ type BuildStep = 1 | 2 | 3 | 4 | 5 | 6;
 
 interface BotDefinition {
   botName: string;
+  description: string;
   botFamily: string;
   symbols: string[];
   primaryTimeframe: string;
@@ -34,17 +35,20 @@ interface BotDefinition {
   fridayProtection: boolean;
   preCloseBuffer: number;
   killSwitch: boolean;
-  status: "draft" | "paper" | "live";
+  status: "draft" | "paper" | "live" | "paused" | "archived";
   createdAt: string;
+  lastRunAt?: string;
+  totalTrades: number;
+  totalPips: number;
 }
 
 const defaultBot: BotDefinition = {
-  botName: "", botFamily: "", symbols: [], primaryTimeframe: "1h", confirmationTimeframe: "", executionMode: "paper",
+  botName: "", description: "", botFamily: "", symbols: [], primaryTimeframe: "1h", confirmationTimeframe: "", executionMode: "paper",
   entryModel: [], confluenceFilters: [], riskModel: "fixed_lot", fixedLot: 0.10, riskPercent: 1.0,
   slMethod: "", tpMethod: "", trailingStop: false, breakEven: false, partialClose: false, candleCloseExit: false,
   sessions: ["london", "newyork"], maxSpread: 2.0, maxOpenTrades: 3, maxPerSymbol: 1, dailyDrawdown: 3.0,
   pauseAfterLosses: 3, newsFilter: true, fridayProtection: true, preCloseBuffer: 30, killSwitch: true,
-  status: "draft", createdAt: "",
+  status: "draft", createdAt: "", totalTrades: 0, totalPips: 0,
 };
 
 const botFamilies = [
@@ -179,21 +183,70 @@ export default function CustomBotPage() {
         </button>
       </div>
 
-      {/* Saved bots */}
-      {showSaved && savedBots.length > 0 && (
+      {/* My Bots Management */}
+      {showSaved && (
         <div className="space-y-3">
-          {savedBots.map((b, i) => (
-            <div key={i} className="glass-card p-4 flex items-center justify-between">
-              <div>
-                <div className="text-sm font-semibold">{b.botName}</div>
-                <div className="text-xs text-muted capitalize">{b.botFamily} • {b.symbols.length} pairs • {b.status}</div>
+          {savedBots.length > 0 ? savedBots.map((b, i) => {
+            const statusColors: Record<string, string> = { draft: "bg-surface-3 text-muted", paper: "bg-warn/10 text-warn", live: "bg-bull/10 text-bull-light", paused: "bg-bear/10 text-bear-light", archived: "bg-surface-3 text-muted line-through" };
+            return (
+              <div key={i} className="glass-card p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <div className="text-sm font-bold">{b.botName}</div>
+                    {b.description && <div className="text-[10px] text-muted mt-0.5">{b.description}</div>}
+                    <div className="text-xs text-muted capitalize mt-1">{b.botFamily} • {b.symbols.length} pairs • {b.entryModel.length} entry models</div>
+                  </div>
+                  <span className={cn("text-xs font-medium px-2.5 py-1 rounded-full capitalize", statusColors[b.status] || statusColors.draft)}>{b.status}</span>
+                </div>
+                {/* Runtime stats */}
+                <div className="grid grid-cols-4 gap-2 mb-3 text-xs">
+                  <div className="bg-surface-2 rounded-lg p-2 text-center"><div className="text-[9px] text-muted">Trades</div><div className="font-bold">{b.totalTrades}</div></div>
+                  <div className="bg-surface-2 rounded-lg p-2 text-center"><div className="text-[9px] text-muted">Pips</div><div className={cn("font-bold", b.totalPips >= 0 ? "text-bull-light" : "text-bear-light")}>{b.totalPips >= 0 ? "+" : ""}{b.totalPips}</div></div>
+                  <div className="bg-surface-2 rounded-lg p-2 text-center"><div className="text-[9px] text-muted">Mode</div><div className="capitalize">{b.executionMode}</div></div>
+                  <div className="bg-surface-2 rounded-lg p-2 text-center"><div className="text-[9px] text-muted">Created</div><div>{b.createdAt ? new Date(b.createdAt).toLocaleDateString() : "—"}</div></div>
+                </div>
+                {/* Actions */}
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={() => { setBot(b); setStep(1); setShowSaved(false); }} className="px-3 py-1.5 rounded-lg text-xs bg-accent/10 text-accent-light border border-accent/20 hover:bg-accent/20 transition-smooth">Edit</button>
+                  <button onClick={() => {
+                    const clone = { ...b, botName: `${b.botName} (Copy)`, status: "draft" as const, createdAt: new Date().toISOString(), totalTrades: 0, totalPips: 0 };
+                    const updated = [...savedBots, clone];
+                    setSavedBots(updated);
+                    localStorage.setItem("custom_bots", JSON.stringify(updated));
+                    alert(`Cloned "${b.botName}" as draft`);
+                  }} className="px-3 py-1.5 rounded-lg text-xs bg-surface-2 text-muted-light border border-border/50 hover:border-border-light transition-smooth">Clone</button>
+                  {b.status !== "paused" && b.status !== "archived" && b.status !== "draft" && (
+                    <button onClick={() => {
+                      const updated = savedBots.map((x, j) => j === i ? { ...x, status: "paused" as const } : x);
+                      setSavedBots(updated); localStorage.setItem("custom_bots", JSON.stringify(updated));
+                    }} className="px-3 py-1.5 rounded-lg text-xs bg-warn/10 text-warn border border-warn/20 hover:bg-warn/20 transition-smooth">Pause</button>
+                  )}
+                  {b.status === "paused" && (
+                    <button onClick={() => {
+                      const updated = savedBots.map((x, j) => j === i ? { ...x, status: "paper" as const } : x);
+                      setSavedBots(updated); localStorage.setItem("custom_bots", JSON.stringify(updated));
+                    }} className="px-3 py-1.5 rounded-lg text-xs bg-bull/10 text-bull-light border border-bull/20 hover:bg-bull/20 transition-smooth">Resume</button>
+                  )}
+                  {b.status !== "archived" && (
+                    <button onClick={() => {
+                      if (!confirm(`Archive "${b.botName}"? It will be removed from active bots.`)) return;
+                      const updated = savedBots.map((x, j) => j === i ? { ...x, status: "archived" as const } : x);
+                      setSavedBots(updated); localStorage.setItem("custom_bots", JSON.stringify(updated));
+                    }} className="px-3 py-1.5 rounded-lg text-xs bg-surface-2 text-muted border border-border/50 hover:text-bear-light transition-smooth">Archive</button>
+                  )}
+                  <button onClick={() => {
+                    if (!confirm(`Delete "${b.botName}" permanently?`)) return;
+                    const updated = savedBots.filter((_, j) => j !== i);
+                    setSavedBots(updated); localStorage.setItem("custom_bots", JSON.stringify(updated));
+                  }} className="px-3 py-1.5 rounded-lg text-xs bg-bear/10 text-bear-light border border-bear/20 hover:bg-bear/20 transition-smooth">Delete</button>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <span className={cn("text-xs font-medium px-2 py-0.5 rounded-full", b.status === "paper" ? "bg-warn/10 text-warn" : b.status === "live" ? "bg-bull/10 text-bull-light" : "bg-surface-3 text-muted")}>{b.status}</span>
-                <button onClick={() => { setBot(b); setStep(1); setShowSaved(false); }} className="text-xs text-accent-light hover:text-accent">Edit</button>
-              </div>
+            );
+          }) : (
+            <div className="glass-card p-12 text-center">
+              <p className="text-muted text-sm">No bots created yet. Use the builder below to create your first trading bot.</p>
             </div>
-          ))}
+          )}
         </div>
       )}
 
@@ -211,6 +264,9 @@ export default function CustomBotPage() {
           <h3 className="text-lg font-semibold">Step 1: Bot Identity</h3>
           <div><label className="text-xs text-muted-light mb-1.5 block">Bot Name</label>
             <input type="text" value={bot.botName} onChange={(e) => update({ botName: e.target.value })} placeholder="e.g. Gold Breakout Bot" className="w-full px-4 py-3 rounded-xl bg-surface-2 border border-border focus:border-accent focus:outline-none text-sm text-foreground" /></div>
+          <div><label className="text-xs text-muted-light mb-1.5 block">Description (optional)</label>
+            <textarea value={bot.description} onChange={(e) => update({ description: e.target.value })} placeholder="Describe what this bot does, its edge, and when it performs best..." rows={3}
+              className="w-full px-4 py-3 rounded-xl bg-surface-2 border border-border focus:border-accent focus:outline-none text-sm text-foreground resize-none" /></div>
           <div>
             <label className="text-xs text-muted-light mb-2 block">Strategy Family</label>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
