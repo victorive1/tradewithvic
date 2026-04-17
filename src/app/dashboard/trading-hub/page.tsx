@@ -5,17 +5,6 @@ import { cn } from "@/lib/utils";
 
 type Tab = "connect" | "account" | "execute" | "positions" | "orders" | "history";
 
-const mockPositions = [
-  { ticket: "10284561", symbol: "XAU/USD", side: "Buy", lot: 0.10, entry: 3278.40, current: 3285.20, sl: 3268.00, tp: 3298.00, pnl: 68.00, pnlPct: 0.68, duration: "45m" },
-  { ticket: "10284580", symbol: "NAS100", side: "Buy", lot: 0.05, entry: 19380, current: 19425, sl: 19280, tp: 19520, pnl: 22.50, pnlPct: 0.23, duration: "22m" },
-];
-
-const mockHistory = [
-  { ticket: "10284520", symbol: "GBP/JPY", side: "Sell", lot: 0.10, entry: 191.85, exit: 191.20, pnl: 65.00, result: "Win", closed: "2h ago" },
-  { ticket: "10284510", symbol: "EUR/USD", side: "Sell", lot: 0.05, entry: 1.0855, exit: 1.0830, pnl: 12.50, result: "Win", closed: "4h ago" },
-  { ticket: "10284490", symbol: "USD/JPY", side: "Buy", lot: 0.10, entry: 143.20, exit: 142.85, pnl: -35.00, result: "Loss", closed: "6h ago" },
-];
-
 function ConnectTab() {
   const [platform, setPlatform] = useState<"MT4" | "MT5">("MT5");
   return (
@@ -43,100 +32,44 @@ function ConnectTab() {
   );
 }
 
-function AccountTab() {
+function AccountTab({ onConnect }: { onConnect: () => void }) {
   return (
-    <div className="space-y-4">
-      <div className="glass-card p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-3 h-3 rounded-full bg-warn" />
-            <span className="text-sm font-semibold text-foreground">Demo Account</span>
-            <span className="text-xs bg-surface-2 px-2 py-0.5 rounded text-muted">MT5</span>
-            <span className="text-xs bg-bull/10 text-bull-light px-2 py-0.5 rounded border border-bull/20">Demo</span>
-          </div>
-          <button className="text-xs text-bear-light hover:text-bear">Disconnect</button>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="bg-surface-2 rounded-xl p-4 text-center"><div className="text-xs text-muted mb-1">Balance</div><div className="text-lg font-bold font-mono">$10,245.80</div></div>
-          <div className="bg-surface-2 rounded-xl p-4 text-center"><div className="text-xs text-muted mb-1">Equity</div><div className="text-lg font-bold font-mono text-bull-light">$10,336.30</div></div>
-          <div className="bg-surface-2 rounded-xl p-4 text-center"><div className="text-xs text-muted mb-1">Free Margin</div><div className="text-lg font-bold font-mono">$9,812.50</div></div>
-          <div className="bg-surface-2 rounded-xl p-4 text-center"><div className="text-xs text-muted mb-1">Leverage</div><div className="text-lg font-bold font-mono">1:500</div></div>
-        </div>
-      </div>
-      <div className="glass-card p-5 text-xs text-muted space-y-1">
-        <div className="flex justify-between"><span>Broker</span><span className="text-foreground">ICMarkets</span></div>
-        <div className="flex justify-between"><span>Server</span><span className="text-foreground">ICMarkets-Demo</span></div>
-        <div className="flex justify-between"><span>Account</span><span className="text-foreground font-mono">5042885676</span></div>
-        <div className="flex justify-between"><span>Last Sync</span><span className="text-foreground">2 seconds ago</span></div>
-      </div>
+    <div className="glass-card p-12 text-center space-y-4">
+      <div className="text-4xl mb-2">&#128274;</div>
+      <h3 className="text-lg font-semibold text-foreground">No account connected</h3>
+      <p className="text-sm text-muted max-w-md mx-auto">
+        Connect your MT4/MT5 account to see live balance, equity, and positions.
+      </p>
+      <button
+        onClick={onConnect}
+        className="px-6 py-3 rounded-xl bg-accent text-white text-sm font-semibold transition-smooth glow-accent"
+      >
+        Connect Account
+      </button>
     </div>
   );
 }
 
 function PositionsTab() {
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">Open Positions ({mockPositions.length})</h3>
-        <span className="text-xs text-muted">Live P&L</span>
-      </div>
-      {mockPositions.map((pos) => (
-        <div key={pos.ticket} className="glass-card p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-bold">{pos.symbol}</span>
-              <span className={cn("text-xs font-bold px-2 py-0.5 rounded-full", pos.side === "Buy" ? "badge-bull" : "badge-bear")}>{pos.side}</span>
-              <span className="text-xs text-muted">{pos.lot} lots</span>
-            </div>
-            <span className={cn("text-lg font-bold font-mono", pos.pnl >= 0 ? "text-bull-light" : "text-bear-light")}>
-              {pos.pnl >= 0 ? "+" : ""}${pos.pnl.toFixed(2)}
-            </span>
-          </div>
-          <div className="grid grid-cols-4 gap-3 mb-3 text-xs">
-            <div><span className="text-muted">Entry</span><div className="font-mono text-foreground">{pos.entry}</div></div>
-            <div><span className="text-muted">Current</span><div className="font-mono text-foreground">{pos.current}</div></div>
-            <div><span className="text-bear-light">SL</span><div className="font-mono text-bear-light">{pos.sl}</div></div>
-            <div><span className="text-bull-light">TP</span><div className="font-mono text-bull-light">{pos.tp}</div></div>
-          </div>
-          <div className="flex gap-2">
-            <button className="px-3 py-1.5 rounded-lg text-xs bg-bear/10 text-bear-light border border-bear/20 hover:bg-bear/20 transition-smooth">Close</button>
-            <button className="px-3 py-1.5 rounded-lg text-xs bg-surface-2 text-muted-light border border-border/50 hover:border-border-light transition-smooth">Move SL</button>
-            <button className="px-3 py-1.5 rounded-lg text-xs bg-surface-2 text-muted-light border border-border/50 hover:border-border-light transition-smooth">Move TP</button>
-            <button className="px-3 py-1.5 rounded-lg text-xs bg-surface-2 text-muted-light border border-border/50 hover:border-border-light transition-smooth">Break-Even</button>
-          </div>
-        </div>
-      ))}
+    <div className="glass-card p-12 text-center space-y-3">
+      <div className="text-4xl mb-2">&#128202;</div>
+      <h3 className="text-base font-semibold text-foreground">No open positions</h3>
+      <p className="text-sm text-muted max-w-md mx-auto">
+        Connect a trading account and execute trades to see live positions here.
+      </p>
     </div>
   );
 }
 
 function HistoryTab() {
   return (
-    <div className="glass-card overflow-hidden">
-      <table className="w-full">
-        <thead><tr className="border-b border-border/50">
-          <th className="text-left text-xs text-muted font-medium px-4 py-3">Ticket</th>
-          <th className="text-left text-xs text-muted font-medium px-3 py-3">Symbol</th>
-          <th className="text-left text-xs text-muted font-medium px-3 py-3">Side</th>
-          <th className="text-left text-xs text-muted font-medium px-3 py-3">Entry</th>
-          <th className="text-left text-xs text-muted font-medium px-3 py-3">Exit</th>
-          <th className="text-left text-xs text-muted font-medium px-3 py-3">P&L</th>
-          <th className="text-left text-xs text-muted font-medium px-3 py-3">Result</th>
-        </tr></thead>
-        <tbody>
-          {mockHistory.map((h) => (
-            <tr key={h.ticket} className="border-b border-border/20">
-              <td className="px-4 py-3 text-xs font-mono text-muted">{h.ticket}</td>
-              <td className="px-3 py-3 text-sm font-medium">{h.symbol}</td>
-              <td className="px-3 py-3"><span className={cn("text-xs font-medium", h.side === "Buy" ? "text-bull-light" : "text-bear-light")}>{h.side}</span></td>
-              <td className="px-3 py-3 text-xs font-mono">{h.entry}</td>
-              <td className="px-3 py-3 text-xs font-mono">{h.exit}</td>
-              <td className="px-3 py-3 text-sm font-mono font-medium"><span className={h.pnl >= 0 ? "text-bull-light" : "text-bear-light"}>{h.pnl >= 0 ? "+" : ""}${h.pnl.toFixed(2)}</span></td>
-              <td className="px-3 py-3"><span className={cn("text-xs font-medium px-2 py-0.5 rounded-full", h.result === "Win" ? "badge-bull" : "badge-bear")}>{h.result}</span></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="glass-card p-12 text-center space-y-3">
+      <div className="text-4xl mb-2">&#128203;</div>
+      <h3 className="text-base font-semibold text-foreground">No trade history yet</h3>
+      <p className="text-sm text-muted max-w-md mx-auto">
+        Your executed trades will appear here once you start trading.
+      </p>
     </div>
   );
 }
@@ -157,10 +90,8 @@ export default function TradingHubPage() {
       <div>
         <div className="flex items-center gap-3 mb-1">
           <h1 className="text-2xl font-bold text-foreground">Trading Hub</h1>
-          <span className="text-xs bg-warn/10 text-warn px-2.5 py-1 rounded-full border border-warn/20 font-medium">Demo Mode</span>
         </div>
         <p className="text-sm text-muted mt-1">Connect your MetaTrader account and execute trades directly from TradeWithVic App</p>
-        <p className="text-xs text-muted mt-1">Connect your real MT4/MT5 account to see live data</p>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -174,7 +105,7 @@ export default function TradingHubPage() {
       </div>
 
       {tab === "connect" && <ConnectTab />}
-      {tab === "account" && <AccountTab />}
+      {tab === "account" && <AccountTab onConnect={() => setTab("connect")} />}
       {tab === "execute" && (
         <div className="max-w-lg mx-auto glass-card p-6 space-y-4">
           <h3 className="text-lg font-semibold">Place Manual Trade</h3>

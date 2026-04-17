@@ -5,11 +5,7 @@ import { cn } from "@/lib/utils";
 
 const riskMultipliers = ["0.5x", "1x", "2x"];
 
-const followerAccounts = [
-  { name: "Follower 1", alias: "Sub-Account A", status: "Synced", trades: 12, pnl: "+$340.00" },
-  { name: "Follower 2", alias: "Sub-Account B", status: "Synced", trades: 12, pnl: "+$168.50" },
-  { name: "Follower 3", alias: "Sub-Account C", status: "Paused", trades: 8, pnl: "-$42.00" },
-];
+const followerAccounts: { name: string; alias: string; status: string; trades: number; pnl: string }[] = [];
 
 const instruments = [
   { symbol: "EUR/USD", allowed: true },
@@ -69,20 +65,10 @@ export default function CopyTradingPage() {
 
           {/* Followers */}
           <div className="flex flex-col gap-2">
-            {followerAccounts.map((f) => (
-              <div
-                key={f.name}
-                className={cn(
-                  "rounded-xl px-4 py-2.5 text-center min-w-[140px] border",
-                  f.status === "Synced"
-                    ? "bg-bull/10 border-bull/30"
-                    : "bg-surface-2 border-border/50"
-                )}
-              >
-                <div className="text-xs font-medium text-foreground">{f.name}</div>
-                <div className="text-[10px] text-muted">{f.alias}</div>
-              </div>
-            ))}
+            <div className="rounded-xl px-4 py-2.5 text-center min-w-[140px] border bg-surface-2 border-border/50">
+              <div className="text-xs font-medium text-muted">No followers</div>
+              <div className="text-[10px] text-muted">Connect accounts to enable</div>
+            </div>
           </div>
         </div>
       </div>
@@ -94,22 +80,19 @@ export default function CopyTradingPage() {
           <div className="bg-surface-2 rounded-xl p-4 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted">Account</span>
-              <span className="text-xs font-medium text-foreground">Primary Trading Account</span>
+              <span className="text-xs font-medium text-muted">&mdash;</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted">Status</span>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-bull pulse-live" />
-                <span className="text-xs font-medium text-bull-light">Broadcasting</span>
-              </div>
+              <span className="text-xs font-medium text-muted">Not active</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted">Open Positions</span>
-              <span className="text-xs font-medium text-foreground">4</span>
+              <span className="text-xs font-medium text-muted">&mdash;</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted">Signals Sent Today</span>
-              <span className="text-xs font-medium text-accent-light">12</span>
+              <span className="text-xs font-medium text-muted">&mdash;</span>
             </div>
           </div>
         </div>
@@ -117,48 +100,9 @@ export default function CopyTradingPage() {
         {/* Follower Accounts Section */}
         <div className="glass-card p-5 space-y-4">
           <h3 className="text-sm font-semibold text-foreground">Follower Accounts</h3>
-          <div className="space-y-2">
-            {followerAccounts.map((f) => (
-              <div key={f.name} className="bg-surface-2 rounded-xl p-3 flex items-center justify-between">
-                <div>
-                  <div className="text-xs font-medium text-foreground">{f.name}</div>
-                  <div className="text-[10px] text-muted">{f.alias}</div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="text-right">
-                    <div className="text-[10px] text-muted">Trades</div>
-                    <div className="text-xs font-medium text-foreground">{f.trades}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[10px] text-muted">P&L</div>
-                    <div
-                      className={cn(
-                        "text-xs font-bold",
-                        f.pnl.startsWith("+") ? "text-bull-light" : "text-bear-light"
-                      )}
-                    >
-                      {f.pnl}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      className={cn(
-                        "w-2 h-2 rounded-full",
-                        f.status === "Synced" ? "bg-bull" : "bg-warn"
-                      )}
-                    />
-                    <span
-                      className={cn(
-                        "text-[10px] font-medium",
-                        f.status === "Synced" ? "text-bull-light" : "text-warn"
-                      )}
-                    >
-                      {f.status}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
+          <div className="bg-surface-2 rounded-xl p-6 text-center">
+            <p className="text-sm text-muted">No follower accounts connected yet.</p>
+            <p className="text-xs text-muted mt-1">Connect accounts to enable copy trading.</p>
           </div>
         </div>
       </div>
@@ -220,22 +164,19 @@ export default function CopyTradingPage() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div className="bg-surface-2 rounded-xl p-4 text-center">
             <div className="text-xs text-muted mb-1">Sync Status</div>
-            <div className="flex items-center justify-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-bull pulse-live" />
-              <span className="text-sm font-bold text-bull-light">Active</span>
-            </div>
+            <div className="text-sm font-bold text-muted">Not active</div>
           </div>
           <div className="bg-surface-2 rounded-xl p-4 text-center">
             <div className="text-xs text-muted mb-1">Latency</div>
-            <div className="text-lg font-bold text-foreground">48ms</div>
+            <div className="text-lg font-bold text-muted">&mdash;</div>
           </div>
           <div className="bg-surface-2 rounded-xl p-4 text-center">
             <div className="text-xs text-muted mb-1">Positions Mirrored</div>
-            <div className="text-lg font-bold text-accent-light">4 / 4</div>
+            <div className="text-lg font-bold text-muted">&mdash;</div>
           </div>
           <div className="bg-surface-2 rounded-xl p-4 text-center">
             <div className="text-xs text-muted mb-1">Last Trade Copied</div>
-            <div className="text-sm font-bold text-foreground">3 min ago</div>
+            <div className="text-sm font-bold text-muted">&mdash;</div>
           </div>
         </div>
       </div>

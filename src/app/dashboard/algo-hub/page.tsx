@@ -13,69 +13,32 @@ const strategies = [
   { id: "pullback", name: "Elite Pullback", category: "Continuation", symbols: 11, frequency: "3-6/day", risk: "Low", winRate: "66%", enabled: true, grade: "B+" },
 ];
 
-const recentTrades = [
-  { time: "14:32", symbol: "XAU/USD", strategy: "Elite Price Action", side: "Buy", lot: 0.10, pnl: "+$68.00", status: "Open" },
-  { time: "13:15", symbol: "GBP/JPY", strategy: "Liquidity Sweep", side: "Sell", lot: 0.10, pnl: "+$45.20", status: "Closed" },
-  { time: "11:42", symbol: "NAS100", strategy: "Breakout FVG", side: "Buy", lot: 0.05, pnl: "+$22.50", status: "Open" },
-  { time: "10:08", symbol: "EUR/USD", strategy: "Elite Price Action", side: "Sell", lot: 0.05, pnl: "-$18.00", status: "Closed" },
-  { time: "09:30", symbol: "USD/JPY", strategy: "Elite Pullback", side: "Buy", lot: 0.10, pnl: "+$35.00", status: "Closed" },
-];
-
-const eventLog = [
-  { time: "14:32", type: "trade", msg: "Elite Price Action detected BUY on XAU/USD \u2014 executed at 3,278.40" },
-  { time: "14:28", type: "skip", msg: "Skipped EUR/USD setup: spread too high (2.8 pips > max 1.5)" },
-  { time: "14:15", type: "info", msg: "Breakout FVG scanning... 3 candidates detected" },
-  { time: "13:42", type: "management", msg: "Moved SL to break-even on GBP/JPY position" },
-  { time: "13:15", type: "trade", msg: "Closed GBP/JPY SELL at +$45.20 \u2014 TP1 hit" },
-  { time: "12:45", type: "warning", msg: "Daily loss limit 60% utilized \u2014 reducing position sizes" },
-  { time: "11:42", type: "trade", msg: "Breakout FVG detected BUY on NAS100 \u2014 executed" },
-];
-
 function DashboardTab() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-        <div className="glass-card p-4 text-center"><div className="text-xs text-muted mb-1">Status</div><div className="flex items-center justify-center gap-2"><span className="w-2 h-2 rounded-full bg-bull pulse-live" /><span className="text-sm font-bold text-bull-light">Running</span></div></div>
-        <div className="glass-card p-4 text-center"><div className="text-xs text-muted mb-1">Today P&L</div><div className="text-lg font-bold text-muted">Paper: $0.00</div></div>
+        <div className="glass-card p-4 text-center"><div className="text-xs text-muted mb-1">Status</div><div className="flex items-center justify-center gap-2"><span className="text-sm font-bold text-muted">Idle</span></div></div>
+        <div className="glass-card p-4 text-center"><div className="text-xs text-muted mb-1">Today P&L</div><div className="text-lg font-bold text-muted">$0.00</div></div>
         <div className="glass-card p-4 text-center"><div className="text-xs text-muted mb-1">Trades Today</div><div className="text-lg font-bold">0</div></div>
-        <div className="glass-card p-4 text-center"><div className="text-xs text-muted mb-1">Win Rate</div><div className="text-lg font-bold text-accent-light">80%</div></div>
-        <div className="glass-card p-4 text-center"><div className="text-xs text-muted mb-1">Active Strategies</div><div className="text-lg font-bold">3</div></div>
+        <div className="glass-card p-4 text-center"><div className="text-xs text-muted mb-1">Win Rate</div><div className="text-lg font-bold text-muted">0%</div></div>
+        <div className="glass-card p-4 text-center"><div className="text-xs text-muted mb-1">Active Strategies</div><div className="text-lg font-bold">0</div></div>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4">
         {/* Recent trades */}
-        <div className="glass-card p-5">
-          <h3 className="text-sm font-semibold mb-3">Recent Trades</h3>
-          <div className="space-y-2">
-            {recentTrades.map((t, i) => (
-              <div key={i} className="flex items-center justify-between bg-surface-2 rounded-lg p-3">
-                <div className="flex items-center gap-3">
-                  <span className="text-[10px] font-mono text-muted">{t.time}</span>
-                  <span className="text-xs font-medium">{t.symbol}</span>
-                  <span className={cn("text-[10px] font-bold", t.side === "Buy" ? "text-bull-light" : "text-bear-light")}>{t.side}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className={cn("text-xs font-bold font-mono", t.pnl.startsWith("+") ? "text-bull-light" : "text-bear-light")}>{t.pnl}</span>
-                  <span className={cn("text-[10px] px-1.5 py-0.5 rounded", t.status === "Open" ? "bg-bull/10 text-bull-light" : "bg-surface-3 text-muted")}>{t.status}</span>
-                </div>
-              </div>
-            ))}
-          </div>
+        <div className="glass-card p-8 text-center space-y-3">
+          <h3 className="text-sm font-semibold mb-1">Recent Trades</h3>
+          <p className="text-sm text-muted">
+            No trades executed yet. Enable a strategy and start paper trading to see activity here.
+          </p>
         </div>
 
         {/* Event log */}
-        <div className="glass-card p-5">
-          <h3 className="text-sm font-semibold mb-3">Event Log</h3>
-          <div className="space-y-2 max-h-[300px] overflow-y-auto">
-            {eventLog.map((e, i) => (
-              <div key={i} className="flex items-start gap-2 text-xs">
-                <span className="font-mono text-muted w-12 flex-shrink-0">{e.time}</span>
-                <span className={cn("w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0",
-                  e.type === "trade" ? "bg-bull" : e.type === "skip" ? "bg-warn" : e.type === "warning" ? "bg-bear" : "bg-muted")} />
-                <span className="text-muted-light">{e.msg}</span>
-              </div>
-            ))}
-          </div>
+        <div className="glass-card p-8 text-center space-y-3">
+          <h3 className="text-sm font-semibold mb-1">Event Log</h3>
+          <p className="text-sm text-muted">
+            No events yet. The system will log all trading activity, skipped signals, and bot decisions here.
+          </p>
         </div>
       </div>
     </div>
