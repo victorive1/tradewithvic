@@ -68,10 +68,10 @@ model VerificationToken {
 model UserPreference {
   id              String   @id @default(cuid())
   userId          String   @unique
-  favoriteMarkets String   @default("[]") // JSON array of symbols
+  favoriteMarkets String   @default("[]")
   defaultTimeframe String  @default("1h")
-  dashboardLayout String   @default("[]") // JSON array of widget configs
-  alertSettings   String   @default("{}") // JSON object
+  dashboardLayout String   @default("[]")
+  alertSettings   String   @default("{}")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -84,7 +84,7 @@ model Instrument {
   id          String @id @default(cuid())
   symbol      String @unique
   displayName String
-  category    String // forex, metals, energy, indices, crypto
+  category    String
   baseCurrency  String?
   quoteCurrency String?
   decimalPlaces Int    @default(5)
@@ -100,20 +100,20 @@ model TradeSetup {
   id              String   @id @default(cuid())
   instrumentId    String
   symbol          String
-  direction       String   // buy, sell
-  setupType       String   // breakout, pullback, reversal, continuation, engulfing
-  timeframe       String   // 5m, 15m, 1h, 4h
+  direction       String
+  setupType       String
+  timeframe       String
   entry           Float
   stopLoss        Float
   takeProfit1     Float
   takeProfit2     Float?
   takeProfit3     Float?
   riskReward      Float
-  confidenceScore Int      // 0-100
-  qualityGrade    String   // A+, A, B+, B, C
+  confidenceScore Int
+  qualityGrade    String
   explanation     String?
   invalidation    String?
-  status          String   @default("active") // active, triggered, expired, invalidated
+  status          String   @default("active")
   validUntil      DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -145,8 +145,8 @@ model Alert {
   userId       String
   instrumentId String?
   symbol       String
-  alertType    String   // price_level, setup, volatility, liquidity_sweep, event_risk
-  condition    String   // JSON: {type, value, direction}
+  alertType    String
+  condition    String
   message      String?
   isTriggered  Boolean  @default(false)
   triggeredAt  DateTime?
@@ -158,4 +158,346 @@ model Alert {
 
   @@index([userId, isActive])
   @@index([symbol, isActive])
+}
+
+// ==================== ADAPTIVE INTELLIGENCE - DECISION LOGGING ====================
+
+model SetupDecisionLog {
+  id                     String   @id @default(cuid())
+  setupId                String?
+  createdAt              DateTime @default(now())
+  symbol                 String
+  timeframe              String
+  session                String
+  marketRegime           String?
+  rulesEngineVersion     String   @default("v1")
+  modelVersionUsed       String?
+  adaptiveConfigVersion  String?
+  direction              String
+  setupType              String
+  rulesScore             Float
+  hybridScore            Float?
+  qualityLabel           String
+  entry                  Float
+  stopLoss               Float
+  takeProfit1            Float
+  takeProfit2            Float?
+  takeProfit3            Float?
+  pairStrengthSpread     Float?
+  alignmentScore         Float?
+  structureScore         Float?
+  momentumScore          Float?
+  entryLocationScore     Float?
+  rrScore                Float?
+  volatilityScore        Float?
+  eventRiskScore         Float?
+  featureVectorJson      String   @default("{}")
+  reasoningJson          String   @default("[]")
+  invalidationRulesJson  String   @default("[]")
+  marketContextJson      String   @default("{}")
+  rawInputSnapshotJson   String   @default("{}")
+
+  outcomes               SetupOutcome[]
+  interactions           SetupUserInteraction[]
+  liveScoringLogs        LiveScoringLog[]
+  shadowPredictionLogs   ShadowPredictionLog[]
+
+  @@index([createdAt])
+  @@index([symbol, timeframe])
+  @@index([rulesEngineVersion])
+}
+
+// ==================== ADAPTIVE INTELLIGENCE - OUTCOMES ====================
+
+model SetupOutcome {
+  id                     String   @id @default(cuid())
+  setupDecisionLogId     String   @unique
+  labeledAt              DateTime @default(now())
+  triggered              Boolean
+  entryTriggeredAt       DateTime?
+  tp1Hit                 Boolean  @default(false)
+  tp1HitAt               DateTime?
+  tp2Hit                 Boolean  @default(false)
+  tp2HitAt               DateTime?
+  tp3Hit                 Boolean  @default(false)
+  tp3HitAt               DateTime?
+  slHit                  Boolean  @default(false)
+  slHitAt                DateTime?
+  expired                Boolean  @default(false)
+  invalidated            Boolean  @default(false)
+  neverTriggered         Boolean  @default(false)
+  maxFavorableExcursion  Float?
+  maxAdverseExcursion    Float?
+  barsToTrigger          Int?
+  barsToTp1              Int?
+  barsToSl               Int?
+  outcomeClass           String   // excellent, good, neutral, poor, invalid
+  outcomeScore           Float?
+  labelingWindowMinutes  Int      @default(360)
+  labelQuality           String   @default("medium") // high, medium, low
+
+  setupDecisionLog SetupDecisionLog @relation(fields: [setupDecisionLogId], references: [id], onDelete: Cascade)
+
+  @@index([labeledAt])
+  @@index([outcomeClass])
+}
+
+model SetupUserInteraction {
+  id                  String   @id @default(cuid())
+  setupDecisionLogId  String
+  userId              String?
+  eventType           String   // viewed, expanded, clicked_chart, saved, ignored
+  eventValue          String?
+  metadataJson        String?
+  createdAt           DateTime @default(now())
+
+  setupDecisionLog SetupDecisionLog @relation(fields: [setupDecisionLogId], references: [id], onDelete: Cascade)
+
+  @@index([setupDecisionLogId])
+  @@index([createdAt])
+}
+
+// ==================== ADAPTIVE INTELLIGENCE - MODEL REGISTRY ====================
+
+model TrainingDataset {
+  id                   String   @id @default(cuid())
+  datasetName          String
+  createdAt            DateTime @default(now())
+  windowStart          DateTime
+  windowEnd            DateTime
+  labelType            String
+  rowCount             Int
+  featureListJson      String   @default("[]")
+  targetDefinitionJson String   @default("{}")
+  artifactPath         String?
+  status               String   // ready, training, completed, failed
+
+  models ModelRegistry[]
+
+  @@index([createdAt])
+}
+
+model ModelRegistry {
+  id                     String   @id @default(cuid())
+  modelName              String
+  modelFamily            String
+  version                String   @unique
+  status                 String   // candidate, shadow, active, rejected, archived, rolled_back
+  createdAt              DateTime @default(now())
+  trainedAt              DateTime
+  trainingWindowStart    DateTime
+  trainingWindowEnd      DateTime
+  datasetId              String?
+  targetName             String
+  featureListJson        String   @default("[]")
+  hyperparamsJson        String   @default("{}")
+  metricsJson            String   @default("{}")
+  calibrationMetricsJson String?
+  artifactPath           String
+  evaluationReportPath   String?
+  notes                  String?
+  promotedAt             DateTime?
+  demotedAt              DateTime?
+  replacedByVersion      String?
+
+  dataset          TrainingDataset? @relation(fields: [datasetId], references: [id])
+  promotionsFrom   ModelPromotion[] @relation("PromotionFrom")
+  promotionsTo     ModelPromotion[] @relation("PromotionTo")
+  driftReports     FeatureDriftReport[]
+
+  @@index([status])
+  @@index([modelName])
+}
+
+model ModelPromotion {
+  id                  String   @id @default(cuid())
+  createdAt           DateTime @default(now())
+  fromVersion         String?
+  toVersion           String
+  actionType          String   // promote_to_shadow, promote_to_active, rollback, reject
+  decisionReason      String
+  approvedBy          String
+  metricsSnapshotJson String   @default("{}")
+  rolloutStrategyJson String?
+
+  fromModel ModelRegistry? @relation("PromotionFrom", fields: [fromVersion], references: [version])
+  toModel   ModelRegistry  @relation("PromotionTo", fields: [toVersion], references: [version])
+
+  @@index([createdAt])
+}
+
+// ==================== ADAPTIVE INTELLIGENCE - CONFIG ====================
+
+model AdaptiveConfigVersion {
+  id                     String   @id @default(cuid())
+  version                String   @unique
+  status                 String   // candidate, active, archived, rolled_back
+  createdAt              DateTime @default(now())
+  activatedAt            DateTime?
+  deactivatedAt          DateTime?
+  parentVersion          String?
+  changeReason           String?
+  maxDailyChangePercent  Float    @default(5)
+  weightsJson            String   @default("{}")
+  thresholdsJson         String   @default("{}")
+  symbolModifiersJson    String   @default("{}")
+  timeframeModifiersJson String   @default("{}")
+  sessionModifiersJson   String   @default("{}")
+  freshnessRulesJson     String   @default("{}")
+  stalenessRulesJson     String   @default("{}")
+  eventRiskRulesJson     String   @default("{}")
+  notes                  String?
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ==================== ADAPTIVE INTELLIGENCE - SCORING AUDIT ====================
+
+model LiveScoringLog {
+  id                       String   @id @default(cuid())
+  setupDecisionLogId       String
+  createdAt                DateTime @default(now())
+  scoringMode              String   // rules_only, shadow, hybrid
+  rulesScore               Float
+  modelScore               Float?
+  calibratedProbability    Float?
+  visibleScore             Float
+  rulesWeight              Float
+  modelWeight              Float
+  activeModelVersion       String?
+  shadowModelVersion       String?
+  adaptiveConfigVersion    String?
+  fallbackUsed             Boolean  @default(false)
+  fallbackReason           String?
+  guardrailApplied         Boolean  @default(false)
+  guardrailReasonsJson     String?
+
+  setupDecisionLog SetupDecisionLog @relation(fields: [setupDecisionLogId], references: [id], onDelete: Cascade)
+
+  @@index([setupDecisionLogId])
+  @@index([createdAt])
+  @@index([scoringMode])
+}
+
+model ShadowPredictionLog {
+  id                    String   @id @default(cuid())
+  setupDecisionLogId    String
+  createdAt             DateTime @default(now())
+  activeScore           Float
+  activeModelVersion    String?
+  shadowModelVersion    String
+  shadowProbability     Float
+  shadowScore           Float
+  divergence            Float
+  featureHash           String?
+  notesJson             String?
+
+  setupDecisionLog SetupDecisionLog @relation(fields: [setupDecisionLogId], references: [id], onDelete: Cascade)
+
+  @@index([setupDecisionLogId])
+  @@index([createdAt])
+}
+
+// ==================== ADAPTIVE INTELLIGENCE - MONITORING ====================
+
+model FeatureDriftReport {
+  id                   String   @id @default(cuid())
+  createdAt            DateTime @default(now())
+  modelVersion         String?
+  windowStart          DateTime
+  windowEnd            DateTime
+  driftSummaryJson     String   @default("{}")
+  severity             String   // stable, warning, critical
+  recommendedAction    String?
+
+  model ModelRegistry? @relation(fields: [modelVersion], references: [version])
+
+  @@index([createdAt])
+  @@index([severity])
+}
+
+model MonitoringAlert {
+  id                 String   @id @default(cuid())
+  createdAt          DateTime @default(now())
+  resolvedAt         DateTime?
+  level              String   // info, warning, critical
+  category           String   // operational, calibration, drift, outcome
+  title              String
+  message            String
+  modelVersion       String?
+  configVersion      String?
+  metricName         String?
+  metricValue        Float?
+  thresholdValue     Float?
+  status             String   @default("open") // open, acknowledged, resolved
+  recommendedAction  String?
+  actionTaken        String?
+
+  @@index([createdAt])
+  @@index([level])
+  @@index([status])
+}
+
+model MonitoringSnapshot {
+  id                         String   @id @default(cuid())
+  createdAt                  DateTime @default(now())
+  activeModelVersion         String?
+  adaptiveConfigVersion      String?
+  scoringMode                String
+  inferenceSuccessRate       Float?
+  fallbackRate               Float?
+  topBucketHitRate           Float?
+  topBucketFalsePositiveRate Float?
+  driftSeverity              String?
+  driftSummaryJson           String?
+  scoreBandSummaryJson       String?
+
+  @@index([createdAt])
+}
+
+model DailyLearningReport {
+  id                      String   @id @default(cuid())
+  reportDate              DateTime @unique
+  createdAt               DateTime @default(now())
+  setupsLogged            Int
+  setupsLabeled           Int
+  candidateModelVersion   String?
+  baselineMetricsJson     String   @default("{}")
+  candidateMetricsJson    String?
+  recommendationsJson     String?
+  promotionDecision       String?
+
+  @@index([createdAt])
+}
+
+// ==================== OPERATOR CONTROL ====================
+
+model OperatorActionLog {
+  id           String   @id @default(cuid())
+  createdAt    DateTime @default(now())
+  operatorId   String
+  actionType   String
+  targetType   String
+  targetId     String?
+  reason       String?
+  metadataJson String?
+
+  @@index([createdAt])
+  @@index([operatorId])
+}
+
+model SystemControlState {
+  id                     String   @id @default(cuid())
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  scoringMode            String   @default("rules_only")
+  rulesWeight            Float    @default(1.0)
+  modelWeight            Float    @default(0.0)
+  forceRulesOnly         Boolean  @default(false)
+  configPromotionsFrozen Boolean  @default(false)
+  activeModelVersion     String?
+  shadowModelVersion     String?
+  activeConfigVersion    String?
+  notes                  String?
 }
