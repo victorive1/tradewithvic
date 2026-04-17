@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TradeWithVic - Real-Time Trading Intelligence",
+  title: "TradeWithVic App - Real-Time Trading Intelligence",
   description: "Analyze forex, metals, indices, and crypto with clean insights, real-time data, and confidence-driven trade setups.",
 };
 

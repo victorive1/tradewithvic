@@ -16,7 +16,8 @@ export function Logo({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
         <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-bull animate-pulse" />
       </div>
       <span className="text-foreground">
-        Trade<span className="gradient-text-accent">WithVic</span>
+        TradeWith<span className="gradient-text-accent">Vic</span>
+        {size !== "sm" && <span className="text-muted-light text-sm ml-1 font-normal">App</span>}
       </span>
     </div>
   );

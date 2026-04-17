@@ -21,7 +21,7 @@ export function WhyDifferent() {
             </h2>
             <p className="text-muted-light text-lg mb-8 leading-relaxed">
               Most trading platforms overwhelm you with charts and noise.
-              TradeWithVic turns complex market activity into clean, actionable
+              TradeWithVic App turns complex market activity into clean, actionable
               intelligence you can act on in seconds.
             </p>
             <div className="space-y-4">
