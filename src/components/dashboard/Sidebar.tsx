@@ -7,9 +7,16 @@ import { cn } from "@/lib/utils";
 
 const navItems = [
   {
+    section: "Home",
+    items: [
+      { label: "My Dashboard", href: "/dashboard/my-dashboard", icon: "radar" },
+      { label: "Market Radar", href: "/dashboard", icon: "screener" },
+      { label: "Profile", href: "/dashboard/profile", icon: "watchlist" },
+    ],
+  },
+  {
     section: "Markets",
     items: [
-      { label: "Market Radar", href: "/dashboard", icon: "radar" },
       { label: "Market Direction", href: "/dashboard/market-direction", icon: "setups" },
       { label: "Market Prediction", href: "/dashboard/screener", icon: "screener" },
       { label: "Currency Strength", href: "/dashboard/strength", icon: "strength" },
