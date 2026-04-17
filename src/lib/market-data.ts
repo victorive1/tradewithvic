@@ -54,8 +54,19 @@ async function fetchBatch(symbols: string[]): Promise<MarketQuote[]> {
 
     const data = await res.json();
 
-    // API returns object for single symbol, array for multiple
-    const quotes = Array.isArray(data) ? data : [data];
+    // TwelveData returns:
+    // Single symbol: { symbol: "EUR/USD", close: "1.08", ... }
+    // Multiple symbols: { "EUR/USD": { symbol: ..., close: ... }, "GBP/USD": { ... } }
+    let quotes: any[];
+    if (Array.isArray(data)) {
+      quotes = data;
+    } else if (data.symbol && data.close) {
+      // Single symbol response
+      quotes = [data];
+    } else {
+      // Multiple symbol response - object with symbol keys
+      quotes = Object.values(data);
+    }
 
     return quotes
       .filter((q: any) => q && !q.code && q.symbol && q.close)
