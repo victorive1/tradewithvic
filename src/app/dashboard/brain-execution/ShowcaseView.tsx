@@ -67,7 +67,7 @@ export function ShowcaseView({ state, mtAccounts = [] }: ShowcaseProps) {
   }, [events]);
 
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-border/50 bg-gradient-to-br from-black/60 via-surface to-black/40 p-6 md:p-10 min-h-[620px]">
+    <div className="relative overflow-hidden rounded-3xl border border-border/50 bg-gradient-to-br from-surface/60 via-surface-2/40 to-surface/60 p-6 md:p-10 min-h-[620px]">
       {/* Background glow */}
       <motion.div
         aria-hidden
@@ -94,7 +94,7 @@ export function ShowcaseView({ state, mtAccounts = [] }: ShowcaseProps) {
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            className="rounded-2xl border border-border/60 bg-gradient-to-br from-accent/10 via-transparent to-transparent p-6 backdrop-blur-sm"
+            className="rounded-2xl border border-border/60 bg-gradient-to-br from-accent/15 via-surface-2/40 to-transparent p-6 backdrop-blur-sm"
           >
             {hasMt ? (
               <>
@@ -188,7 +188,7 @@ export function ShowcaseView({ state, mtAccounts = [] }: ShowcaseProps) {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.2 }}
-                className="mt-6 inline-flex items-center gap-4 rounded-2xl border border-border/50 bg-black/30 px-5 py-3 backdrop-blur-sm"
+                className="mt-6 inline-flex items-center gap-4 rounded-2xl border border-border/50 bg-surface-2/70 px-5 py-3 backdrop-blur-sm"
               >
                 <MiniStat label="Entry" value={formatPrice(focusPosition.entry)} />
                 <div className="h-6 w-px bg-border/60" />
@@ -220,7 +220,7 @@ export function ShowcaseView({ state, mtAccounts = [] }: ShowcaseProps) {
       </div>
 
       {/* Bottom strip: streaming events */}
-      <div className="relative z-10 mt-8 rounded-2xl border border-border/40 bg-black/30 p-4 backdrop-blur-sm">
+      <div className="relative z-10 mt-8 rounded-2xl border border-border/40 bg-surface-2/70 p-4 backdrop-blur-sm">
         <div className="flex items-center justify-between mb-2">
           <div className="text-[10px] uppercase tracking-[0.25em] text-muted">Live event stream</div>
           <div className="text-[10px] uppercase tracking-[0.25em] text-accent-light">
@@ -288,7 +288,7 @@ function OrbitRing({ quotes, focusSymbol }: { quotes: any[]; focusSymbol: string
                 animate={{ rotate: -360 }}
                 transition={{ duration: 90, repeat: Infinity, ease: "linear" }}
                 className={cn(
-                  "rounded-full border bg-black/40 px-3 py-1.5 text-[10px] font-mono backdrop-blur-sm",
+                  "rounded-full border bg-surface-2/60 px-3 py-1.5 text-[10px] font-mono backdrop-blur-sm",
                   q.changePercent >= 0 ? "border-bull/30 text-bull-light" : "border-bear/30 text-bear-light"
                 )}
               >

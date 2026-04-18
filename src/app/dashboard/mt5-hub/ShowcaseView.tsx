@@ -54,7 +54,7 @@ export function Mt5HubShowcase({ accounts, groups, meta, summary }: Props) {
 
   if (accounts.length === 0) {
     return (
-      <div className="relative overflow-hidden rounded-3xl border border-border/50 bg-gradient-to-br from-black/60 via-surface to-black/40 p-12 min-h-[520px] flex flex-col items-center justify-center gap-4 text-center">
+      <div className="relative overflow-hidden rounded-3xl border border-border/50 bg-gradient-to-br from-surface/60 via-surface-2/40 to-surface/60 p-12 min-h-[520px] flex flex-col items-center justify-center gap-4 text-center">
         <motion.div
           aria-hidden
           className="pointer-events-none absolute inset-0"
@@ -75,7 +75,7 @@ export function Mt5HubShowcase({ accounts, groups, meta, summary }: Props) {
   }
 
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-border/50 bg-gradient-to-br from-black/60 via-surface to-black/40 p-6 md:p-10 min-h-[640px]">
+    <div className="relative overflow-hidden rounded-3xl border border-border/50 bg-gradient-to-br from-surface/60 via-surface-2/40 to-surface/60 p-6 md:p-10 min-h-[640px]">
       <motion.div
         aria-hidden
         className="pointer-events-none absolute inset-0"
@@ -96,7 +96,7 @@ export function Mt5HubShowcase({ accounts, groups, meta, summary }: Props) {
           </div>
 
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-            className="rounded-2xl border border-border/60 bg-gradient-to-br from-accent/10 via-transparent to-transparent p-6 backdrop-blur-sm">
+            className="rounded-2xl border border-border/60 bg-gradient-to-br from-accent/15 via-surface-2/40 to-transparent p-6 backdrop-blur-sm">
             <div className="text-[11px] uppercase tracking-wider text-muted">Portfolio</div>
             <div className="text-4xl font-black tracking-tight mt-2 text-foreground">{summary.total}</div>
             <div className="text-xs mt-1 font-mono text-muted">accounts connected</div>
@@ -112,7 +112,7 @@ export function Mt5HubShowcase({ accounts, groups, meta, summary }: Props) {
           </motion.div>
 
           <motion.div initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
-            className="rounded-2xl border border-border/40 bg-black/30 p-4">
+            className="rounded-2xl border border-border/40 bg-surface-2/70 p-4">
             <div className="text-[10px] uppercase tracking-wider text-muted mb-2">Groups</div>
             <div className="flex flex-wrap gap-1.5">
               {groups.map((g) => (
@@ -155,7 +155,7 @@ export function Mt5HubShowcase({ accounts, groups, meta, summary }: Props) {
                   <div className="mt-2 text-xs text-muted uppercase tracking-[0.3em] font-mono">
                     {displayed.platform} · {displayed.login}
                   </div>
-                  <div className="mt-4 inline-flex items-center gap-4 rounded-2xl border border-border/50 bg-black/30 px-5 py-3 backdrop-blur-sm">
+                  <div className="mt-4 inline-flex items-center gap-4 rounded-2xl border border-border/50 bg-surface-2/70 px-5 py-3 backdrop-blur-sm">
                     <MiniStat label="Broker" value={displayed.broker} />
                     <div className="h-6 w-px bg-border/60" />
                     <MiniStat label="Server" value={displayed.server} truncate />
@@ -223,7 +223,7 @@ function AccountOrbitRing({ accounts, focusLogin }: { accounts: Mt5Account[]; fo
               <motion.div
                 animate={{ rotate: -360 }}
                 transition={{ duration: 90, repeat: Infinity, ease: "linear" }}
-                className="rounded-full border border-border/50 bg-black/50 backdrop-blur-sm px-2.5 py-1 text-[10px] font-mono"
+                className="rounded-full border border-border/50 bg-surface/80 backdrop-blur-sm px-2.5 py-1 text-[10px] font-mono"
               >
                 <span className="text-foreground font-semibold">{a.broker.split(" ")[0]}</span>
                 <span className="ml-1 text-muted">{a.login}</span>
