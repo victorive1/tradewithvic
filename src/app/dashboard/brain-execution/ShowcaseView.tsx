@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 interface ShowcaseProps {
   state: any;
+  mtAccounts?: Array<{ id: string; broker: string; server: string; login: string; platform: string; label?: string }>;
 }
 
 function timeAgo(d: Date | string | number): string {
@@ -17,8 +19,8 @@ function timeAgo(d: Date | string | number): string {
   return `${Math.floor(s / 86400)}d`;
 }
 
-export function ShowcaseView({ state }: ShowcaseProps) {
-  const account = state?.account;
+export function ShowcaseView({ state, mtAccounts = [] }: ShowcaseProps) {
+  const hasMt = mtAccounts.length > 0;
   const positions: any[] = state?.positions ?? [];
   const trades: any[] = state?.trades ?? [];
   const quotes: any[] = state?.quotes ?? [];
@@ -47,11 +49,8 @@ export function ShowcaseView({ state }: ShowcaseProps) {
   const focusQuote = quotes.find((q) => q.symbol === focusSymbol) ?? featuredQuote;
   const focusPosition = positions.find((p) => p.symbol === focusSymbol) ?? featuredPosition;
 
-  const equity = account ? account.currentBalance + (account.totalUnrealizedPnl ?? 0) : 0;
-  const equityPct = account?.startingBalance ? ((equity - account.startingBalance) / account.startingBalance) * 100 : 0;
-  const winRate = account?.totalClosedTrades ? (account.totalWins / account.totalClosedTrades) * 100 : 0;
-
-  const running = account?.autoExecuteEnabled && !account?.killSwitchEngaged;
+  const firstMt = mtAccounts[0];
+  const running = state?.account?.autoExecuteEnabled && !state?.account?.killSwitchEngaged;
 
   const latestAction = useMemo(() => {
     const openEvent = events.find((e) => e.eventType === "opened");
@@ -97,44 +96,29 @@ export function ShowcaseView({ state }: ShowcaseProps) {
             animate={{ opacity: 1, y: 0 }}
             className="rounded-2xl border border-border/60 bg-gradient-to-br from-accent/10 via-transparent to-transparent p-6 backdrop-blur-sm"
           >
-            <div className="text-[11px] uppercase tracking-wider text-muted">Equity</div>
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={equity.toFixed(2)}
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.25 }}
-                className={cn("text-4xl font-black tracking-tight mt-2", equityPct >= 0 ? "text-bull-light" : "text-bear-light")}
-              >
-                ${equity.toFixed(2)}
-              </motion.div>
-            </AnimatePresence>
-            <div className={cn("text-xs mt-1 font-mono", equityPct >= 0 ? "text-bull-light" : "text-bear-light")}>
-              {equityPct >= 0 ? "▲" : "▼"} {equityPct >= 0 ? "+" : ""}{equityPct.toFixed(2)}%
-            </div>
-            <div className="mt-5 grid grid-cols-2 gap-3 text-xs">
-              <div>
-                <div className="text-muted uppercase tracking-wider">Today</div>
-                <div className={cn("font-mono font-semibold text-sm mt-1", (account?.dailyPnl ?? 0) >= 0 ? "text-bull-light" : "text-bear-light")}>
-                  {(account?.dailyPnl ?? 0) >= 0 ? "+" : ""}${(account?.dailyPnl ?? 0).toFixed(2)}
+            {hasMt ? (
+              <>
+                <div className="text-[11px] uppercase tracking-wider text-muted">Active Account</div>
+                <div className="text-lg font-bold mt-2 truncate">{firstMt.label || firstMt.broker}</div>
+                <div className="text-xs text-muted font-mono mt-1">{firstMt.platform} · {firstMt.login}</div>
+                <div className="text-[10px] text-muted font-mono mt-0.5 truncate">{firstMt.server}</div>
+                <div className="mt-4 pt-4 border-t border-border/40 space-y-1.5 text-xs">
+                  <div className="flex justify-between"><span className="text-muted">Balance</span><span className="text-muted font-mono">pending bridge</span></div>
+                  <div className="flex justify-between"><span className="text-muted">Equity</span><span className="text-muted font-mono">pending bridge</span></div>
+                  <div className="flex justify-between"><span className="text-muted">Open P/L</span><span className="text-muted font-mono">pending bridge</span></div>
                 </div>
-              </div>
-              <div>
-                <div className="text-muted uppercase tracking-wider">Win rate</div>
-                <div className="font-mono font-semibold text-sm mt-1">
-                  {account?.totalClosedTrades ? `${winRate.toFixed(0)}%` : "—"}
-                </div>
-              </div>
-              <div>
-                <div className="text-muted uppercase tracking-wider">Open</div>
-                <div className="font-mono font-semibold text-sm mt-1">{positions.length}</div>
-              </div>
-              <div>
-                <div className="text-muted uppercase tracking-wider">Closed</div>
-                <div className="font-mono font-semibold text-sm mt-1">{account?.totalClosedTrades ?? 0}</div>
-              </div>
-            </div>
+                {mtAccounts.length > 1 && (
+                  <div className="mt-3 text-[10px] text-muted">+ {mtAccounts.length - 1} more connected</div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="text-[11px] uppercase tracking-wider text-muted">No Account</div>
+                <div className="text-lg font-semibold mt-2">Connect MT4 / MT5</div>
+                <p className="text-xs text-muted mt-2">Real account data appears here once you connect a broker.</p>
+                <Link href="/dashboard/trading-hub" className="inline-block mt-4 text-xs px-3 py-1.5 rounded-lg bg-accent text-white font-semibold">Trading Hub →</Link>
+              </>
+            )}
           </motion.div>
 
           {latestAction && (
@@ -169,7 +153,7 @@ export function ShowcaseView({ state }: ShowcaseProps) {
             <div className="inline-flex items-center gap-2 rounded-full border border-accent/40 bg-accent/10 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-accent-light">
               {running ? "AUTO LIVE" : "HALTED"}
               <motion.span className="h-1 w-1 rounded-full bg-accent-light" animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 1.2, repeat: Infinity }} />
-              {account?.smartExitMode?.toUpperCase() ?? "BALANCED"}
+              {state?.account?.smartExitMode?.toUpperCase() ?? "BALANCED"}
             </div>
 
             <div className="mt-4 text-4xl md:text-5xl font-black tracking-tight">

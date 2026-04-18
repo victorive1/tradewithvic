@@ -275,7 +275,7 @@ export default function BrainExecutionPage() {
         </div>
       </div>
 
-      {viewMode === "showcase" && <ShowcaseView state={state} />}
+      {viewMode === "showcase" && <ShowcaseView state={state} mtAccounts={mtAccounts} />}
       {viewMode === "showcase" && (
         <div className="text-center text-xs text-muted">
           Showcase mode polls the same live data every 10 seconds. Switch to Operator to edit config and see full tables.
@@ -305,7 +305,7 @@ export default function BrainExecutionPage() {
       )}
 
       {viewMode === "operator" && tab === "live" && (
-        <LiveTab state={state} loading={loadingState} error={stateError} account={account} equity={equity} equityPctFromStart={equityPctFromStart} winRate={winRate} />
+        <LiveTab state={state} loading={loadingState} error={stateError} mtAccounts={mtAccounts} />
       )}
       {viewMode === "operator" && tab === "config" && (
         <ConfigTab
@@ -325,61 +325,133 @@ export default function BrainExecutionPage() {
   );
 }
 
-function LiveTab({ state, loading, error, account, equity, equityPctFromStart, winRate }: any) {
+function LiveTab({ state, loading, error, mtAccounts }: { state: any; loading: boolean; error: string | null; mtAccounts: ConnectedMtAccount[] }) {
   if (loading) return <div className="glass-card p-12 text-center text-muted">Loading live state…</div>;
   if (error) return <div className="glass-card p-6 text-sm text-bear-light">{error}</div>;
-  if (!account) return <div className="glass-card p-12 text-center text-muted">No execution account yet. Trigger a scan to initialize.</div>;
 
-  const equityClass = equity >= account.startingBalance ? "text-bull-light" : "text-bear-light";
-  const portfolio = state?.portfolio;
+  const hasMt = mtAccounts.length > 0;
+  const activeSignals = state?.positions ?? [];
+  const recentEvents = state?.events ?? [];
+  const latestCycle = state?.latestCycle;
+
+  if (!hasMt) {
+    return (
+      <div className="space-y-6">
+        <section className="glass-card p-10 text-center space-y-4 border border-accent/20">
+          <div className="text-5xl">🔌</div>
+          <h3 className="text-xl font-semibold text-foreground">No trading account connected</h3>
+          <p className="text-sm text-muted max-w-xl mx-auto">
+            Connect your MT4 or MT5 account in Trading Hub. Once connected, this page will show your real account balance, equity, positions, and any trades the Market Core Brain algo routes to your broker.
+          </p>
+          <Link
+            href="/dashboard/trading-hub"
+            className="inline-block mt-2 px-5 py-2.5 rounded-xl bg-accent text-white text-sm font-semibold transition-smooth glow-accent"
+          >
+            Connect MT Account
+          </Link>
+          <p className="text-[11px] text-muted mt-2">You can review and tune the algo&#39;s rules now under the <span className="font-medium text-foreground">Config</span> tab.</p>
+        </section>
+
+        <BrainSignalSummary cycle={latestCycle} signals={activeSignals} events={recentEvents} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Equity" valueClass={equityClass} value={`$${equity.toFixed(2)}`} sub={`${equityPctFromStart >= 0 ? "+" : ""}${equityPctFromStart.toFixed(2)}% from start`} />
-        <StatCard label="Balance / Unreal" value={`$${account.currentBalance.toFixed(2)}`} sub={`${account.totalUnrealizedPnl >= 0 ? "+" : ""}$${account.totalUnrealizedPnl.toFixed(2)} unreal`} subClass={account.totalUnrealizedPnl >= 0 ? "text-bull-light" : "text-bear-light"} />
-        <StatCard label="Trades (Open / Closed)" value={`${state?.positions?.length ?? 0} / ${account.totalClosedTrades}`} sub={account.totalClosedTrades > 0 ? `${winRate.toFixed(0)}% win` : "—"} subClass={winRate >= 55 ? "text-bull-light" : winRate > 0 ? "text-warn" : "text-muted"} />
-        <StatCard label="Today's P&L" value={`${account.dailyPnl >= 0 ? "+" : ""}$${account.dailyPnl.toFixed(2)}`} sub={`Limit -${account.maxDailyLossPct}%`} valueClass={account.dailyPnl >= 0 ? "text-bull-light" : "text-bear-light"} />
-      </div>
+      <MtAccountsPanel accounts={mtAccounts} />
+      <BrainSignalSummary cycle={latestCycle} signals={activeSignals} events={recentEvents} />
+    </div>
+  );
+}
 
-      {portfolio && (
-        <section className="glass-card p-5">
-          <h2 className="text-sm font-semibold uppercase tracking-wide mb-4">Portfolio Exposure</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div>
-              <div className="text-xs text-muted uppercase">Total Risk</div>
-              <div className={cn("text-lg font-bold", portfolio.totalRiskPct > account.maxTotalRiskPct * 0.8 ? "text-bear-light" : portfolio.totalRiskPct > account.maxTotalRiskPct * 0.6 ? "text-warn" : "text-bull-light")}>
-                {portfolio.totalRiskPct.toFixed(2)}%
+function MtAccountsPanel({ accounts }: { accounts: ConnectedMtAccount[] }) {
+  return (
+    <section className="glass-card p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide">Connected MT Accounts ({accounts.length})</h2>
+        <Link href="/dashboard/trading-hub" className="text-xs text-accent-light hover:text-accent underline underline-offset-4">Manage in Trading Hub →</Link>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {accounts.map((a) => (
+          <div key={a.id} className="rounded-xl border border-border/60 bg-surface-2 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-bull pulse-live" />
+                <span className="text-sm font-semibold">{a.label || `${a.broker} · ${a.login}`}</span>
               </div>
-              <div className="text-xs text-muted">${portfolio.totalRiskAmount.toFixed(2)} / cap {account.maxTotalRiskPct}%</div>
+              <span className="text-[10px] bg-surface px-2 py-0.5 rounded uppercase tracking-wider text-muted">{a.platform}</span>
             </div>
-            <div>
-              <div className="text-xs text-muted uppercase">Long / Short</div>
-              <div className="text-lg font-bold"><span className="text-bull-light">{portfolio.longCount}</span><span className="text-muted"> / </span><span className="text-bear-light">{portfolio.shortCount}</span></div>
-              <div className="text-xs text-muted">cap {account.maxSameDirectionPositions} each</div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <div className="text-muted uppercase tracking-wider text-[10px]">Broker</div>
+                <div className="font-medium">{a.broker}</div>
+              </div>
+              <div>
+                <div className="text-muted uppercase tracking-wider text-[10px]">Login</div>
+                <div className="font-mono">{a.login}</div>
+              </div>
+              <div className="col-span-2">
+                <div className="text-muted uppercase tracking-wider text-[10px]">Server</div>
+                <div className="text-xs font-mono">{a.server}</div>
+              </div>
             </div>
-            <div>
-              <div className="text-xs text-muted uppercase">Drawdown</div>
-              <div className={cn("text-lg font-bold", portfolio.drawdownPct > 5 ? "text-bear-light" : portfolio.drawdownPct > 2 ? "text-warn" : "text-bull-light")}>{portfolio.drawdownPct.toFixed(2)}%</div>
-              <div className="text-xs text-muted">from ${account.equityHigh.toFixed(0)}</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted uppercase">Weekly P&L</div>
-              <div className={cn("text-lg font-bold", account.weeklyPnl >= 0 ? "text-bull-light" : "text-bear-light")}>{account.weeklyPnl >= 0 ? "+" : ""}${account.weeklyPnl.toFixed(2)}</div>
-              <div className="text-xs text-muted">limit -{account.weeklyLossLimitPct}%</div>
+            <div className="mt-3 pt-3 border-t border-border/30 space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted uppercase tracking-wider text-[10px]">Balance</span>
+                <span className="font-mono text-muted">pending bridge</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted uppercase tracking-wider text-[10px]">Equity</span>
+                <span className="font-mono text-muted">pending bridge</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted uppercase tracking-wider text-[10px]">Open Positions</span>
+                <span className="font-mono text-muted">pending bridge</span>
+              </div>
             </div>
           </div>
-        </section>
-      )}
+        ))}
+      </div>
+      <p className="text-[10px] text-muted italic mt-3">
+        Live balance, equity, and positions for each MT account require a server-side broker bridge to be configured. Once wired, real values replace the "pending bridge" placeholders here.
+      </p>
+    </section>
+  );
+}
 
-      <section className="glass-card p-5">
-        <h2 className="text-sm font-semibold uppercase tracking-wide mb-4">Open Positions ({state?.positions?.length ?? 0})</h2>
-        {!state?.positions || state.positions.length === 0 ? (
-          <p className="text-sm text-muted">No open positions right now.</p>
-        ) : (
-          <PositionTable positions={state.positions} />
+function BrainSignalSummary({ cycle, signals, events }: { cycle: any; signals: any[]; events: any[] }) {
+  const cycleAge = cycle ? Math.round((Date.now() - new Date(cycle.startedAt).getTime()) / 1000) : null;
+  return (
+    <section className="glass-card p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide">Brain Algo Signals (Live)</h2>
+        {cycle && (
+          <span className="text-[11px] text-muted font-mono">
+            last scan {cycleAge !== null ? `${cycleAge}s ago` : "—"} · {cycle.quotesFetched} quotes · {cycle.candlesFetched} new candles
+          </span>
         )}
-      </section>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <MiniStat label="Active signals" value={`${signals.length}`} />
+        <MiniStat label="Recent events" value={`${events.length}`} />
+        <MiniStat label="Last scan duration" value={cycle ? `${cycle.durationMs}ms` : "—"} />
+        <MiniStat label="Cycle errors" value={cycle ? `${cycle.errorCount}` : "—"} valueClass={cycle && cycle.errorCount > 0 ? "text-bear-light" : undefined} />
+      </div>
+      {signals.length === 0 ? (
+        <p className="text-sm text-muted">No active A-grade signals right now. Once the brain finds a qualified setup, it will appear here (and, when the MT bridge is wired, route to your connected account).</p>
+      ) : (
+        <PositionTable positions={signals} />
+      )}
+    </section>
+  );
+}
+
+function MiniStat({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
+  return (
+    <div className="rounded-lg border border-border/50 bg-surface-2 p-3">
+      <div className="text-[10px] text-muted uppercase tracking-wider">{label}</div>
+      <div className={cn("text-lg font-bold font-mono mt-1", valueClass)}>{value}</div>
     </div>
   );
 }
