@@ -526,6 +526,102 @@ model EventRiskSnapshot {
   @@index([computedAt])
 }
 
+// ==================== COMMUNITY (Phase 1) ====================
+
+model CommunityProfile {
+  id                   String   @id @default(cuid())
+  userKey              String   @unique
+  username             String   @unique
+  displayName          String
+  bio                  String?
+  avatarEmoji          String   @default("👤")
+  favoriteMarketsJson  String   @default("[]")
+  tradingStyle         String?
+  followerCount        Int      @default(0)
+  followingCount       Int      @default(0)
+  postCount            Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  posts       CommunityPost[]     @relation("authored")
+  comments    CommunityComment[]
+  reactions   CommunityReaction[]
+  followers   CommunityFollow[]   @relation("followTarget")
+  following   CommunityFollow[]   @relation("followOrigin")
+
+  @@index([createdAt])
+}
+
+model CommunityFollow {
+  id          String   @id @default(cuid())
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+
+  follower  CommunityProfile @relation("followOrigin", fields: [followerId], references: [id], onDelete: Cascade)
+  following CommunityProfile @relation("followTarget", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followingId])
+}
+
+model CommunityPost {
+  id                 String   @id @default(cuid())
+  authorId           String
+  type               String   @default("quick")
+  body               String
+  instrumentSymbol   String?
+  timeframe          String?
+  direction          String?
+  entry              Float?
+  stopLoss           Float?
+  takeProfit1        Float?
+  confidenceScore    Int?
+  imageUrl           String?
+  reactionCountsJson String   @default("{}")
+  commentCount       Int      @default(0)
+  createdAt          DateTime @default(now())
+
+  author    CommunityProfile    @relation("authored", fields: [authorId], references: [id], onDelete: Cascade)
+  comments  CommunityComment[]
+  reactions CommunityReaction[]
+
+  @@index([createdAt])
+  @@index([authorId, createdAt])
+  @@index([instrumentSymbol])
+}
+
+model CommunityComment {
+  id        String   @id @default(cuid())
+  postId    String
+  authorId  String
+  parentId  String?
+  body      String
+  createdAt DateTime @default(now())
+
+  post    CommunityPost     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author  CommunityProfile  @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent  CommunityComment? @relation("replies", fields: [parentId], references: [id], onDelete: SetNull)
+  replies CommunityComment[] @relation("replies")
+
+  @@index([postId, createdAt])
+  @@index([authorId])
+}
+
+model CommunityReaction {
+  id        String   @id @default(cuid())
+  postId    String
+  authorId  String
+  reaction  String
+  createdAt DateTime @default(now())
+
+  post   CommunityPost    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author CommunityProfile @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, authorId, reaction])
+  @@index([postId])
+}
+
 // ==================== MARKET BRAIN — SIMULATION & REPLAY (Layer 9) ====================
 
 model ReplaySession {

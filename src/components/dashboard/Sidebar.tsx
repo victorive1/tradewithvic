@@ -70,6 +70,12 @@ const navItems = [
     ],
   },
   {
+    section: "Community",
+    items: [
+      { label: "Community", href: "/dashboard/community", icon: "sentiment" },
+    ],
+  },
+  {
     section: "Trading Hub",
     items: [
       { label: "Trading Hub", href: "/dashboard/trading-hub", icon: "setups" },
