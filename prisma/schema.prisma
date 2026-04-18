@@ -287,6 +287,9 @@ model ExecutionAccount {
   newsFilterEnabled      Boolean  @default(true)
   fridayCloseProtection  Boolean  @default(true)
   executionMode          String   @default("paper") // paper | mt_shadow | mt_live
+  orderPlacementMode     String   @default("pending_limit") // instant_market | pending_limit | hybrid
+  pendingOrderTtlMinutes Int      @default(240)
+  pendingEntryTolerancePct Float  @default(0.08) // how close price must come to entry to fill (% of entry)
   selectedMtAccountIdsJson String @default("[]")    // MT account IDs from localStorage (future live routing)
   autoExecuteEnabled     Boolean  @default(true)
   killSwitchEngaged      Boolean  @default(false)
@@ -310,6 +313,7 @@ model ExecutionOrder {
   symbol          String
   timeframe       String
   direction       String
+  orderType       String   @default("instant_market") // instant_market | pending_limit
   entry           Float
   stopLoss        Float
   takeProfit1     Float
@@ -319,8 +323,10 @@ model ExecutionOrder {
   sizeUnits       Float
   grade           String
   confidenceScore Int
-  status          String   @default("queued") // queued | filled | cancelled | rejected
+  status          String   @default("queued") // pending | queued | filled | cancelled | rejected
   rejectReason    String?
+  cancelReason    String?
+  validUntil      DateTime?
   filledAt        DateTime?
   filledPrice     Float?
   cancelledAt     DateTime?
@@ -330,6 +336,7 @@ model ExecutionOrder {
   position ExecutionPosition?
 
   @@index([accountId, status])
+  @@index([status, validUntil])
   @@index([createdAt])
 }
 

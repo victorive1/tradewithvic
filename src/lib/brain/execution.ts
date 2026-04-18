@@ -12,6 +12,9 @@ export interface ExecutionCycleResult {
   openPositions: number;
   ordersOpened: number;
   ordersRejected: number;
+  ordersPending: number;
+  pendingFilled: number;
+  pendingCancelled: number;
   positionsClosed: number;
   realizedPnlDelta: number;
   killSwitchEngaged: boolean;
@@ -129,6 +132,29 @@ function evaluateGuardrails(setup: any, ctx: GuardrailContext): { passed: boolea
   return { passed: reasons.length === 0, reasons };
 }
 
+async function getLatestMark(symbol: string, timeframe: string): Promise<number | null> {
+  // Prefer the newest closed candle on this timeframe; fall back to any latest quote snapshot.
+  const candle = await prisma.candle.findFirst({
+    where: { symbol, timeframe, isClosed: true },
+    orderBy: { openTime: "desc" },
+    select: { close: true },
+  });
+  if (candle) return candle.close;
+  const snap = await prisma.marketSnapshot.findFirst({
+    where: { symbol },
+    orderBy: { capturedAt: "desc" },
+    select: { price: true },
+  });
+  return snap?.price ?? null;
+}
+
+function resolveOrderType(setup: any, mode: string): "instant_market" | "pending_limit" {
+  if (mode === "instant_market") return "instant_market";
+  if (mode === "pending_limit") return "pending_limit";
+  // hybrid: A+ → instant so we don't miss the best setups, A → pending so we get a better fill
+  return setup.qualityGrade === "A+" ? "instant_market" : "pending_limit";
+}
+
 async function openPaperPosition(setup: any, account: any, decisionLogId: string | null, overrideRisk?: number) {
   const riskAmount = overrideRisk ?? account.currentBalance * (account.riskPerTradePct / 100);
   const sizeUnits = sizeUnitsFromRisk(riskAmount, setup.entry, setup.stopLoss);
@@ -136,6 +162,42 @@ async function openPaperPosition(setup: any, account: any, decisionLogId: string
     return { rejected: true, reason: "invalid_size" };
   }
 
+  const orderType = resolveOrderType(setup, account.orderPlacementMode ?? "pending_limit");
+  const ttlMs = (account.pendingOrderTtlMinutes ?? 240) * 60_000;
+  const validUntil = new Date(Date.now() + ttlMs);
+
+  // Instant market path: fill immediately at the latest mark (if available) else at setup.entry.
+  if (orderType === "instant_market") {
+    const mark = await getLatestMark(setup.symbol, setup.timeframe);
+    const fillPrice = mark ?? setup.entry;
+    const order = await prisma.executionOrder.create({
+      data: {
+        accountId: account.id,
+        setupId: setup.id,
+        decisionLogId: decisionLogId ?? undefined,
+        symbol: setup.symbol,
+        timeframe: setup.timeframe,
+        direction: setup.direction,
+        orderType: "instant_market",
+        entry: setup.entry,
+        stopLoss: setup.stopLoss,
+        takeProfit1: setup.takeProfit1,
+        takeProfit2: setup.takeProfit2,
+        takeProfit3: setup.takeProfit3,
+        riskAmount,
+        sizeUnits,
+        grade: setup.qualityGrade,
+        confidenceScore: setup.confidenceScore,
+        status: "filled",
+        validUntil,
+        filledAt: new Date(),
+        filledPrice: fillPrice,
+      },
+    });
+    return await createPositionFromOrder(order, setup, account, decisionLogId, fillPrice, sizeUnits, riskAmount);
+  }
+
+  // Pending limit path: queue at setup.entry and wait for price to touch the zone.
   const order = await prisma.executionOrder.create({
     data: {
       accountId: account.id,
@@ -144,6 +206,7 @@ async function openPaperPosition(setup: any, account: any, decisionLogId: string
       symbol: setup.symbol,
       timeframe: setup.timeframe,
       direction: setup.direction,
+      orderType: "pending_limit",
       entry: setup.entry,
       stopLoss: setup.stopLoss,
       takeProfit1: setup.takeProfit1,
@@ -153,12 +216,14 @@ async function openPaperPosition(setup: any, account: any, decisionLogId: string
       sizeUnits,
       grade: setup.qualityGrade,
       confidenceScore: setup.confidenceScore,
-      status: "filled",
-      filledAt: new Date(),
-      filledPrice: setup.entry,
+      status: "pending",
+      validUntil,
     },
   });
+  return { rejected: false, pending: true, orderId: order.id };
+}
 
+async function createPositionFromOrder(order: any, setup: any, account: any, decisionLogId: string | null, fillPrice: number, sizeUnits: number, riskAmount: number) {
   const position = await prisma.executionPosition.create({
     data: {
       accountId: account.id,
@@ -184,12 +249,190 @@ async function openPaperPosition(setup: any, account: any, decisionLogId: string
     data: {
       positionId: position.id,
       eventType: "opened",
-      price: setup.entry,
-      reason: `Opened ${setup.direction} paper position on ${setup.qualityGrade} ${setup.setupType}`,
+      price: fillPrice,
+      reason: `Opened ${setup.direction} paper position on ${setup.qualityGrade} ${setup.setupType ?? "setup"} @ ${fillPrice.toFixed(5)} (${order.orderType})`,
     },
   });
 
   return { rejected: false, position };
+}
+
+/**
+ * Process pending limit orders — for each, walk candles since order creation
+ * and check if price touched the entry zone. Fill if yes. Cancel if the order
+ * has gone stale (TTL exceeded, setup expired, thesis invalidated).
+ */
+async function processPendingOrders(account: any): Promise<{
+  filled: number;
+  cancelled: number;
+  pending: number;
+}> {
+  const pendingOrders = await prisma.executionOrder.findMany({
+    where: { accountId: account.id, status: "pending" },
+    orderBy: { createdAt: "asc" },
+  });
+
+  let filled = 0, cancelled = 0;
+  const tolerancePct = account.pendingEntryTolerancePct ?? 0.08;
+
+  for (const order of pendingOrders) {
+    const nowMs = Date.now();
+
+    // TTL / validity check first
+    if (order.validUntil && order.validUntil.getTime() < nowMs) {
+      await prisma.executionOrder.update({
+        where: { id: order.id },
+        data: {
+          status: "cancelled",
+          cancelledAt: new Date(),
+          cancelReason: "ttl_expired",
+        },
+      });
+      cancelled++;
+      continue;
+    }
+
+    // Setup relevance check — cancel if the upstream TradeSetup has expired/closed
+    const setup = await prisma.tradeSetup.findUnique({ where: { id: order.setupId } });
+    if (!setup) {
+      await prisma.executionOrder.update({
+        where: { id: order.id },
+        data: {
+          status: "cancelled",
+          cancelledAt: new Date(),
+          cancelReason: "setup_missing",
+        },
+      });
+      cancelled++;
+      continue;
+    }
+    if (setup.status === "expired" || setup.status === "closed") {
+      await prisma.executionOrder.update({
+        where: { id: order.id },
+        data: {
+          status: "cancelled",
+          cancelledAt: new Date(),
+          cancelReason: `setup_${setup.status}`,
+        },
+      });
+      cancelled++;
+      continue;
+    }
+
+    // Structural invalidation: opposing CHoCH on same symbol/timeframe since order creation
+    const opposingEvent = await prisma.structureEvent.findFirst({
+      where: {
+        symbol: order.symbol,
+        timeframe: order.timeframe,
+        detectedAt: { gte: order.createdAt },
+        eventType: order.direction === "bullish" ? "choch_bearish" : "choch_bullish",
+      },
+    });
+    if (opposingEvent) {
+      await prisma.executionOrder.update({
+        where: { id: order.id },
+        data: {
+          status: "cancelled",
+          cancelledAt: new Date(),
+          cancelReason: "thesis_invalidated",
+        },
+      });
+      cancelled++;
+      continue;
+    }
+
+    // Walk candles since the order was created to see if price touched the entry zone
+    const candles = await prisma.candle.findMany({
+      where: {
+        symbol: order.symbol,
+        timeframe: order.timeframe,
+        openTime: { gte: order.createdAt },
+        isClosed: true,
+      },
+      orderBy: { openTime: "asc" },
+      select: { openTime: true, high: true, low: true, close: true },
+    });
+
+    const entryTol = Math.abs(order.entry) * (tolerancePct / 100);
+    const isBull = order.direction === "bullish";
+    let touched = false;
+    let fillTime: Date | null = null;
+    let fillPrice: number | null = null;
+
+    for (const c of candles) {
+      if (isBull) {
+        // For long: we want to fill when price pulls back into entry (low ≤ entry + tol)
+        if (c.low <= order.entry + entryTol) {
+          touched = true;
+          fillTime = c.openTime;
+          fillPrice = order.entry;
+          break;
+        }
+      } else {
+        // For short: fill when price rallies into entry (high ≥ entry - tol)
+        if (c.high >= order.entry - entryTol) {
+          touched = true;
+          fillTime = c.openTime;
+          fillPrice = order.entry;
+          break;
+        }
+      }
+    }
+
+    // Also look at the latest live quote — catch fills in between candle closes
+    if (!touched) {
+      const latestMark = await getLatestMark(order.symbol, order.timeframe);
+      if (latestMark !== null) {
+        if (isBull && latestMark <= order.entry + entryTol) {
+          touched = true;
+          fillTime = new Date();
+          fillPrice = Math.min(latestMark, order.entry);
+        } else if (!isBull && latestMark >= order.entry - entryTol) {
+          touched = true;
+          fillTime = new Date();
+          fillPrice = Math.max(latestMark, order.entry);
+        }
+      }
+    }
+
+    if (touched && fillPrice !== null && fillTime !== null) {
+      await prisma.executionOrder.update({
+        where: { id: order.id },
+        data: {
+          status: "filled",
+          filledAt: fillTime,
+          filledPrice: fillPrice,
+        },
+      });
+      await createPositionFromOrder(
+        { id: order.id, orderType: order.orderType },
+        {
+          id: order.setupId,
+          symbol: order.symbol,
+          timeframe: order.timeframe,
+          direction: order.direction,
+          entry: order.entry,
+          stopLoss: order.stopLoss,
+          takeProfit1: order.takeProfit1,
+          takeProfit2: order.takeProfit2,
+          takeProfit3: order.takeProfit3,
+          qualityGrade: order.grade,
+          setupType: "pending_fill",
+        },
+        account,
+        order.decisionLogId ?? null,
+        fillPrice,
+        order.sizeUnits,
+        order.riskAmount,
+      );
+      filled++;
+    }
+  }
+
+  const stillPending = await prisma.executionOrder.count({
+    where: { accountId: account.id, status: "pending" },
+  });
+  return { filled, cancelled, pending: stillPending };
 }
 
 async function manageOpenPositions(account: any): Promise<{ closed: number; realizedPnlDelta: number; unrealizedEquity: number }> {
@@ -334,6 +577,9 @@ export async function runExecutionCycle(): Promise<ExecutionCycleResult> {
   // Reload account since protection may have changed balance
   account = (await prisma.executionAccount.findUnique({ where: { id: account.id } })) ?? account;
 
+  // 0c. Process pending limit orders — fill when price touches entry, cancel when stale
+  const pendingResult = await processPendingOrders(account);
+
   // 1. Manage existing open positions (check SL/TP hits)
   const management = await manageOpenPositions(account);
 
@@ -465,11 +711,14 @@ export async function runExecutionCycle(): Promise<ExecutionCycleResult> {
     });
 
     const result = await openPaperPosition(setup, account, decisionLog?.id ?? null, effectiveRisk);
-    if (!result.rejected && result.position) {
-      ordersOpened++;
-      openPositions.push(result.position);
-    } else {
+    if (result.rejected) {
       ordersRejected++;
+    } else {
+      ordersOpened++;
+      // Instant-market result carries a position; pending-limit result doesn't.
+      if ("position" in result && result.position) {
+        openPositions.push(result.position);
+      }
     }
   }
 
@@ -491,6 +740,9 @@ export async function runExecutionCycle(): Promise<ExecutionCycleResult> {
     openPositions: openPositions.length,
     ordersOpened,
     ordersRejected,
+    ordersPending: pendingResult.pending,
+    pendingFilled: pendingResult.filled,
+    pendingCancelled: pendingResult.cancelled,
     positionsClosed: management.closed,
     realizedPnlDelta: management.realizedPnlDelta,
     killSwitchEngaged: account.killSwitchEngaged,

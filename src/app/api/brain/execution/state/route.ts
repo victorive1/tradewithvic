@@ -10,7 +10,7 @@ export async function GET(_req: NextRequest) {
     return NextResponse.json({ account: null, positions: [], trades: [], portfolio: null, events: [] });
   }
 
-  const [positions, trades, portfolio, events, rejectedOrders, portfolioDecisions, latestSnapshotsRaw, latestCycle] = await Promise.all([
+  const [positions, trades, portfolio, events, rejectedOrders, portfolioDecisions, latestSnapshotsRaw, latestCycle, pendingOrders, monitoringAlerts, recentCycles] = await Promise.all([
     prisma.executionPosition.findMany({
       where: { accountId: account.id, status: "open" },
       orderBy: { openedAt: "desc" },
@@ -43,6 +43,17 @@ export async function GET(_req: NextRequest) {
       select: { symbol: true, price: true, change: true, changePercent: true, high: true, low: true, capturedAt: true },
     }),
     prisma.scanCycle.findFirst({ orderBy: { startedAt: "desc" } }),
+    prisma.executionOrder.findMany({
+      where: { accountId: account.id, status: "pending" },
+      orderBy: { createdAt: "desc" },
+      take: 30,
+    }),
+    prisma.monitoringAlert.findMany({
+      where: { status: { in: ["open", "acknowledged"] } },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    }),
+    prisma.scanCycle.findMany({ orderBy: { startedAt: "desc" }, take: 20 }),
   ]);
 
   // Build signal log: every TradeSetup from the last 200 with its execution action.
@@ -106,6 +117,27 @@ export async function GET(_req: NextRequest) {
     latestSnapshots.push(row);
   }
 
+  // Health snapshot — everything the Dashboard health panel needs
+  const cycleErrors = recentCycles.filter((c: any) => c.status === "failed" || c.errorCount > 0).length;
+  const cycleAgeSec = latestCycle ? Math.round((Date.now() - latestCycle.startedAt.getTime()) / 1000) : null;
+  const latestCandle = await prisma.candle.findFirst({
+    orderBy: { fetchedAt: "desc" },
+    select: { fetchedAt: true },
+  });
+  const feedAgeSec = latestCandle ? Math.round((Date.now() - latestCandle.fetchedAt.getTime()) / 1000) : null;
+  const scanHealth: "healthy" | "degraded" | "critical" =
+    !cycleAgeSec || cycleAgeSec < 180 ? "healthy" : cycleAgeSec < 600 ? "degraded" : "critical";
+  const feedHealth: "healthy" | "degraded" | "critical" =
+    !feedAgeSec || feedAgeSec < 300 ? "healthy" : feedAgeSec < 900 ? "degraded" : "critical";
+  const errorHealth: "healthy" | "degraded" | "critical" =
+    cycleErrors === 0 ? "healthy" : cycleErrors < 3 ? "degraded" : "critical";
+  const engineHealth = account.killSwitchEngaged ? "critical"
+    : !account.autoExecuteEnabled ? "degraded"
+      : "healthy";
+  const critical = [scanHealth, feedHealth, errorHealth, engineHealth].filter((s) => s === "critical").length;
+  const degraded = [scanHealth, feedHealth, errorHealth, engineHealth].filter((s) => s === "degraded").length;
+  const overall: "healthy" | "degraded" | "critical" = critical > 0 ? "critical" : degraded > 0 ? "degraded" : "healthy";
+
   return NextResponse.json({
     account,
     positions,
@@ -114,9 +146,22 @@ export async function GET(_req: NextRequest) {
     events,
     rejectedOrders,
     portfolioDecisions,
+    pendingOrders,
     quotes: latestSnapshots,
     latestCycle,
     signals,
+    health: {
+      overall,
+      scanHealth,
+      scanAgeSec: cycleAgeSec,
+      feedHealth,
+      feedAgeSec,
+      errorHealth,
+      cycleErrors,
+      engineHealth,
+      openAlerts: monitoringAlerts,
+      recentCycles,
+    },
     fetchedAt: Date.now(),
   });
 }

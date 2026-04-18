@@ -57,6 +57,10 @@ interface ExecutionAccount {
   selectedSymbolsJson: string;
   allowedSessionsJson: string;
   selectedMtAccountIdsJson: string;
+  orderPlacementMode: string;
+  pendingOrderTtlMinutes: number;
+  pendingEntryTolerancePct: number;
+  lastCycleAt?: string | null;
 }
 
 function parseJsonArray(s: string | null | undefined, fallback: string[] = []): string[] {
@@ -107,6 +111,12 @@ const EXECUTION_MODES = [
   { id: "paper", label: "Paper", desc: "Virtual fills, tracked in this app" },
   { id: "mt_shadow", label: "MT Shadow", desc: "Paper fills tagged to MT account (for review)" },
   { id: "mt_live", label: "MT Live", desc: "Route orders to MT account (requires bridge)" },
+];
+
+const ORDER_MODES = [
+  { id: "instant_market", label: "Instant Market", desc: "Fill every setup immediately at the latest mark — never miss an entry." },
+  { id: "pending_limit", label: "Pending Limit", desc: "Place an order at setup entry and wait for price to pull back. Best-fill quality." },
+  { id: "hybrid", label: "Hybrid", desc: "Instant fills for A+ setups, pending limits for A setups. Recommended." },
 ];
 
 export default function BrainExecutionPage() {
@@ -643,10 +653,14 @@ function LiveTab({ state, loading, error, mtAccounts }: { state: any; loading: b
   const activeSignals = state?.positions ?? [];
   const recentEvents = state?.events ?? [];
   const latestCycle = state?.latestCycle;
+  const pendingOrders = state?.pendingOrders ?? [];
+  const health = state?.health;
 
-  if (!hasMt) {
-    return (
-      <div className="space-y-6">
+  return (
+    <div className="space-y-6">
+      {health && <EngineHealthPanel health={health} />}
+
+      {!hasMt ? (
         <section className="glass-card p-10 text-center space-y-4 border border-accent/20">
           <div className="text-5xl">🔌</div>
           <h3 className="text-xl font-semibold text-foreground">No trading account connected</h3>
@@ -659,20 +673,140 @@ function LiveTab({ state, loading, error, mtAccounts }: { state: any; loading: b
           >
             Connect MT Account
           </Link>
-          <p className="text-[11px] text-muted mt-2">You can review and tune the algo&#39;s rules now under the <span className="font-medium text-foreground">Config</span> tab.</p>
         </section>
+      ) : (
+        <MtAccountsPanel accounts={mtAccounts} />
+      )}
 
-        <BrainSignalSummary cycle={latestCycle} signals={activeSignals} events={recentEvents} />
-      </div>
-    );
-  }
+      {pendingOrders.length > 0 && <PendingOrdersPanel orders={pendingOrders} />}
 
-  return (
-    <div className="space-y-6">
-      <MtAccountsPanel accounts={mtAccounts} />
       <BrainSignalSummary cycle={latestCycle} signals={activeSignals} events={recentEvents} />
     </div>
   );
+}
+
+function EngineHealthPanel({ health }: { health: any }) {
+  const overallClass = health.overall === "healthy" ? "border-bull/40 bg-bull/5 text-bull-light"
+    : health.overall === "degraded" ? "border-warn/40 bg-warn/5 text-warn"
+      : "border-bear/40 bg-bear/5 text-bear-light";
+  const overallLabel = health.overall === "healthy" ? "ALL SYSTEMS HEALTHY"
+    : health.overall === "degraded" ? "DEGRADED"
+      : "CRITICAL";
+  const pulse = health.overall !== "critical";
+  return (
+    <section className={cn("rounded-xl border p-4", overallClass)}>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <span className="relative flex h-3 w-3">
+            {pulse && (
+              <span className={cn("animate-ping absolute inline-flex h-full w-full rounded-full opacity-75",
+                health.overall === "healthy" ? "bg-bull" : "bg-warn")} />
+            )}
+            <span className={cn("relative inline-flex rounded-full h-3 w-3",
+              health.overall === "healthy" ? "bg-bull" : health.overall === "degraded" ? "bg-warn" : "bg-bear")} />
+          </span>
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.2em] opacity-70">Engine Health</div>
+            <div className="text-sm font-bold">{overallLabel}</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 text-xs flex-wrap">
+          <HealthTile label="Engine" status={health.engineHealth} detail={
+            health.engineHealth === "critical" ? "Kill switch" : health.engineHealth === "degraded" ? "Auto paused" : "Auto live"
+          } />
+          <HealthTile label="Scan" status={health.scanHealth} detail={
+            health.scanAgeSec !== null ? `${health.scanAgeSec}s ago` : "No scans"
+          } />
+          <HealthTile label="Feed" status={health.feedHealth} detail={
+            health.feedAgeSec !== null ? `${health.feedAgeSec}s ago` : "No data"
+          } />
+          <HealthTile label="Errors (20 cyc)" status={health.errorHealth} detail={`${health.cycleErrors}`} />
+        </div>
+      </div>
+      {health.openAlerts?.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-current/20 text-xs">
+          <div className="opacity-70 uppercase tracking-wider text-[10px] mb-1">Recent alerts ({health.openAlerts.length})</div>
+          <ul className="space-y-0.5">
+            {health.openAlerts.slice(0, 3).map((a: any) => (
+              <li key={a.id} className="opacity-90">
+                <span className="font-mono text-[10px] uppercase mr-2 opacity-70">{a.level}</span>
+                {a.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function HealthTile({ label, status, detail }: { label: string; status: string; detail: string }) {
+  const dot = status === "healthy" ? "bg-bull" : status === "degraded" ? "bg-warn" : "bg-bear";
+  return (
+    <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-background/30 border border-current/20">
+      <span className={cn("h-1.5 w-1.5 rounded-full", dot)} />
+      <span className="opacity-80 uppercase text-[10px] tracking-wider">{label}</span>
+      <span className="font-mono text-[11px] opacity-90">{detail}</span>
+    </div>
+  );
+}
+
+function PendingOrdersPanel({ orders }: { orders: any[] }) {
+  return (
+    <section className="glass-card p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide">Pending Orders ({orders.length})</h2>
+        <span className="text-[11px] text-muted">Filled when price touches entry · auto-cancelled when setup expires or CHoCH invalidates direction</span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-muted border-b border-border/40">
+              <th className="text-left py-2 pr-3">CREATED</th>
+              <th className="text-left px-2">SYMBOL · TF</th>
+              <th className="text-left px-2">DIR · GRADE</th>
+              <th className="text-left px-2">TYPE</th>
+              <th className="text-right px-2">ENTRY</th>
+              <th className="text-right px-2">SL</th>
+              <th className="text-right px-2">TP1</th>
+              <th className="text-right px-2">RISK</th>
+              <th className="text-right px-2">EXPIRES</th>
+            </tr>
+          </thead>
+          <tbody>
+            {orders.map((o) => (
+              <tr key={o.id} className="border-b border-border/20 last:border-0">
+                <td className="py-2 pr-3 font-mono text-muted-light">{timeAgo(o.createdAt)}</td>
+                <td className="px-2 font-mono">{o.symbol} · {o.timeframe}</td>
+                <td className="px-2">
+                  <span className={cn("uppercase font-bold", o.direction === "bullish" ? "text-bull-light" : "text-bear-light")}>
+                    {o.direction === "bullish" ? "LONG" : "SHORT"}
+                  </span>
+                  <span className="ml-2 text-muted">{o.grade}</span>
+                </td>
+                <td className="px-2 uppercase text-muted text-[10px]">{o.orderType?.replace(/_/g, " ")}</td>
+                <td className="text-right px-2 font-mono">{o.entry?.toFixed(o.entry > 100 ? 2 : 5)}</td>
+                <td className="text-right px-2 font-mono text-bear-light/80">{o.stopLoss?.toFixed(o.stopLoss > 100 ? 2 : 5)}</td>
+                <td className="text-right px-2 font-mono text-bull-light/80">{o.takeProfit1?.toFixed(o.takeProfit1 > 100 ? 2 : 5)}</td>
+                <td className="text-right px-2 font-mono">${o.riskAmount?.toFixed(2)}</td>
+                <td className="text-right px-2 font-mono text-muted">
+                  {o.validUntil ? timeRemaining(o.validUntil) : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function timeRemaining(iso: string): string {
+  const s = Math.round((new Date(iso).getTime() - Date.now()) / 1000);
+  if (s <= 0) return "expiring";
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
 }
 
 function MtAccountsPanel({ accounts }: { accounts: ConnectedMtAccount[] }) {
@@ -978,6 +1112,9 @@ function ConfigTab({
       killSwitchEngaged: draft.killSwitchEngaged,
       smartExitMode: draft.smartExitMode,
       executionMode: draft.executionMode,
+      orderPlacementMode: draft.orderPlacementMode,
+      pendingOrderTtlMinutes: draft.pendingOrderTtlMinutes,
+      pendingEntryTolerancePct: draft.pendingEntryTolerancePct,
       riskPerTradePct: draft.riskPerTradePct,
       minConfidenceScore: draft.minConfidenceScore,
       minRiskReward: draft.minRiskReward,
@@ -1091,6 +1228,52 @@ function ConfigTab({
           <NumField label="Max Same Asset Class" value={draft.maxSameAssetClassPositions} onChange={(v) => patchDraft("maxSameAssetClassPositions", Math.round(v))} min={1} max={10} />
           <NumField label="Max Same Strategy" value={draft.maxSameStrategyPositions} onChange={(v) => patchDraft("maxSameStrategyPositions", Math.round(v))} min={1} max={10} />
         </div>
+      </div>
+
+      {/* Order placement mode */}
+      <div className="glass-card p-5">
+        <h3 className="text-sm font-semibold mb-3">Order Placement</h3>
+        <p className="text-xs text-muted mb-3">How the algo submits orders when a qualified setup appears. Hybrid is recommended: A+ setups fill instantly so we never miss them, A setups wait for a pullback for better entry quality.</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-4">
+          {ORDER_MODES.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => patchDraft("orderPlacementMode", m.id)}
+              className={cn(
+                "text-left p-3 rounded-xl border transition-smooth",
+                draft.orderPlacementMode === m.id
+                  ? "border-accent bg-accent/10"
+                  : "border-border/50 bg-surface-2 hover:border-border-light"
+              )}
+            >
+              <div className="text-sm font-semibold">{m.label}</div>
+              <div className="text-xs text-muted mt-0.5">{m.desc}</div>
+            </button>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <NumField
+            label="Pending Order TTL (minutes)"
+            value={draft.pendingOrderTtlMinutes}
+            onChange={(v) => patchDraft("pendingOrderTtlMinutes", Math.round(v))}
+            min={15}
+            max={1440}
+            step={15}
+          />
+          <NumField
+            label="Entry Fill Tolerance (% of entry)"
+            value={draft.pendingEntryTolerancePct}
+            onChange={(v) => patchDraft("pendingEntryTolerancePct", v)}
+            min={0.01}
+            max={1}
+            step={0.01}
+          />
+        </div>
+        <p className="text-[10px] text-muted italic mt-2">
+          TTL: how long a pending order stays live before auto-cancelling.
+          Tolerance: how close price must come to entry to trigger a fill (e.g. 0.08% = 8bp zone).
+          Pending orders are also cancelled automatically when the underlying setup expires or a CHoCH invalidates the direction.
+        </p>
       </div>
 
       {/* Smart Exit + Adaptive Protection */}
