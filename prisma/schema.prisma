@@ -164,6 +164,50 @@ model Candle {
   @@index([fetchedAt])
 }
 
+// ==================== MARKET BRAIN — STRUCTURE ENGINE ====================
+
+model StructureState {
+  id                String   @id @default(cuid())
+  symbol            String
+  timeframe         String
+  bias              String   // bullish | bearish | range
+  lastSwingHigh     Float?
+  lastSwingHighTime DateTime?
+  priorSwingHigh    Float?
+  priorSwingHighTime DateTime?
+  lastSwingLow      Float?
+  lastSwingLowTime  DateTime?
+  priorSwingLow     Float?
+  priorSwingLowTime DateTime?
+  lastSwingsJson    String   @default("[]")
+  candlesAnalyzed   Int      @default(0)
+  lastEventType     String?
+  lastEventAt       DateTime?
+  updatedAt         DateTime @updatedAt
+
+  @@unique([symbol, timeframe])
+  @@index([updatedAt])
+  @@index([bias])
+}
+
+model StructureEvent {
+  id              String   @id @default(cuid())
+  symbol          String
+  timeframe       String
+  eventType       String   // bos_bullish | bos_bearish | choch_bullish | choch_bearish
+  detectedAt      DateTime @default(now())
+  priceLevel      Float
+  brokerCandleTime DateTime
+  brokerClose     Float
+  priorBias       String
+  newBias         String
+  scanCycleId     String?
+
+  @@index([symbol, timeframe, detectedAt])
+  @@index([detectedAt])
+  @@index([eventType])
+}
+
 // ==================== TRADE SETUPS ====================
 
 model TradeSetup {

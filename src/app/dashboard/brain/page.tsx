@@ -24,6 +24,8 @@ export default async function BrainStatusPage() {
     recentSnapshots,
     candleCountsRaw,
     instrumentCount,
+    structureStates,
+    recentStructureEvents,
   ] = await Promise.all([
     prisma.scanCycle.findFirst({ orderBy: { startedAt: "desc" } }),
     prisma.scanCycle.count(),
@@ -42,6 +44,8 @@ export default async function BrainStatusPage() {
       orderBy: [{ symbol: "asc" }, { timeframe: "asc" }],
     }),
     prisma.instrument.count({ where: { isActive: true } }),
+    prisma.structureState.findMany({ orderBy: [{ symbol: "asc" }, { timeframe: "asc" }] }),
+    prisma.structureEvent.findMany({ orderBy: { detectedAt: "desc" }, take: 8 }),
   ]);
 
   const health = latestCycle
@@ -136,6 +140,63 @@ export default async function BrainStatusPage() {
           </div>
         </section>
       </div>
+
+      <section className="rounded-lg border border-border bg-card p-5">
+        <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">
+          Market Structure · Current Bias
+        </h2>
+        {structureStates.length === 0 ? (
+          <p className="text-sm text-muted">No structure analyzed yet.</p>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {structureStates.map((s) => {
+              const biasClass =
+                s.bias === "bullish" ? "text-green-500 bg-green-500/10 border-green-500/30"
+                  : s.bias === "bearish" ? "text-red-500 bg-red-500/10 border-red-500/30"
+                    : "text-muted bg-muted/10 border-border";
+              return (
+                <div key={`${s.symbol}-${s.timeframe}`} className={`flex flex-col p-3 rounded border ${biasClass}`}>
+                  <span className="font-mono text-xs opacity-70">{s.symbol} · {s.timeframe}</span>
+                  <span className="text-lg font-semibold uppercase mt-0.5">{s.bias}</span>
+                  {s.lastSwingHigh && s.lastSwingLow && (
+                    <span className="text-[10px] font-mono opacity-70 mt-0.5">
+                      SH {s.lastSwingHigh.toFixed(2)} · SL {s.lastSwingLow.toFixed(2)}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-lg border border-border bg-card p-5">
+        <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">
+          Recent Structure Events (BOS / CHoCH)
+        </h2>
+        {recentStructureEvents.length === 0 ? (
+          <p className="text-sm text-muted">No BOS/CHoCH events detected yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {recentStructureEvents.map((e) => {
+              const isBull = e.eventType.endsWith("bullish");
+              const isChoch = e.eventType.startsWith("choch");
+              return (
+                <div key={e.id} className="flex items-center justify-between text-sm py-1.5 border-b border-border/40 last:border-0">
+                  <div className="flex items-center gap-3">
+                    <span className={`px-2 py-0.5 text-[10px] font-mono uppercase rounded ${isChoch ? "bg-yellow-500/10 text-yellow-500" : isBull ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500"}`}>
+                      {isChoch ? "CHoCH" : "BOS"} {isBull ? "↑" : "↓"}
+                    </span>
+                    <span className="font-mono text-xs">{e.symbol} · {e.timeframe}</span>
+                    <span className="text-xs text-muted">@ {e.priceLevel.toFixed(4)}</span>
+                  </div>
+                  <span className="font-mono text-xs text-muted">{timeAgo(e.detectedAt)}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       <section className="rounded-lg border border-border bg-card p-5">
         <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">

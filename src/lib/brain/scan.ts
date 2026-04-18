@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { fetchAllQuotes } from "@/lib/market-data";
 import { ensureInstruments } from "@/lib/brain/instruments";
-import { fetchCandleSet } from "@/lib/brain/candles";
+import { fetchCandleSet, CANDLE_SYMBOLS, CANDLE_TIMEFRAMES } from "@/lib/brain/candles";
+import { analyzeAllStructure } from "@/lib/brain/structure";
 
 export interface ScanCycleResult {
   scanCycleId: string;
@@ -11,6 +12,8 @@ export interface ScanCycleResult {
   quotesFetched: number;
   snapshotsWritten: number;
   candlesWritten: number;
+  structureAnalyses: number;
+  structureEvents: number;
   errors: string[];
 }
 
@@ -54,6 +57,12 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       if (r.error) errors.push(`${r.symbol} ${r.timeframe}: ${r.error}`);
     }
 
+    const structureResult = await analyzeAllStructure(
+      CANDLE_SYMBOLS,
+      CANDLE_TIMEFRAMES,
+      cycle.id
+    );
+
     const durationMs = Date.now() - startedAt;
     await prisma.scanCycle.update({
       where: { id: cycle.id },
@@ -64,6 +73,7 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
         instrumentsScanned: instruments.length,
         quotesFetched: quotes.length,
         candlesFetched: candleResult.totalWritten,
+        setupsGenerated: structureResult.eventsDetected,
         errorCount: errors.length,
         errorLogJson: JSON.stringify(errors),
       },
@@ -77,6 +87,8 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       quotesFetched: quotes.length,
       snapshotsWritten,
       candlesWritten: candleResult.totalWritten,
+      structureAnalyses: structureResult.analyses.length,
+      structureEvents: structureResult.eventsDetected,
       errors,
     };
   } catch (err: any) {
@@ -103,6 +115,8 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       quotesFetched: 0,
       snapshotsWritten: 0,
       candlesWritten: 0,
+      structureAnalyses: 0,
+      structureEvents: 0,
       errors,
     };
   }
