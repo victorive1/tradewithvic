@@ -178,16 +178,14 @@ export default function BrainExecutionPage() {
   }, [fetchState, fetchConfig]);
 
   async function saveConfig(patch: Partial<ExecutionAccount> | Record<string, any>) {
-    if (!adminToken) {
-      setConfigError("Admin token not set. Unlock admin mode on /dashboard/brain first.");
-      return;
-    }
     setSaving(true);
     setConfigError(null);
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (adminToken) headers.Authorization = `Bearer ${adminToken}`;
       const res = await fetch("/api/brain/execution/config", {
         method: "POST",
-        headers: { Authorization: `Bearer ${adminToken}`, "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(patch),
       });
       if (!res.ok) {
@@ -316,10 +314,8 @@ export default function BrainExecutionPage() {
           error={configError}
           saving={saving}
           savedAt={savedAt}
-          adminToken={adminToken}
           mtAccounts={mtAccounts}
           onSave={saveConfig}
-          onRefreshToken={() => setAdminToken(readAdminToken())}
         />
       )}
       {viewMode === "operator" && tab === "positions" && <PositionsTab positions={state?.positions ?? []} />}
@@ -548,20 +544,16 @@ function ConfigTab({
   error,
   saving,
   savedAt,
-  adminToken,
   mtAccounts,
   onSave,
-  onRefreshToken,
 }: {
   config: ExecutionAccount | null;
   loading: boolean;
   error: string | null;
   saving: boolean;
   savedAt: number | null;
-  adminToken: string | null;
   mtAccounts: ConnectedMtAccount[];
   onSave: (patch: any) => Promise<void>;
-  onRefreshToken: () => void;
 }) {
   const [draft, setDraft] = useState<ExecutionAccount | null>(null);
 
@@ -627,17 +619,12 @@ function ConfigTab({
 
   return (
     <div className="space-y-6">
-      {!adminToken && (
-        <div className="glass-card p-4 border border-warn/30 bg-warn/5 text-sm flex items-center justify-between">
-          <div>
-            <div className="font-semibold text-warn">Admin token required to save</div>
-            <div className="text-xs text-muted mt-1">
-              Unlock admin mode by visiting <code className="font-mono bg-surface-2 px-1.5 py-0.5 rounded">/dashboard/brain?admin=YOUR_TOKEN</code> once.
-            </div>
-          </div>
-          <button onClick={onRefreshToken} className="text-xs px-3 py-1.5 rounded-lg bg-surface-2 border border-border/50">Re-check</button>
-        </div>
-      )}
+      <div className="glass-card p-4 border border-border/50 bg-surface-2/40 text-xs text-muted flex items-start gap-3">
+        <span className="font-mono text-accent-light">INFO</span>
+        <span>
+          This config is shared — changes affect the single paper-trading account that the engine runs against, so any viewer can tune the algo here. Use the Kill Switch to halt execution immediately.
+        </span>
+      </div>
       {error && <div className="glass-card p-3 text-sm text-bear-light">{error}</div>}
 
       <div className="flex items-center justify-between">
@@ -646,7 +633,7 @@ function ConfigTab({
           {savedAt && <span className="text-xs text-bull-light">Saved {timeAgo(new Date(savedAt).toISOString())}</span>}
           <button
             onClick={handleSaveAll}
-            disabled={saving || !adminToken}
+            disabled={saving}
             className="px-4 py-2 rounded-lg bg-accent text-white text-xs font-semibold disabled:opacity-50 transition-smooth"
           >
             {saving ? "Saving…" : "Save All Config"}

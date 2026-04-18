@@ -4,12 +4,8 @@ import { prisma } from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-function isAdminAuthorized(req: NextRequest): boolean {
-  const secret = process.env.ADMIN_REFRESH_SECRET;
-  if (!secret) return false;
-  const auth = req.headers.get("authorization") ?? "";
-  return auth === `Bearer ${secret}`;
-}
+// NOTE: currently open to all users per product direction. Re-lock later by
+// adding an auth guard here (e.g., session check or ADMIN_REFRESH_SECRET).
 
 async function ensureAccount() {
   const existing = await prisma.executionAccount.findUnique({ where: { name: "paper-default" } });
@@ -26,10 +22,6 @@ const ALLOWED_MODES = new Set(["paper", "mt_shadow", "mt_live"]);
 const ALLOWED_SMART_EXIT = new Set(["off", "conservative", "balanced", "aggressive"]);
 
 export async function POST(req: NextRequest) {
-  if (!isAdminAuthorized(req)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-
   const body = await req.json().catch(() => ({}));
   const account = await ensureAccount();
 
@@ -82,13 +74,16 @@ export async function POST(req: NextRequest) {
     data: patch,
   });
 
+  // Try to attribute the change. Fall back to anonymous if no auth header.
+  const auth = req.headers.get("authorization") ?? "";
+  const operatorId = auth.startsWith("Bearer ") ? `token:${auth.slice(7, 15)}…` : "anonymous";
   await prisma.operatorActionLog.create({
     data: {
-      operatorId: "admin-refresh-secret",
+      operatorId,
       actionType: "brain_execution_config_update",
       targetType: "ExecutionAccount",
       targetId: account.id,
-      reason: "Admin updated brain execution config",
+      reason: "Brain execution config update",
       metadataJson: JSON.stringify(patch),
     },
   });
