@@ -511,6 +511,24 @@ model EventRiskSnapshot {
   @@index([computedAt])
 }
 
+// ==================== MARKET BRAIN — SIMULATION & REPLAY (Layer 9) ====================
+
+model ReplaySession {
+  id                  String   @id @default(cuid())
+  label               String
+  windowStart         DateTime
+  windowEnd           DateTime
+  weightsOverrideJson String   @default("{}")
+  decisionCount       Int      @default(0)
+  baselineMetricsJson String   @default("{}")
+  simulatedMetricsJson String  @default("{}")
+  deltaJson           String   @default("{}")
+  createdAt           DateTime @default(now())
+  notes               String?
+
+  @@index([createdAt])
+}
+
 // ==================== MARKET BRAIN — REGIME ENGINE (Layer 7) ====================
 
 model RegimeSnapshot {
