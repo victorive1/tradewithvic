@@ -5,6 +5,7 @@ import { fetchCandleSet, CANDLE_SYMBOLS, CANDLE_TIMEFRAMES } from "@/lib/brain/c
 import { analyzeAllStructure } from "@/lib/brain/structure";
 import { analyzeAllIndicators } from "@/lib/brain/indicators";
 import { analyzeAllLiquidity } from "@/lib/brain/liquidity";
+import { detectAllStrategies } from "@/lib/brain/strategies";
 
 export interface ScanCycleResult {
   scanCycleId: string;
@@ -19,6 +20,8 @@ export interface ScanCycleResult {
   indicatorsComputed: number;
   liquidityLevels: number;
   liquiditySweeps: number;
+  setupsDetected: number;
+  setupsPersisted: number;
   errors: string[];
 }
 
@@ -79,6 +82,13 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       cycle.id
     );
 
+    const strategyResult = await detectAllStrategies(
+      CANDLE_SYMBOLS,
+      CANDLE_TIMEFRAMES,
+      symbolToId,
+      cycle.id
+    );
+
     const durationMs = Date.now() - startedAt;
     await prisma.scanCycle.update({
       where: { id: cycle.id },
@@ -108,6 +118,8 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       indicatorsComputed: indicatorResult.computed,
       liquidityLevels: liquidityResult.totalLevels,
       liquiditySweeps: liquidityResult.totalSweeps,
+      setupsDetected: strategyResult.totalDetected,
+      setupsPersisted: strategyResult.totalPersisted,
       errors,
     };
   } catch (err: any) {
@@ -139,6 +151,8 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       indicatorsComputed: 0,
       liquidityLevels: 0,
       liquiditySweeps: 0,
+      setupsDetected: 0,
+      setupsPersisted: 0,
       errors,
     };
   }
