@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { cn, formatPrice } from "@/lib/utils";
 import type { TradeSetup } from "@/lib/setup-engine";
+import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
 
 export function SetupCard({ setup }: { setup: TradeSetup }) {
   const [expanded, setExpanded] = useState(false);
@@ -70,15 +71,33 @@ export function SetupCard({ setup }: { setup: TradeSetup }) {
         </div>
 
         {/* Explanation */}
-        <p className="text-xs text-muted leading-relaxed mb-3">{setup.explanation}</p>
+        <p className="text-xs text-muted leading-relaxed mb-4">{setup.explanation}</p>
 
-        {/* Expand toggle */}
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="text-xs text-accent-light hover:text-accent transition-smooth"
-        >
-          {expanded ? "Hide details" : "View scoring breakdown"}
-        </button>
+        {/* Actions */}
+        <div className="flex items-center gap-3 mb-1">
+          <ExecuteTradeButton
+            setup={{
+              symbol: setup.symbol,
+              direction: setup.direction,
+              entry: setup.entry,
+              stopLoss: setup.stopLoss,
+              takeProfit: setup.takeProfit1,
+              timeframe: setup.timeframe,
+              setupType: setup.setupType,
+              qualityGrade: setup.qualityGrade,
+              confidenceScore: setup.confidenceScore,
+              sourceType: "setup",
+              sourceRef: setup.id,
+            }}
+            className="flex-1"
+          />
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="text-xs text-accent-light hover:text-accent transition-smooth whitespace-nowrap px-3"
+          >
+            {expanded ? "Hide" : "Details"}
+          </button>
+        </div>
 
         {expanded && (
           <div className="mt-4 pt-4 border-t border-border/30 space-y-2">
