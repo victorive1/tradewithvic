@@ -30,6 +30,8 @@ export default async function BrainStatusPage() {
     structureStates,
     recentStructureEvents,
     indicatorSnaps,
+    regimeSnaps,
+    latestMacroRegime,
     activeLiquidityLevels,
     recentLiquidityEvents,
     activeSetups,
@@ -57,6 +59,8 @@ export default async function BrainStatusPage() {
     prisma.structureState.findMany({ orderBy: [{ symbol: "asc" }, { timeframe: "asc" }] }),
     prisma.structureEvent.findMany({ orderBy: { detectedAt: "desc" }, take: 8 }),
     prisma.indicatorSnapshot.findMany({ orderBy: [{ symbol: "asc" }, { timeframe: "asc" }] }),
+    prisma.regimeSnapshot.findMany({ orderBy: [{ symbol: "asc" }, { timeframe: "asc" }] }),
+    prisma.macroRegimeSnapshot.findFirst({ orderBy: { capturedAt: "desc" } }),
     prisma.liquidityLevel.findMany({
       where: { status: "active" },
       orderBy: [{ symbol: "asc" }, { timeframe: "asc" }, { levelType: "asc" }],
@@ -183,6 +187,42 @@ export default async function BrainStatusPage() {
           </div>
         </section>
       </div>
+
+      {regimeSnaps.length > 0 && (
+        <section className="rounded-lg border border-border bg-card p-5">
+          <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">
+            Regime Classification
+            {latestMacroRegime && (
+              <span className="ml-3 text-xs font-normal normal-case text-muted">
+                Macro: <span className={latestMacroRegime.macroStability === "stable" ? "text-green-400" : "text-yellow-400"}>{latestMacroRegime.macroStability}</span> · {latestMacroRegime.macroTone} · {latestMacroRegime.dominantTheme ?? "—"}
+              </span>
+            )}
+          </h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+            {regimeSnaps.map((r) => {
+              const sClass = r.structureRegime === "trending" ? "text-green-400"
+                : r.structureRegime === "compression" ? "text-yellow-400"
+                  : r.structureRegime === "expansion" ? "text-orange-400"
+                    : r.structureRegime === "transitioning" ? "text-purple-400"
+                      : "text-muted";
+              const vClass = r.volatilityRegime === "spike" ? "text-red-400"
+                : r.volatilityRegime === "high" ? "text-orange-400"
+                  : r.volatilityRegime === "low" ? "text-blue-400"
+                    : "text-muted";
+              return (
+                <div key={`${r.symbol}-${r.timeframe}`} className={`flex flex-col p-2.5 rounded border border-border/60 ${r.unstable ? "border-yellow-500/40 bg-yellow-500/5" : ""}`}>
+                  <span className="font-mono text-[11px] opacity-70">{r.symbol} · {r.timeframe}</span>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className={`font-medium uppercase ${sClass}`}>{r.structureRegime}</span>
+                    <span className={`font-mono ${vClass}`}>{r.volatilityRegime}</span>
+                  </div>
+                  <span className="text-[10px] opacity-60 mt-0.5">{r.trendStrength} {r.directionalBias}</span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <section className="rounded-lg border border-border bg-card p-5">
         <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">

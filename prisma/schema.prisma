@@ -511,6 +511,43 @@ model EventRiskSnapshot {
   @@index([computedAt])
 }
 
+// ==================== MARKET BRAIN — REGIME ENGINE (Layer 7) ====================
+
+model RegimeSnapshot {
+  id                String   @id @default(cuid())
+  symbol            String
+  timeframe         String
+  structureRegime   String   // trending | ranging | compression | expansion | transitioning
+  volatilityRegime  String   // low | normal | high | spike
+  trendStrength     String   // none | weak | moderate | strong
+  directionalBias   String   // bullish | bearish | neutral
+  bbWidth           Float?
+  atrPercent        Float?
+  unstable          Boolean  @default(false)
+  unstableReasons   String   @default("[]")
+  computedAt        DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([symbol, timeframe])
+  @@index([structureRegime])
+  @@index([volatilityRegime])
+  @@index([updatedAt])
+}
+
+model MacroRegimeSnapshot {
+  id              String   @id @default(cuid())
+  capturedAt      DateTime @default(now())
+  macroTone       String   // risk_on | risk_off | neutral
+  macroStability  String   // stable | unstable
+  usdRegime       String   // strong | weak | neutral
+  yieldPressure   String   // rising | falling | mixed | unknown
+  dominantTheme   String?
+  reasoning       String
+  reasoningJson   String   @default("[]")
+
+  @@index([capturedAt])
+}
+
 // ==================== MARKET BRAIN — SENTIMENT ENGINE ====================
 
 model SentimentSnapshot {

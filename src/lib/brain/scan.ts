@@ -11,6 +11,7 @@ import { analyzeEventRisk, seedPlaceholderEventsIfEmpty } from "@/lib/brain/fund
 import { qualifyAllActiveSetups } from "@/lib/brain/confluence";
 import { trackAllSetups } from "@/lib/brain/tracking";
 import { runExecutionCycle } from "@/lib/brain/execution";
+import { classifyAllRegimes, captureMacroRegime } from "@/lib/brain/regime";
 
 export interface ScanCycleResult {
   scanCycleId: string;
@@ -98,6 +99,11 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       CANDLE_TIMEFRAMES
     );
 
+    const regimeResult = await classifyAllRegimes(
+      CANDLE_SYMBOLS,
+      CANDLE_TIMEFRAMES
+    );
+
     const liquidityResult = await analyzeAllLiquidity(
       CANDLE_SYMBOLS,
       CANDLE_TIMEFRAMES,
@@ -118,6 +124,8 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
     await seedPlaceholderEventsIfEmpty();
     const eventRisk = await analyzeEventRisk(CANDLE_SYMBOLS);
     const eventRiskHigh = eventRisk.results.filter((r) => r.riskLevel === "high").length;
+
+    await captureMacroRegime();
 
     const qualified = await qualifyAllActiveSetups();
 
