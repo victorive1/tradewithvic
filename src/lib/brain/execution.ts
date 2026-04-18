@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { evaluatePortfolio, capturePortfolioSnapshot } from "@/lib/brain/portfolio";
 import { reassessAllOpenPositions } from "@/lib/brain/thesis";
+import { applyAdaptiveProtection } from "@/lib/brain/protection";
 
 const DEFAULT_ACCOUNT_NAME = "paper-default";
 
@@ -211,7 +212,9 @@ async function manageOpenPositions(account: any): Promise<{ closed: number; real
     unrealizedEquity += unrealized;
 
     if (exitPrice !== null && exitReason && exitTime) {
-      const realized = pnlFromPrice(pos.direction, pos.entry, exitPrice, pos.sizeUnits);
+      // Respect any prior partial-close: only the remaining portion realizes at SL/TP.
+      const remainingUnits = pos.sizeUnits * (1 - (pos.closedPct ?? 0) / 100);
+      const realized = pnlFromPrice(pos.direction, pos.entry, exitPrice, remainingUnits);
       const durationMinutes = Math.max(1, Math.round((exitTime.getTime() - pos.openedAt.getTime()) / 60000));
       const rMultiple = pos.riskAmount > 0 ? realized / pos.riskAmount : 0;
       const pnlPct = account.startingBalance > 0 ? (realized / account.startingBalance) * 100 : 0;
@@ -285,6 +288,12 @@ export async function runExecutionCycle(): Promise<ExecutionCycleResult> {
 
   // 0. Reassess thesis for all open positions (Layer 11)
   await reassessAllOpenPositions();
+
+  // 0b. Apply adaptive protection (Layer 12) — partial exits, SL moves, thesis-invalidated closes
+  await applyAdaptiveProtection();
+
+  // Reload account since protection may have changed balance
+  account = (await prisma.executionAccount.findUnique({ where: { id: account.id } })) ?? account;
 
   // 1. Manage existing open positions (check SL/TP hits)
   const management = await manageOpenPositions(account);
