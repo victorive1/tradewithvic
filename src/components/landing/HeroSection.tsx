@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
-import { SplineScene } from "@/components/ui/splite";
 import { Card } from "@/components/ui/card";
 import { Spotlight } from "@/components/ui/spotlight";
+import { MarketSentinelRobot } from "@/components/landing/MarketSentinelRobot";
 
 interface LiveCard {
   symbol: string;
@@ -43,6 +43,7 @@ const defaultCards: LiveCard[] = [
 
 export function HeroSection() {
   const [cards, setCards] = useState<LiveCard[]>(defaultCards);
+  const [rawQuotes, setRawQuotes] = useState<any[]>([]);
 
   useEffect(() => {
     async function fetchLive() {
@@ -51,6 +52,8 @@ export function HeroSection() {
         if (!res.ok) return;
         const data = await res.json();
         if (!data.quotes || data.quotes.length === 0) return;
+
+        setRawQuotes(data.quotes);
 
         const targets = ["EURUSD", "XAUUSD", "NAS100", "BTCUSD"];
         const newCards: LiveCard[] = targets.map((sym) => {
@@ -70,7 +73,7 @@ export function HeroSection() {
       } catch { /* silent */ }
     }
     fetchLive();
-    const interval = setInterval(fetchLive, 60000);
+    const interval = setInterval(fetchLive, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -118,12 +121,9 @@ export function HeroSection() {
               </div>
             </div>
 
-            {/* Right 3D scene */}
-            <div className="flex-1 relative min-h-[300px] lg:min-h-0">
-              <SplineScene
-                scene="https://prod.spline.design/kZDDjO5HuC9GJUM2/scene.splinecode"
-                className="w-full h-full"
-              />
+            {/* Right: market-reactive sentinel */}
+            <div className="flex-1 relative min-h-[480px] lg:min-h-0">
+              <MarketSentinelRobot quotes={rawQuotes} className="absolute inset-0" />
             </div>
           </div>
         </Card>
