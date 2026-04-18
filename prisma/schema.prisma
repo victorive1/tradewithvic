@@ -280,6 +280,14 @@ model ExecutionAccount {
   weeklyPnl              Float    @default(0)
   weeklyPnlResetAt       DateTime?
   smartExitMode          String   @default("balanced") // off | conservative | balanced | aggressive
+  minConfidenceScore     Int      @default(65)
+  minRiskReward          Float    @default(1.2)
+  selectedSymbolsJson    String   @default("[]")   // empty = all CANDLE_SYMBOLS
+  allowedSessionsJson    String   @default("[\"london\",\"newyork\",\"overlap\",\"crypto_24_7\"]")
+  newsFilterEnabled      Boolean  @default(true)
+  fridayCloseProtection  Boolean  @default(true)
+  executionMode          String   @default("paper") // paper | mt_shadow | mt_live
+  selectedMtAccountIdsJson String @default("[]")    // MT account IDs from localStorage (future live routing)
   autoExecuteEnabled     Boolean  @default(true)
   killSwitchEngaged      Boolean  @default(false)
   isActive               Boolean  @default(true)

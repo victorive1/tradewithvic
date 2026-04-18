@@ -52,16 +52,42 @@ interface GuardrailContext {
   eventRisk: Record<string, any>;
 }
 
+function parseJsonArray(s: string | null | undefined, fallback: string[] = []): string[] {
+  if (!s) return fallback;
+  try { const v = JSON.parse(s); return Array.isArray(v) ? v : fallback; } catch { return fallback; }
+}
+
+function sessionForSymbol(symbol: string): string {
+  const h = new Date().getUTCHours();
+  const day = new Date().getUTCDay();
+  if (symbol.startsWith("BTC") || symbol.startsWith("ETH")) return "crypto_24_7";
+  if (day === 6 || day === 0) return "closed";
+  if (h >= 0 && h < 7) return "asia";
+  if (h >= 7 && h < 12) return "london";
+  if (h >= 12 && h < 16) return "overlap";
+  if (h >= 16 && h < 21) return "newyork";
+  return "after_hours";
+}
+
 function evaluateGuardrails(setup: any, ctx: GuardrailContext): { passed: boolean; reasons: string[] } {
   const reasons: string[] = [];
 
   if (!ctx.account.autoExecuteEnabled) reasons.push("auto_execute_disabled");
   if (ctx.account.killSwitchEngaged) reasons.push("kill_switch_engaged");
 
-  const allowedGrades: string[] = (() => {
-    try { return JSON.parse(ctx.account.allowedGrades); } catch { return ["A+", "A"]; }
-  })();
+  const allowedGrades = parseJsonArray(ctx.account.allowedGrades, ["A+", "A"]);
   if (!allowedGrades.includes(setup.qualityGrade)) reasons.push(`grade_${setup.qualityGrade}_not_allowed`);
+
+  const selectedSymbols = parseJsonArray(ctx.account.selectedSymbolsJson, []);
+  if (selectedSymbols.length > 0 && !selectedSymbols.includes(setup.symbol)) {
+    reasons.push(`symbol_${setup.symbol}_not_in_whitelist`);
+  }
+
+  const allowedSessions = parseJsonArray(ctx.account.allowedSessionsJson, ["london", "newyork", "overlap", "crypto_24_7"]);
+  const currentSession = sessionForSymbol(setup.symbol);
+  if (!allowedSessions.includes(currentSession)) {
+    reasons.push(`session_${currentSession}_not_allowed`);
+  }
 
   if (ctx.openPositions.length >= ctx.account.maxConcurrentPositions) {
     reasons.push(`max_concurrent_positions_${ctx.account.maxConcurrentPositions}`);
@@ -78,14 +104,27 @@ function evaluateGuardrails(setup: any, ctx: GuardrailContext): { passed: boolea
     reasons.push(`daily_loss_limit_${ctx.account.maxDailyLossPct}pct`);
   }
 
-  // Event risk block
+  // Event risk block (honor news filter toggle)
   const eventRisk = ctx.eventRisk[setup.symbol];
-  if (eventRisk?.riskLevel === "high") {
+  if (ctx.account.newsFilterEnabled && eventRisk?.riskLevel === "high") {
     reasons.push("high_event_risk");
   }
 
-  // Minimum RR
-  if (setup.riskReward < 1.2) reasons.push(`rr_below_min_1.2`);
+  // Friday close protection: block new trades Friday after 20:00 UTC
+  if (ctx.account.fridayCloseProtection) {
+    const d = new Date();
+    if (d.getUTCDay() === 5 && d.getUTCHours() >= 20 && !setup.symbol.startsWith("BTC") && !setup.symbol.startsWith("ETH")) {
+      reasons.push("friday_close_protection");
+    }
+  }
+
+  // Min confidence score + min RR (now configurable)
+  if (setup.confidenceScore < ctx.account.minConfidenceScore) {
+    reasons.push(`score_${setup.confidenceScore}_below_min_${ctx.account.minConfidenceScore}`);
+  }
+  if (setup.riskReward < ctx.account.minRiskReward) {
+    reasons.push(`rr_${setup.riskReward.toFixed(2)}_below_min_${ctx.account.minRiskReward}`);
+  }
 
   return { passed: reasons.length === 0, reasons };
 }
