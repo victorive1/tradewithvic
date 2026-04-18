@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { evaluatePortfolio, capturePortfolioSnapshot } from "@/lib/brain/portfolio";
 
 const DEFAULT_ACCOUNT_NAME = "paper-default";
 
@@ -87,8 +88,8 @@ function evaluateGuardrails(setup: any, ctx: GuardrailContext): { passed: boolea
   return { passed: reasons.length === 0, reasons };
 }
 
-async function openPaperPosition(setup: any, account: any, decisionLogId: string | null) {
-  const riskAmount = account.currentBalance * (account.riskPerTradePct / 100);
+async function openPaperPosition(setup: any, account: any, decisionLogId: string | null, overrideRisk?: number) {
+  const riskAmount = overrideRisk ?? account.currentBalance * (account.riskPerTradePct / 100);
   const sizeUnits = sizeUnitsFromRisk(riskAmount, setup.entry, setup.stopLoss);
   if (sizeUnits <= 0) {
     return { rejected: true, reason: "invalid_size" };
@@ -367,12 +368,51 @@ export async function runExecutionCycle(): Promise<ExecutionCycleResult> {
       continue;
     }
 
+    // Portfolio-level evaluation (Layer 6)
+    const proposedRisk = account.currentBalance * (account.riskPerTradePct / 100);
+    const portfolio = evaluatePortfolio(setup, proposedRisk, account, openPositions);
+    await prisma.portfolioDecisionLog.create({
+      data: {
+        accountId: account.id,
+        setupId: setup.id,
+        decision: portfolio.decision,
+        reasons: JSON.stringify(portfolio.reasons),
+        originalRisk: proposedRisk,
+        adjustedRisk: portfolio.adjustedRiskAmount,
+      },
+    });
+    if (portfolio.decision === "reject") {
+      await prisma.executionOrder.create({
+        data: {
+          accountId: account.id,
+          setupId: setup.id,
+          symbol: setup.symbol,
+          timeframe: setup.timeframe,
+          direction: setup.direction,
+          entry: setup.entry,
+          stopLoss: setup.stopLoss,
+          takeProfit1: setup.takeProfit1,
+          takeProfit2: setup.takeProfit2,
+          takeProfit3: setup.takeProfit3,
+          riskAmount: 0,
+          sizeUnits: 0,
+          grade: setup.qualityGrade,
+          confidenceScore: setup.confidenceScore,
+          status: "rejected",
+          rejectReason: "portfolio:" + portfolio.reasons.join(","),
+        },
+      });
+      ordersRejected++;
+      continue;
+    }
+    const effectiveRisk = portfolio.adjustedRiskAmount ?? proposedRisk;
+
     const decisionLog = await prisma.setupDecisionLog.findFirst({
       where: { setupId: setup.id },
       orderBy: { createdAt: "desc" },
     });
 
-    const result = await openPaperPosition(setup, account, decisionLog?.id ?? null);
+    const result = await openPaperPosition(setup, account, decisionLog?.id ?? null, effectiveRisk);
     if (!result.rejected && result.position) {
       ordersOpened++;
       openPositions.push(result.position);
@@ -380,6 +420,8 @@ export async function runExecutionCycle(): Promise<ExecutionCycleResult> {
       ordersRejected++;
     }
   }
+
+  await capturePortfolioSnapshot(account.id);
 
   // Final account update with unrealized
   account = await prisma.executionAccount.update({

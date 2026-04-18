@@ -271,6 +271,14 @@ model ExecutionAccount {
   maxConcurrentPositions Int      @default(5)
   maxDailyLossPct        Float    @default(3.0)
   allowedGrades          String   @default("[\"A+\",\"A\"]")
+  maxTotalRiskPct        Float    @default(5.0)   // max % of balance risked across all open positions
+  maxSameDirectionPositions  Int  @default(3)    // no more than N positions all long or all short
+  maxSameAssetClassPositions Int  @default(3)    // e.g., max 3 forex positions concurrently
+  maxSameStrategyPositions   Int  @default(2)    // max 2 of same setup family (e.g., 2 sweep_reversals)
+  maxCurrencyExposurePct     Float @default(60)  // max % of risk sitting on one currency
+  weeklyLossLimitPct     Float    @default(8.0)
+  weeklyPnl              Float    @default(0)
+  weeklyPnlResetAt       DateTime?
   smartExitMode          String   @default("balanced") // off | conservative | balanced | aggressive
   autoExecuteEnabled     Boolean  @default(true)
   killSwitchEngaged      Boolean  @default(false)
@@ -424,6 +432,45 @@ model ExecutionGuardrailLog {
   @@index([setupId])
   @@index([checkedAt])
   @@index([passed])
+}
+
+// ==================== MARKET BRAIN — PORTFOLIO RISK (Layer 6) ====================
+
+model PortfolioSnapshot {
+  id                    String   @id @default(cuid())
+  accountId             String
+  capturedAt            DateTime @default(now())
+  balance               Float
+  equity                Float
+  openPositionsCount    Int
+  totalRiskAmount       Float
+  totalRiskPct          Float
+  unrealizedPnl         Float
+  dailyPnl              Float
+  weeklyPnl             Float
+  longCount             Int      @default(0)
+  shortCount            Int      @default(0)
+  categoryBreakdownJson String   @default("{}")  // { forex: 2, crypto: 1, metals: 0, ... }
+  strategyBreakdownJson String   @default("{}")  // { sweep_reversal: 2, breakout: 1, ... }
+  currencyExposureJson  String   @default("{}")  // { USD: 50, EUR: 20, ... } — % of total risk
+  drawdownPct           Float    @default(0)
+
+  @@index([accountId, capturedAt])
+}
+
+model PortfolioDecisionLog {
+  id          String   @id @default(cuid())
+  accountId   String
+  setupId     String
+  decision    String   // allow | reduce | reject
+  reasons     String   @default("[]")
+  originalRisk Float
+  adjustedRisk Float?
+  createdAt   DateTime @default(now())
+
+  @@index([setupId])
+  @@index([createdAt])
+  @@index([decision])
 }
 
 // ==================== MARKET BRAIN — FUNDAMENTAL ENGINE ====================

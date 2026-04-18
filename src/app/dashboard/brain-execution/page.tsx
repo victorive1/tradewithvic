@@ -13,7 +13,7 @@ function timeAgo(date: Date): string {
 }
 
 export default async function BrainExecutionPage() {
-  const [account, openPositions, queuedOrders, rejectedOrders, recentTrades, recentEvents, recentGuardrails] = await Promise.all([
+  const [account, openPositions, queuedOrders, rejectedOrders, recentTrades, recentEvents, recentGuardrails, latestPortfolio, portfolioDecisions] = await Promise.all([
     prisma.executionAccount.findUnique({ where: { name: "paper-default" } }),
     prisma.executionPosition.findMany({
       where: { status: "open" },
@@ -41,6 +41,12 @@ export default async function BrainExecutionPage() {
     prisma.executionGuardrailLog.findMany({
       where: { passed: false },
       orderBy: { checkedAt: "desc" },
+      take: 10,
+    }),
+    prisma.portfolioSnapshot.findFirst({ orderBy: { capturedAt: "desc" } }),
+    prisma.portfolioDecisionLog.findMany({
+      where: { decision: { in: ["reduce", "reject"] } },
+      orderBy: { createdAt: "desc" },
       take: 10,
     }),
   ]);
@@ -110,6 +116,97 @@ export default async function BrainExecutionPage() {
           <div className="text-xs mt-0.5 text-muted">Limit: -{account.maxDailyLossPct}%</div>
         </div>
       </div>
+
+      {latestPortfolio && (() => {
+        const catBreakdown = (() => { try { return JSON.parse(latestPortfolio.categoryBreakdownJson); } catch { return {}; } })() as Record<string, number>;
+        const ccyExposure = (() => { try { return JSON.parse(latestPortfolio.currencyExposureJson); } catch { return {}; } })() as Record<string, number>;
+        const riskPctClass = latestPortfolio.totalRiskPct > account.maxTotalRiskPct * 0.8 ? "text-red-400" : latestPortfolio.totalRiskPct > account.maxTotalRiskPct * 0.6 ? "text-yellow-400" : "text-green-400";
+        const ddClass = latestPortfolio.drawdownPct > 5 ? "text-red-400" : latestPortfolio.drawdownPct > 2 ? "text-yellow-400" : "text-green-400";
+        return (
+          <section className="rounded-lg border border-border bg-card p-5">
+            <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">
+              Portfolio Exposure
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              <div>
+                <div className="text-xs text-muted uppercase tracking-wide">Total Risk</div>
+                <div className={`text-lg font-bold ${riskPctClass}`}>
+                  {latestPortfolio.totalRiskPct.toFixed(2)}%
+                </div>
+                <div className="text-xs text-muted">${latestPortfolio.totalRiskAmount.toFixed(2)} / cap {account.maxTotalRiskPct}%</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted uppercase tracking-wide">Long / Short</div>
+                <div className="text-lg font-bold">
+                  <span className="text-green-400">{latestPortfolio.longCount}</span>
+                  <span className="text-muted"> / </span>
+                  <span className="text-red-400">{latestPortfolio.shortCount}</span>
+                </div>
+                <div className="text-xs text-muted">cap {account.maxSameDirectionPositions} each side</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted uppercase tracking-wide">Drawdown</div>
+                <div className={`text-lg font-bold ${ddClass}`}>{latestPortfolio.drawdownPct.toFixed(2)}%</div>
+                <div className="text-xs text-muted">from equity high ${account.equityHigh.toFixed(0)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted uppercase tracking-wide">Weekly P&L</div>
+                <div className={`text-lg font-bold ${account.weeklyPnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+                  {account.weeklyPnl >= 0 ? "+" : ""}${account.weeklyPnl.toFixed(2)}
+                </div>
+                <div className="text-xs text-muted">limit -{account.weeklyLossLimitPct}%</div>
+              </div>
+            </div>
+            {(Object.keys(catBreakdown).length > 0 || Object.keys(ccyExposure).length > 0) && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div>
+                  <div className="text-muted uppercase tracking-wide mb-2">By Asset Class</div>
+                  <div className="flex gap-2 flex-wrap">
+                    {Object.entries(catBreakdown).map(([k, v]) => (
+                      <span key={k} className="px-2 py-0.5 rounded border border-border/60 font-mono">
+                        {k} · {v}
+                      </span>
+                    ))}
+                    {Object.keys(catBreakdown).length === 0 && <span className="text-muted">—</span>}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted uppercase tracking-wide mb-2">Currency Exposure</div>
+                  <div className="flex gap-2 flex-wrap">
+                    {Object.entries(ccyExposure).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
+                      <span key={k} className={`px-2 py-0.5 rounded border font-mono ${v > account.maxCurrencyExposurePct * 0.8 ? "border-red-500/40 text-red-400" : "border-border/60"}`}>
+                        {k} · {v}%
+                      </span>
+                    ))}
+                    {Object.keys(ccyExposure).length === 0 && <span className="text-muted">—</span>}
+                  </div>
+                </div>
+              </div>
+            )}
+            {portfolioDecisions.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-border/40">
+                <div className="text-xs text-muted uppercase tracking-wide mb-2">Recent Portfolio Decisions</div>
+                <div className="space-y-1 text-xs">
+                  {portfolioDecisions.map((d) => {
+                    const reasons = (() => { try { return JSON.parse(d.reasons); } catch { return []; } })() as string[];
+                    return (
+                      <div key={d.id} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className={`px-1.5 py-0.5 text-[10px] font-bold uppercase rounded ${d.decision === "reject" ? "bg-red-500/10 text-red-400" : "bg-yellow-500/10 text-yellow-400"}`}>
+                            {d.decision}
+                          </span>
+                          <span className="text-muted">{reasons.join(" · ")}</span>
+                        </div>
+                        <span className="text-muted">{timeAgo(d.createdAt)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </section>
+        );
+      })()}
 
       <section className="rounded-lg border border-border bg-card p-5">
         <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">
