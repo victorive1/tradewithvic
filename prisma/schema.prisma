@@ -249,6 +249,27 @@ model LiquidityEvent {
   @@index([detectedAt])
 }
 
+// ==================== MARKET BRAIN — SENTIMENT ENGINE ====================
+
+model SentimentSnapshot {
+  id          String   @id @default(cuid())
+  scanCycleId String?
+  computedAt  DateTime @default(now())
+  riskTone    String   // risk_on | risk_off | neutral
+  riskScore   Int      // -100 (risk-off) to +100 (risk-on)
+  usdBias     String   // strong | weak | neutral
+  usdScore    Float
+  goldBias    String   // bid | offered | neutral
+  goldChange  Float
+  cryptoBias  String   // bid | offered | neutral
+  cryptoChange Float
+  reasoningJson String  @default("[]")
+  reasoning   String
+
+  @@index([computedAt])
+  @@index([riskTone])
+}
+
 // ==================== MARKET BRAIN — INDICATOR ENGINE ====================
 
 model IndicatorSnapshot {

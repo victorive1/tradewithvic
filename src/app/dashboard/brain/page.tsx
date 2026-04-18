@@ -32,6 +32,7 @@ export default async function BrainStatusPage() {
     activeLiquidityLevels,
     recentLiquidityEvents,
     activeSetups,
+    latestSentiment,
   ] = await Promise.all([
     prisma.scanCycle.findFirst({ orderBy: { startedAt: "desc" } }),
     prisma.scanCycle.count(),
@@ -64,6 +65,7 @@ export default async function BrainStatusPage() {
       orderBy: { createdAt: "desc" },
       take: 12,
     }),
+    prisma.sentimentSnapshot.findFirst({ orderBy: { computedAt: "desc" } }),
   ]);
 
   const health = latestCycle
@@ -220,6 +222,46 @@ export default async function BrainStatusPage() {
           </div>
         )}
       </section>
+
+      {latestSentiment && (() => {
+        const toneClass = latestSentiment.riskTone === "risk_on" ? "from-green-500/15 to-transparent border-green-500/40 text-green-400"
+          : latestSentiment.riskTone === "risk_off" ? "from-red-500/15 to-transparent border-red-500/40 text-red-400"
+            : "from-muted/10 to-transparent border-border text-muted";
+        return (
+          <section className={`rounded-lg border bg-gradient-to-r p-5 ${toneClass}`}>
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-wide opacity-80">
+                  Market Sentiment
+                </h2>
+                <div className="mt-1 flex items-center gap-3">
+                  <span className="text-2xl font-bold uppercase">
+                    {latestSentiment.riskTone.replace("_", " ")}
+                  </span>
+                  <span className="px-2 py-0.5 text-xs font-mono rounded border border-current bg-background/40">
+                    {latestSentiment.riskScore > 0 ? "+" : ""}{latestSentiment.riskScore}
+                  </span>
+                </div>
+              </div>
+              <div className="flex gap-6 text-xs">
+                <div>
+                  <div className="opacity-60 uppercase">USD</div>
+                  <div className="font-mono mt-0.5">{latestSentiment.usdBias} ({latestSentiment.usdScore.toFixed(0)})</div>
+                </div>
+                <div>
+                  <div className="opacity-60 uppercase">Gold</div>
+                  <div className="font-mono mt-0.5">{latestSentiment.goldBias} ({latestSentiment.goldChange > 0 ? "+" : ""}{latestSentiment.goldChange.toFixed(2)}%)</div>
+                </div>
+                <div>
+                  <div className="opacity-60 uppercase">Crypto</div>
+                  <div className="font-mono mt-0.5">{latestSentiment.cryptoBias} ({latestSentiment.cryptoChange > 0 ? "+" : ""}{latestSentiment.cryptoChange.toFixed(2)}%)</div>
+                </div>
+              </div>
+            </div>
+            <p className="mt-3 text-xs opacity-80">{latestSentiment.reasoning}</p>
+          </section>
+        );
+      })()}
 
       <section className="rounded-lg border border-border bg-card p-5">
         <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">

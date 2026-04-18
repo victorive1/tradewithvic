@@ -1,11 +1,12 @@
 import { prisma } from "@/lib/prisma";
-import { fetchAllQuotes } from "@/lib/market-data";
+import { fetchAllQuotes, calculateCurrencyStrength } from "@/lib/market-data";
 import { ensureInstruments } from "@/lib/brain/instruments";
 import { fetchCandleSet, CANDLE_SYMBOLS, CANDLE_TIMEFRAMES } from "@/lib/brain/candles";
 import { analyzeAllStructure } from "@/lib/brain/structure";
 import { analyzeAllIndicators } from "@/lib/brain/indicators";
 import { analyzeAllLiquidity } from "@/lib/brain/liquidity";
 import { detectAllStrategies } from "@/lib/brain/strategies";
+import { computeSentiment, persistSentiment } from "@/lib/brain/sentiment";
 
 export interface ScanCycleResult {
   scanCycleId: string;
@@ -22,6 +23,8 @@ export interface ScanCycleResult {
   liquiditySweeps: number;
   setupsDetected: number;
   setupsPersisted: number;
+  sentimentTone: string;
+  sentimentScore: number;
   errors: string[];
 }
 
@@ -89,6 +92,10 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       cycle.id
     );
 
+    const strengths = calculateCurrencyStrength(quotes);
+    const sentiment = computeSentiment(quotes, strengths);
+    await persistSentiment(cycle.id, sentiment);
+
     const durationMs = Date.now() - startedAt;
     await prisma.scanCycle.update({
       where: { id: cycle.id },
@@ -120,6 +127,8 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       liquiditySweeps: liquidityResult.totalSweeps,
       setupsDetected: strategyResult.totalDetected,
       setupsPersisted: strategyResult.totalPersisted,
+      sentimentTone: sentiment.riskTone,
+      sentimentScore: Math.round(sentiment.riskScore),
       errors,
     };
   } catch (err: any) {
@@ -153,6 +162,8 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       liquiditySweeps: 0,
       setupsDetected: 0,
       setupsPersisted: 0,
+      sentimentTone: "unknown",
+      sentimentScore: 0,
       errors,
     };
   }
