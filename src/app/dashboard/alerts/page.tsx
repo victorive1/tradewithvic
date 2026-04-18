@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
 
-type AlertView = "inbox" | "rules" | "history" | "settings";
+type AlertView = "inbox" | "setups" | "rules" | "history" | "settings";
 type AlertCategory = "price" | "signal" | "volatility" | "macro" | "sentiment" | "engine" | "custom";
 type AlertUrgency = "low" | "medium" | "high" | "critical";
 type DeliveryChannel = "in_app" | "push" | "email";
@@ -85,12 +85,39 @@ function generateNotifications(): AlertNotification[] {
   ];
 }
 
+interface EliteSetup {
+  id: string;
+  symbol: string;
+  displayName: string;
+  timeframe: string;
+  direction: string;
+  setupType: string;
+  entry: number;
+  stopLoss: number;
+  takeProfit1: number;
+  takeProfit2?: number;
+  takeProfit3?: number;
+  riskReward: number;
+  confidenceScore: number;
+  qualityGrade: string;
+  explanation?: string;
+  source: "brain" | "engine";
+  action?: string;
+}
+
+type SetupFilter = "all" | "a_plus" | "a" | "long" | "short";
+
 export default function AlertsPage() {
   const [view, setView] = useState<AlertView>("inbox");
   const [rules, setRules] = useState<AlertRule[]>([]);
   const [notifications, setNotifications] = useState<AlertNotification[]>([]);
   const [settings, setSettings] = useState<AlertSettings>(loadSettings());
   const [showBuilder, setShowBuilder] = useState(false);
+
+  const [setups, setSetups] = useState<EliteSetup[]>([]);
+  const [setupsLoading, setSetupsLoading] = useState(true);
+  const [setupsError, setSetupsError] = useState<string | null>(null);
+  const [setupFilter, setSetupFilter] = useState<SetupFilter>("all");
 
   // Builder state
   const [newName, setNewName] = useState("");
@@ -105,6 +132,122 @@ export default function AlertsPage() {
     setNotifications(generateNotifications());
     setSettings(loadSettings());
   }, []);
+
+  useEffect(() => {
+    async function fetchSetups() {
+      setSetupsLoading(true);
+      setSetupsError(null);
+      try {
+        const [brainRes, engineRes] = await Promise.all([
+          fetch("/api/brain/execution/state", { cache: "no-store" }).catch(() => null),
+          fetch("/api/market/setups", { cache: "no-store" }).catch(() => null),
+        ]);
+
+        const merged: EliteSetup[] = [];
+
+        // Brain qualified signals (A+/A from Layer 2 confluence)
+        if (brainRes?.ok) {
+          const data = await brainRes.json();
+          const signals = (data.signals ?? []) as any[];
+          for (const s of signals) {
+            if (s.qualityGrade !== "A+" && s.qualityGrade !== "A" && s.qualityGrade !== "candidate") continue;
+            if (s.status !== "active" && s.action !== "EXECUTED" && s.action !== "QUEUED") continue;
+            merged.push({
+              id: s.id,
+              symbol: s.symbol,
+              displayName: ALL_INSTRUMENTS.find((i) => i.symbol === s.symbol)?.displayName || s.symbol,
+              timeframe: s.timeframe,
+              direction: s.direction,
+              setupType: s.strategy ?? "setup",
+              entry: s.entry,
+              stopLoss: s.stopLoss,
+              takeProfit1: s.takeProfit1,
+              takeProfit2: s.takeProfit2,
+              takeProfit3: s.takeProfit3,
+              riskReward: s.riskReward,
+              confidenceScore: s.confidenceScore,
+              qualityGrade: s.qualityGrade,
+              source: "brain",
+              action: s.action,
+            });
+          }
+        }
+
+        // Classic setup engine (rule-based from /api/market/setups)
+        if (engineRes?.ok) {
+          const data = await engineRes.json();
+          const engineSetups = (data.setups ?? []) as any[];
+          for (const s of engineSetups) {
+            if (merged.some((m) => m.symbol === s.symbol && m.direction === s.direction)) continue;
+            merged.push({
+              id: `engine_${s.symbol}_${s.direction}`,
+              symbol: s.symbol,
+              displayName: s.displayName ?? s.symbol,
+              timeframe: s.timeframe ?? "1H",
+              direction: s.direction,
+              setupType: s.setupType ?? "setup",
+              entry: s.entry,
+              stopLoss: s.stopLoss,
+              takeProfit1: s.tp1 ?? s.takeProfit1,
+              takeProfit2: s.tp2 ?? s.takeProfit2,
+              takeProfit3: s.tp3 ?? s.takeProfit3,
+              riskReward: s.riskReward ?? 1.5,
+              confidenceScore: s.score ?? s.confidenceScore ?? 70,
+              qualityGrade: s.grade ?? s.qualityGrade ?? (s.score >= 90 ? "A+" : s.score >= 80 ? "A" : "candidate"),
+              explanation: s.explanation,
+              source: "engine",
+            });
+          }
+        }
+
+        // Sort: A+ first, then A, then by confidence desc
+        merged.sort((a, b) => {
+          const rank = (g: string) => (g === "A+" ? 3 : g === "A" ? 2 : g === "candidate" ? 1 : 0);
+          const r = rank(b.qualityGrade) - rank(a.qualityGrade);
+          return r !== 0 ? r : b.confidenceScore - a.confidenceScore;
+        });
+
+        setSetups(merged);
+      } catch (e: any) {
+        setSetupsError(e?.message || "Failed to load setups");
+      } finally {
+        setSetupsLoading(false);
+      }
+    }
+
+    fetchSetups();
+    const iv = setInterval(fetchSetups, 30_000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const filteredSetups = setups.filter((s) => {
+    if (setupFilter === "a_plus") return s.qualityGrade === "A+";
+    if (setupFilter === "a") return s.qualityGrade === "A";
+    if (setupFilter === "long") return s.direction === "bullish";
+    if (setupFilter === "short") return s.direction === "bearish";
+    return true;
+  });
+
+  const setupCounts = {
+    total: setups.length,
+    aPlus: setups.filter((s) => s.qualityGrade === "A+").length,
+    a: setups.filter((s) => s.qualityGrade === "A").length,
+    long: setups.filter((s) => s.direction === "bullish").length,
+    short: setups.filter((s) => s.direction === "bearish").length,
+  };
+
+  function createAlertForSetup(setup: EliteSetup) {
+    setView("rules");
+    setShowBuilder(true);
+    setNewName(`${setup.qualityGrade} · ${setup.displayName} · ${setup.direction === "bullish" ? "Long" : "Short"}`);
+    setNewCategory("signal");
+    setNewInstruments([setup.symbol]);
+    setNewUrgency(setup.qualityGrade === "A+" ? "high" : "medium");
+    setNewConditions([
+      { field: "confidence", operator: ">=", value: String(setup.confidenceScore) },
+      { field: "grade", operator: "==", value: setup.qualityGrade },
+    ]);
+  }
 
   const unread = notifications.filter((n) => !n.read).length;
 
@@ -161,9 +304,10 @@ export default function AlertsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         {[
           { id: "inbox" as AlertView, l: `Inbox (${unread})` },
+          { id: "setups" as AlertView, l: `🎯 Trade Setups${setups.length > 0 ? ` (${setups.length})` : ""}` },
           { id: "rules" as AlertView, l: `My Rules (${rules.length})` },
           { id: "history" as AlertView, l: "History" },
           { id: "settings" as AlertView, l: "Settings" },
@@ -266,6 +410,125 @@ export default function AlertsPage() {
             );
           }) : (
             <div className="glass-card p-12 text-center"><p className="text-muted text-sm">No alerts. Create alert rules to start receiving notifications.</p></div>
+          )}
+        </div>
+      )}
+
+      {/* TRADE SETUPS */}
+      {view === "setups" && (
+        <div className="space-y-4">
+          <div className="glass-card p-4 flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <h3 className="text-sm font-semibold">Great Trade Setups</h3>
+              <p className="text-xs text-muted mt-0.5">
+                Elite setups from Market Core Brain + Setup Engine. Sorted by grade, then confidence. Click "Alert me" to create a rule tied to a setup.
+              </p>
+            </div>
+            <div className="flex items-center gap-4 text-xs">
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-bull pulse-live" />
+                <span className="text-muted">Auto-refresh · 30s</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {([
+              { id: "all", label: "All", count: setupCounts.total },
+              { id: "a_plus", label: "A+", count: setupCounts.aPlus },
+              { id: "a", label: "A", count: setupCounts.a },
+              { id: "long", label: "Long", count: setupCounts.long },
+              { id: "short", label: "Short", count: setupCounts.short },
+            ] as const).map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setSetupFilter(f.id)}
+                className={cn(
+                  "px-3 py-1.5 rounded-full text-xs font-medium transition-smooth border",
+                  setupFilter === f.id
+                    ? "bg-accent/15 text-accent-light border-accent/40"
+                    : "bg-surface-2 text-muted-light border-border/50"
+                )}
+              >
+                {f.label} <span className="ml-1 opacity-60">{f.count}</span>
+              </button>
+            ))}
+          </div>
+
+          {setupsLoading ? (
+            <div className="glass-card p-12 text-center text-muted">Loading elite setups…</div>
+          ) : setupsError ? (
+            <div className="glass-card p-6 text-sm text-bear-light">{setupsError}</div>
+          ) : filteredSetups.length === 0 ? (
+            <div className="glass-card p-12 text-center space-y-2">
+              <div className="text-3xl">🔎</div>
+              <p className="text-sm text-muted">No setups match this filter right now. The brain re-scans every 2 minutes — fresh setups will appear as market conditions align.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {filteredSetups.map((setup) => {
+                const isBull = setup.direction === "bullish";
+                const gradeColor =
+                  setup.qualityGrade === "A+" ? "bg-purple-500/15 text-purple-300 border-purple-500/40"
+                    : setup.qualityGrade === "A" ? "bg-bull/15 text-bull-light border-bull/40"
+                      : setup.qualityGrade === "candidate" ? "bg-accent/15 text-accent-light border-accent/40"
+                        : "bg-surface-2 text-muted border-border/50";
+                return (
+                  <div key={setup.id} className={cn("rounded-xl border p-4 space-y-3", gradeColor)}>
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-sm font-semibold">{setup.displayName} · {setup.timeframe}</span>
+                      <span className="px-2 py-0.5 text-xs font-bold rounded border border-current bg-background/40">
+                        {setup.qualityGrade}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className={cn("uppercase font-bold", isBull ? "text-bull-light" : "text-bear-light")}>
+                        {isBull ? "LONG" : "SHORT"}
+                      </span>
+                      <span className="text-muted">·</span>
+                      <span className="uppercase truncate">{setup.setupType.replace(/_/g, " ")}</span>
+                      {setup.source === "brain" && <span className="text-[9px] px-1.5 py-0.5 rounded bg-accent/10 text-accent-light ml-auto">BRAIN</span>}
+                    </div>
+                    <div className="space-y-1 text-[11px] font-mono bg-background/30 rounded-lg p-2.5">
+                      <Row label="Entry" value={fmtPrice(setup.entry)} />
+                      <Row label="SL" value={fmtPrice(setup.stopLoss)} valueClass="text-bear-light" />
+                      <Row label="TP1" value={fmtPrice(setup.takeProfit1)} valueClass="text-bull-light" />
+                      {setup.takeProfit2 !== undefined && setup.takeProfit2 !== null && <Row label="TP2" value={fmtPrice(setup.takeProfit2)} valueClass="text-bull-light/70" />}
+                      {setup.takeProfit3 !== undefined && setup.takeProfit3 !== null && <Row label="TP3" value={fmtPrice(setup.takeProfit3)} valueClass="text-bull-light/50" />}
+                      <div className="flex justify-between items-center pt-1 mt-1 border-t border-current/20">
+                        <span className="text-muted">RR</span>
+                        <span>{setup.riskReward?.toFixed(2) ?? "—"}×</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted">Confidence</span>
+                        <span className={cn(setup.confidenceScore >= 89 ? "text-bull-light" : setup.confidenceScore >= 65 ? "text-warn" : "text-muted")}>
+                          {setup.confidenceScore}/100
+                        </span>
+                      </div>
+                    </div>
+                    {setup.explanation && (
+                      <p className="text-[10px] text-muted leading-relaxed line-clamp-2">{setup.explanation}</p>
+                    )}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => createAlertForSetup(setup)}
+                        className="flex-1 text-xs px-3 py-1.5 rounded-lg bg-accent text-white font-medium transition-smooth hover:opacity-90"
+                      >
+                        🔔 Alert me
+                      </button>
+                      {setup.source === "brain" && (
+                        <a
+                          href={`/dashboard/brain/decision/${setup.id}`}
+                          className="text-xs px-3 py-1.5 rounded-lg bg-surface-2 text-muted-light border border-border/50 hover:border-accent"
+                        >
+                          Audit →
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       )}
@@ -404,4 +667,21 @@ export default function AlertsPage() {
       )}
     </div>
   );
+}
+
+function Row({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
+  return (
+    <div className="flex justify-between items-center">
+      <span className="text-muted">{label}</span>
+      <span className={valueClass}>{value}</span>
+    </div>
+  );
+}
+
+function fmtPrice(p: number | undefined): string {
+  if (p === undefined || p === null || !Number.isFinite(p)) return "—";
+  if (p >= 1000) return p.toFixed(2);
+  if (p >= 100) return p.toFixed(3);
+  if (p >= 1) return p.toFixed(4);
+  return p.toFixed(5);
 }
