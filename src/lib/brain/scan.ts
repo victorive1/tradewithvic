@@ -10,6 +10,7 @@ import { computeSentiment, persistSentiment } from "@/lib/brain/sentiment";
 import { analyzeEventRisk, seedPlaceholderEventsIfEmpty } from "@/lib/brain/fundamentals";
 import { qualifyAllActiveSetups } from "@/lib/brain/confluence";
 import { trackAllSetups } from "@/lib/brain/tracking";
+import { runExecutionCycle } from "@/lib/brain/execution";
 
 export interface ScanCycleResult {
   scanCycleId: string;
@@ -38,6 +39,11 @@ export interface ScanCycleResult {
   setupsTracked: number;
   setupsLabeled: number;
   setupsClosed: number;
+  execOrdersOpened: number;
+  execOrdersRejected: number;
+  execPositionsClosed: number;
+  execBalance: number;
+  execEquity: number;
   errors: string[];
 }
 
@@ -117,6 +123,8 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
 
     const tracking = await trackAllSetups();
 
+    const execution = await runExecutionCycle();
+
     const durationMs = Date.now() - startedAt;
     await prisma.scanCycle.update({
       where: { id: cycle.id },
@@ -160,6 +168,11 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       setupsTracked: tracking.tracked,
       setupsLabeled: tracking.labeled,
       setupsClosed: tracking.closed,
+      execOrdersOpened: execution.ordersOpened,
+      execOrdersRejected: execution.ordersRejected,
+      execPositionsClosed: execution.positionsClosed,
+      execBalance: execution.balance,
+      execEquity: execution.equity,
       errors,
     };
   } catch (err: any) {
@@ -205,6 +218,11 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       setupsTracked: 0,
       setupsLabeled: 0,
       setupsClosed: 0,
+      execOrdersOpened: 0,
+      execOrdersRejected: 0,
+      execPositionsClosed: 0,
+      execBalance: 0,
+      execEquity: 0,
       errors,
     };
   }

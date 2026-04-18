@@ -249,6 +249,183 @@ model LiquidityEvent {
   @@index([detectedAt])
 }
 
+// ==================== MARKET BRAIN — EXECUTION ENGINE (Layer 5) ====================
+
+model ExecutionAccount {
+  id                     String   @id @default(cuid())
+  name                   String   @unique @default("paper-default")
+  mode                   String   @default("paper") // paper | live
+  baseCurrency           String   @default("USD")
+  startingBalance        Float    @default(10000)
+  currentBalance         Float    @default(10000)
+  equityHigh             Float    @default(10000)
+  equityLow              Float    @default(10000)
+  totalRealizedPnl       Float    @default(0)
+  totalUnrealizedPnl     Float    @default(0)
+  totalClosedTrades      Int      @default(0)
+  totalWins              Int      @default(0)
+  totalLosses            Int      @default(0)
+  dailyPnl               Float    @default(0)
+  dailyPnlResetAt        DateTime?
+  riskPerTradePct        Float    @default(1.0)
+  maxConcurrentPositions Int      @default(5)
+  maxDailyLossPct        Float    @default(3.0)
+  allowedGrades          String   @default("[\"A+\",\"A\"]")
+  smartExitMode          String   @default("balanced") // off | conservative | balanced | aggressive
+  autoExecuteEnabled     Boolean  @default(true)
+  killSwitchEngaged      Boolean  @default(false)
+  isActive               Boolean  @default(true)
+  lastCycleAt            DateTime?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  orders    ExecutionOrder[]
+  positions ExecutionPosition[]
+  trades    ExecutionTrade[]
+
+  @@index([isActive])
+}
+
+model ExecutionOrder {
+  id              String   @id @default(cuid())
+  accountId       String
+  setupId         String   @unique
+  decisionLogId   String?
+  symbol          String
+  timeframe       String
+  direction       String
+  entry           Float
+  stopLoss        Float
+  takeProfit1     Float
+  takeProfit2     Float?
+  takeProfit3     Float?
+  riskAmount      Float
+  sizeUnits       Float
+  grade           String
+  confidenceScore Int
+  status          String   @default("queued") // queued | filled | cancelled | rejected
+  rejectReason    String?
+  filledAt        DateTime?
+  filledPrice     Float?
+  cancelledAt     DateTime?
+  createdAt       DateTime @default(now())
+
+  account  ExecutionAccount   @relation(fields: [accountId], references: [id])
+  position ExecutionPosition?
+
+  @@index([accountId, status])
+  @@index([createdAt])
+}
+
+model ExecutionPosition {
+  id                String    @id @default(cuid())
+  accountId         String
+  orderId           String    @unique
+  setupId           String
+  decisionLogId     String?
+  symbol            String
+  timeframe         String
+  direction         String
+  entry             Float
+  stopLoss          Float
+  originalStopLoss  Float
+  takeProfit1       Float
+  takeProfit2       Float?
+  takeProfit3       Float?
+  sizeUnits         Float
+  riskAmount        Float
+  grade             String
+  status            String    @default("open") // open | closed
+  exitPrice         Float?
+  exitReason        String?
+  openedAt          DateTime  @default(now())
+  closedAt          DateTime?
+  mfe               Float     @default(0)
+  mae               Float     @default(0)
+  realizedPnl       Float     @default(0)
+  unrealizedPnl     Float     @default(0)
+  closedPct         Float     @default(0) // 0-100, how much of the position has been closed via partials
+  tp1Hit            Boolean   @default(false)
+  tp2Hit            Boolean   @default(false)
+  tp3Hit            Boolean   @default(false)
+  movedToBreakeven  Boolean   @default(false)
+  thesisScore       Int       @default(100)
+  thesisState       String    @default("strong") // strong | weakening | damaged | invalidated
+  lastThesisCheckAt DateTime?
+  updatedAt         DateTime  @updatedAt
+
+  account ExecutionAccount @relation(fields: [accountId], references: [id])
+  order   ExecutionOrder   @relation(fields: [orderId], references: [id])
+  events  ExecutionEvent[]
+
+  @@index([accountId, status])
+  @@index([symbol, status])
+  @@index([thesisState])
+}
+
+model ExecutionTrade {
+  id              String   @id @default(cuid())
+  accountId       String
+  positionId      String   @unique
+  setupId         String
+  symbol          String
+  timeframe       String
+  direction       String
+  grade           String
+  entry           Float
+  exit            Float
+  stopLoss        Float
+  sizeUnits       Float
+  riskAmount      Float
+  realizedPnl     Float
+  pnlPct          Float
+  rMultiple       Float
+  exitReason      String
+  openedAt        DateTime
+  closedAt        DateTime
+  durationMinutes Int
+  mfe             Float
+  mae             Float
+  maxThesisScore  Int      @default(100)
+  minThesisScore  Int      @default(100)
+
+  account ExecutionAccount @relation(fields: [accountId], references: [id])
+
+  @@index([accountId, closedAt])
+  @@index([symbol, closedAt])
+  @@index([exitReason])
+}
+
+model ExecutionEvent {
+  id          String   @id @default(cuid())
+  positionId  String
+  eventType   String   // opened | sl_hit | tp1_hit | tp2_hit | tp3_hit | partial_closed | sl_moved_breakeven | sl_moved_trail | thesis_change | closed_manual | closed_thesis
+  price       Float?
+  fromValue   String?
+  toValue     String?
+  reason      String?
+  metadataJson String  @default("{}")
+  createdAt   DateTime @default(now())
+
+  position ExecutionPosition @relation(fields: [positionId], references: [id], onDelete: Cascade)
+
+  @@index([positionId, createdAt])
+  @@index([eventType])
+}
+
+model ExecutionGuardrailLog {
+  id             String   @id @default(cuid())
+  setupId        String
+  accountId      String
+  passed         Boolean
+  failureReasons String   @default("[]")
+  checkedAt      DateTime @default(now())
+
+  @@index([setupId])
+  @@index([checkedAt])
+  @@index([passed])
+}
+
 // ==================== MARKET BRAIN — FUNDAMENTAL ENGINE ====================
 
 model FundamentalEvent {

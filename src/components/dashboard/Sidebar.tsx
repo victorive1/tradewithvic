@@ -10,6 +10,7 @@ const navItems = [
     section: "Home",
     items: [
       { label: "Market Core Brain", href: "/dashboard/brain", icon: "brain" },
+      { label: "Market Core Brain Execution", href: "/dashboard/brain-execution", icon: "strength" },
       { label: "My Dashboard", href: "/dashboard/my-dashboard", icon: "radar" },
       { label: "Market Radar", href: "/dashboard", icon: "screener" },
       { label: "Profile", href: "/dashboard/profile", icon: "watchlist" },
