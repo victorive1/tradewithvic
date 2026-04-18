@@ -1,9 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
 
 type Tab = "connect" | "account" | "execute" | "positions" | "orders" | "history";
+
+interface ConnectedAccount {
+  id: string;
+  platform: "MT4" | "MT5";
+  login: string;
+  server: string;
+  broker: string;
+  label?: string;
+  connected: boolean;
+  connectedAt: string;
+}
 
 const brokerServers: Record<string, string[]> = {
   "ICMarkets": ["ICMarkets-Demo", "ICMarkets-Demo02", "ICMarkets-Demo03", "ICMarkets-Live01", "ICMarkets-Live02", "ICMarkets-Live03", "ICMarkets-Live04", "ICMarkets-Live05", "ICMarkets-Live06", "ICMarkets-Live07", "ICMarkets-Live08", "ICMarkets-Live09", "ICMarkets-Live10", "ICMarkets-Live11", "ICMarkets-Live12", "ICMarkets-Live14", "ICMarkets-Live15", "ICMarkets-Live17", "ICMarkets-Live19", "ICMarkets-Live20", "ICMarkets-Live22", "ICMarkets-Live23", "ICMarketsEU-Demo", "ICMarketsEU-Live01", "ICMarketsEU-Live02", "ICMarketsEU-Live03", "ICMarketsEU-Live04", "ICMarketsSC-Demo", "ICMarketsSC-Live01", "ICMarketsSC-Live02", "ICMarketsSC-Live03", "ICMarketsSC-Live04", "ICMarketsSC-Live05", "ICMarketsSC-Live06", "ICMarketsSC-Live07", "ICMarketsSC-Live08", "ICMarketsSC-Live09"],
@@ -81,18 +92,69 @@ const brokerServers: Record<string, string[]> = {
   "TradingView (Paper)": ["PaperTrading"],
 };
 
-// Flatten all servers into a searchable list
 const allServers = Object.entries(brokerServers).flatMap(([broker, servers]) =>
   servers.map((server) => ({ broker, server }))
 );
 
-function ConnectTab({ onConnected }: { onConnected: (account: any) => void }) {
+const ACCOUNTS_KEY = "mt_accounts";
+const ACTIVE_KEY = "mt_active_account_id";
+const LEGACY_KEY = "mt_account";
+
+function brokerForServer(server: string): string {
+  return Object.entries(brokerServers).find(([, servers]) => servers.includes(server))?.[0] ?? server;
+}
+
+function generateId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `acc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function loadAccounts(): { accounts: ConnectedAccount[]; activeId: string | null } {
+  if (typeof window === "undefined") return { accounts: [], activeId: null };
+  try {
+    const raw = window.localStorage.getItem(ACCOUNTS_KEY);
+    const activeId = window.localStorage.getItem(ACTIVE_KEY);
+    if (raw) {
+      const accounts = JSON.parse(raw) as ConnectedAccount[];
+      return { accounts, activeId };
+    }
+    // Migrate legacy single-account key
+    const legacy = window.localStorage.getItem(LEGACY_KEY);
+    if (legacy) {
+      const parsed = JSON.parse(legacy);
+      const migrated: ConnectedAccount = {
+        id: generateId(),
+        platform: parsed.platform ?? "MT5",
+        login: parsed.login,
+        server: parsed.server,
+        broker: parsed.broker ?? brokerForServer(parsed.server),
+        connected: true,
+        connectedAt: parsed.connectedAt ?? new Date().toISOString(),
+      };
+      window.localStorage.setItem(ACCOUNTS_KEY, JSON.stringify([migrated]));
+      window.localStorage.setItem(ACTIVE_KEY, migrated.id);
+      window.localStorage.removeItem(LEGACY_KEY);
+      return { accounts: [migrated], activeId: migrated.id };
+    }
+  } catch {}
+  return { accounts: [], activeId: null };
+}
+
+function persistAccounts(accounts: ConnectedAccount[], activeId: string | null) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
+  if (activeId) window.localStorage.setItem(ACTIVE_KEY, activeId);
+  else window.localStorage.removeItem(ACTIVE_KEY);
+}
+
+function ConnectTab({ onConnected, existingAccounts }: { onConnected: (account: ConnectedAccount) => void; existingAccounts: ConnectedAccount[] }) {
   const [platform, setPlatform] = useState<"MT4" | "MT5">("MT5");
   const [brokerSearch, setBrokerSearch] = useState("");
   const [selectedServer, setSelectedServer] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
+  const [label, setLabel] = useState("");
   const [saveProfile, setSaveProfile] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -116,23 +178,33 @@ function ConnectTab({ onConnected }: { onConnected: (account: any) => void }) {
       setStatus({ type: "error", message: "Please fill in all fields: Account Login, Password, and Broker Server." });
       return;
     }
+    const duplicate = existingAccounts.find((a) => a.login === login && a.server === selectedServer);
+    if (duplicate) {
+      setStatus({ type: "error", message: `Account ${login} on ${selectedServer} is already connected.` });
+      return;
+    }
     setConnecting(true);
     setStatus({ type: "info", message: `Connecting to ${selectedServer}...` });
     setTimeout(() => {
       setConnecting(false);
-      const account = {
+      const account: ConnectedAccount = {
+        id: generateId(),
         platform,
         login,
         server: selectedServer,
-        broker: Object.entries(brokerServers).find(([, servers]) => servers.includes(selectedServer))?.[0] || selectedServer,
+        broker: brokerForServer(selectedServer),
+        label: label.trim() || undefined,
         connected: true,
         connectedAt: new Date().toISOString(),
       };
-      if (saveProfile) {
-        localStorage.setItem("mt_account", JSON.stringify(account));
-      }
-      setStatus({ type: "success", message: `Successfully connected to ${selectedServer}! Account ${login} is now linked.` });
+      setStatus({ type: "success", message: `Successfully connected to ${selectedServer}! Account ${login} added.` });
       onConnected(account);
+      // Reset form for next-account flow
+      setLogin("");
+      setPassword("");
+      setLabel("");
+      setBrokerSearch("");
+      setSelectedServer("");
     }, 2500);
   }
 
@@ -143,7 +215,6 @@ function ConnectTab({ onConnected }: { onConnected: (account: any) => void }) {
       ).slice(0, 30)
     : allServers.slice(0, 30);
 
-  // Group filtered results by broker
   const grouped: Record<string, string[]> = {};
   filteredServers.forEach((s) => {
     if (!grouped[s.broker]) grouped[s.broker] = [];
@@ -158,7 +229,14 @@ function ConnectTab({ onConnected }: { onConnected: (account: any) => void }) {
 
   return (
     <div className="max-w-lg mx-auto space-y-5">
-      <h3 className="text-lg font-semibold text-foreground">Connect MetaTrader Account</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold text-foreground">
+          {existingAccounts.length === 0 ? "Connect MetaTrader Account" : "Add Another Account"}
+        </h3>
+        {existingAccounts.length > 0 && (
+          <span className="text-xs text-muted">{existingAccounts.length} already connected</span>
+        )}
+      </div>
       <div className="flex gap-2">
         {(["MT4", "MT5"] as const).map((p) => (
           <button key={p} onClick={() => setPlatform(p)}
@@ -171,12 +249,15 @@ function ConnectTab({ onConnected }: { onConnected: (account: any) => void }) {
           {status.message}
         </div>
       )}
+      <div>
+        <label className="text-xs text-muted-light mb-1.5 block">Nickname <span className="text-muted">(optional)</span></label>
+        <input type="text" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Main Live, FTMO Challenge, Demo Sandbox" className="w-full px-4 py-3 rounded-xl bg-surface-2 border border-border focus:border-accent focus:outline-none text-sm text-foreground" />
+      </div>
       <div><label className="text-xs text-muted-light mb-1.5 block">Account Login</label>
         <input type="text" value={login} onChange={(e) => setLogin(e.target.value)} placeholder="e.g. 5042885676" className="w-full px-4 py-3 rounded-xl bg-surface-2 border border-border focus:border-accent focus:outline-none text-sm text-foreground font-mono" /></div>
       <div><label className="text-xs text-muted-light mb-1.5 block">Password</label>
         <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Account password" className="w-full px-4 py-3 rounded-xl bg-surface-2 border border-border focus:border-accent focus:outline-none text-sm text-foreground" /></div>
 
-      {/* Broker Server Searchable Dropdown */}
       <div className="relative">
         <label className="text-xs text-muted-light mb-1.5 block">Broker Server</label>
         <input
@@ -187,7 +268,6 @@ function ConnectTab({ onConnected }: { onConnected: (account: any) => void }) {
           placeholder="Search broker or server..."
           className="w-full px-4 py-3 rounded-xl bg-surface-2 border border-border focus:border-accent focus:outline-none text-sm text-foreground"
         />
-        {/* Dropdown icon */}
         <button onClick={() => setShowDropdown(!showDropdown)} className="absolute right-3 top-[34px] text-muted hover:text-muted-light">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
         </button>
@@ -243,27 +323,78 @@ function ConnectTab({ onConnected }: { onConnected: (account: any) => void }) {
         </button>
         <button onClick={handleConnect} disabled={connecting || testing}
           className="flex-1 py-3 rounded-xl bg-accent text-white text-sm font-semibold transition-smooth glow-accent disabled:opacity-50">
-          {connecting ? "Connecting..." : "Connect"}
+          {connecting ? "Connecting..." : existingAccounts.length === 0 ? "Connect" : "Add Account"}
         </button>
       </div>
     </div>
   );
 }
 
-function AccountTab({ onConnect }: { onConnect: () => void }) {
+function AccountCard({
+  account,
+  active,
+  onSetActive,
+  onRemove,
+}: {
+  account: ConnectedAccount;
+  active: boolean;
+  onSetActive: () => void;
+  onRemove: () => void;
+}) {
   return (
-    <div className="glass-card p-12 text-center space-y-4">
-      <div className="text-4xl mb-2">&#128274;</div>
-      <h3 className="text-lg font-semibold text-foreground">No account connected</h3>
-      <p className="text-sm text-muted max-w-md mx-auto">
-        Connect your MT4/MT5 account to see live balance, equity, and positions.
-      </p>
-      <button
-        onClick={onConnect}
-        className="px-6 py-3 rounded-xl bg-accent text-white text-sm font-semibold transition-smooth glow-accent"
-      >
-        Connect Account
-      </button>
+    <div
+      className={cn(
+        "glass-card p-5 border transition-smooth",
+        active ? "border-accent/40 ring-2 ring-accent/20" : "border-border/50"
+      )}
+    >
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-3">
+          <span className={cn("w-3 h-3 rounded-full", active ? "bg-bull pulse-live" : "bg-muted")} />
+          <span className="text-sm font-semibold text-foreground">
+            {account.label || `${account.broker} · ${account.login}`}
+          </span>
+          <span className="text-xs bg-surface-2 px-2 py-0.5 rounded">{account.platform}</span>
+          {active && <span className="text-xs bg-accent/15 text-accent-light px-2 py-0.5 rounded">Active</span>}
+        </div>
+        <div className="flex items-center gap-2">
+          {!active && (
+            <button
+              onClick={onSetActive}
+              className="text-xs text-accent-light hover:text-accent transition-smooth"
+            >
+              Set Active
+            </button>
+          )}
+          <button
+            onClick={() => {
+              if (confirm(`Disconnect and remove account ${account.login}?`)) onRemove();
+            }}
+            className="text-xs text-bear-light hover:text-bear transition-smooth"
+          >
+            Remove
+          </button>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+        <div className="bg-surface-2 rounded-xl p-3">
+          <div className="text-xs text-muted mb-1">Broker</div>
+          <div className="font-medium">{account.broker}</div>
+        </div>
+        <div className="bg-surface-2 rounded-xl p-3">
+          <div className="text-xs text-muted mb-1">Server</div>
+          <div className="font-medium text-xs">{account.server}</div>
+        </div>
+        <div className="bg-surface-2 rounded-xl p-3">
+          <div className="text-xs text-muted mb-1">Account</div>
+          <div className="font-mono">{account.login}</div>
+        </div>
+        <div className="bg-surface-2 rounded-xl p-3">
+          <div className="text-xs text-muted mb-1">Status</div>
+          <div className="text-bull-light font-medium">Active</div>
+        </div>
+      </div>
+      <p className="text-xs text-muted mt-3">Connected at {new Date(account.connectedAt).toLocaleString()}</p>
     </div>
   );
 }
@@ -293,37 +424,52 @@ function HistoryTab() {
 }
 
 export default function TradingHubPage() {
-  const [tab, setTab] = useState<Tab>("connect");
-  const [connectedAccount, setConnectedAccount] = useState<any>(null);
+  const [tab, setTab] = useState<Tab>("account");
+  const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
 
-  // Check for saved account on mount
-  useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("mt_account");
-      if (saved) {
-        try {
-          const account = JSON.parse(saved);
-          setConnectedAccount(account);
-          setTab("account");
-        } catch {}
-      }
-    }
-  });
+  useEffect(() => {
+    const { accounts, activeId } = loadAccounts();
+    setAccounts(accounts);
+    setActiveId(activeId);
+    setTab(accounts.length > 0 ? "account" : "connect");
+    setHydrated(true);
+  }, []);
 
-  function handleConnected(account: any) {
-    setConnectedAccount(account);
+  useEffect(() => {
+    if (!hydrated) return;
+    persistAccounts(accounts, activeId);
+  }, [accounts, activeId, hydrated]);
+
+  const activeAccount = useMemo(
+    () => accounts.find((a) => a.id === activeId) ?? null,
+    [accounts, activeId]
+  );
+
+  function handleConnected(account: ConnectedAccount) {
+    setAccounts((prev) => [...prev, account]);
+    setActiveId(account.id);
     setTab("account");
   }
 
-  function handleDisconnect() {
-    setConnectedAccount(null);
-    localStorage.removeItem("mt_account");
-    setTab("connect");
+  function handleSetActive(id: string) {
+    setActiveId(id);
+  }
+
+  function handleRemove(id: string) {
+    setAccounts((prev) => {
+      const next = prev.filter((a) => a.id !== id);
+      if (activeId === id) {
+        setActiveId(next[0]?.id ?? null);
+      }
+      return next;
+    });
   }
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: "connect", label: "Connect" },
-    { id: "account", label: "Account" },
+    { id: "connect", label: accounts.length === 0 ? "Connect" : "+ Add Account" },
+    { id: "account", label: `Accounts${accounts.length ? ` (${accounts.length})` : ""}` },
     { id: "execute", label: "Manual Trade" },
     { id: "positions", label: "Positions" },
     { id: "orders", label: "Orders" },
@@ -333,15 +479,21 @@ export default function TradingHubPage() {
   return (
     <div className="space-y-6">
       <div>
-        <div className="flex items-center gap-3 mb-1">
+        <div className="flex items-center gap-3 mb-1 flex-wrap">
           <h1 className="text-2xl font-bold text-foreground">Trading Hub</h1>
-          {connectedAccount && (
+          {accounts.length > 0 && (
             <span className="flex items-center gap-1.5 text-xs bg-bull/10 text-bull-light px-2.5 py-1 rounded-full border border-bull/20">
-              <span className="w-1.5 h-1.5 rounded-full bg-bull pulse-live" />Connected
+              <span className="w-1.5 h-1.5 rounded-full bg-bull pulse-live" />
+              {accounts.length} connected
+            </span>
+          )}
+          {activeAccount && (
+            <span className="text-xs text-muted">
+              Active: <span className="text-foreground font-medium">{activeAccount.label || `${activeAccount.broker} · ${activeAccount.login}`}</span>
             </span>
           )}
         </div>
-        <p className="text-sm text-muted mt-1">Connect your MetaTrader account and execute trades directly from TradeWithVic App</p>
+        <p className="text-sm text-muted mt-1">Connect multiple MetaTrader accounts and switch between them to execute trades directly from TradeWithVic.</p>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -354,33 +506,53 @@ export default function TradingHubPage() {
         ))}
       </div>
 
-      {tab === "connect" && <ConnectTab onConnected={handleConnected} />}
-      {tab === "account" && !connectedAccount && <AccountTab onConnect={() => setTab("connect")} />}
-      {tab === "account" && connectedAccount && (
+      {tab === "connect" && <ConnectTab onConnected={handleConnected} existingAccounts={accounts} />}
+
+      {tab === "account" && accounts.length === 0 && (
+        <div className="glass-card p-12 text-center space-y-4">
+          <div className="text-4xl mb-2">&#128274;</div>
+          <h3 className="text-lg font-semibold text-foreground">No accounts connected</h3>
+          <p className="text-sm text-muted max-w-md mx-auto">
+            Connect one or more MT4/MT5 accounts. You can switch between them at any time.
+          </p>
+          <button
+            onClick={() => setTab("connect")}
+            className="px-6 py-3 rounded-xl bg-accent text-white text-sm font-semibold transition-smooth glow-accent"
+          >
+            Connect Account
+          </button>
+        </div>
+      )}
+
+      {tab === "account" && accounts.length > 0 && (
         <div className="space-y-4">
-          <div className="glass-card p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <span className="w-3 h-3 rounded-full bg-bull pulse-live" />
-                <span className="text-sm font-semibold text-foreground">Connected</span>
-                <span className="text-xs bg-surface-2 px-2 py-0.5 rounded">{connectedAccount.platform}</span>
-              </div>
-              <button onClick={handleDisconnect} className="text-xs text-bear-light hover:text-bear transition-smooth">Disconnect</button>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
-              <div className="bg-surface-2 rounded-xl p-3"><div className="text-xs text-muted mb-1">Broker</div><div className="font-medium">{connectedAccount.broker}</div></div>
-              <div className="bg-surface-2 rounded-xl p-3"><div className="text-xs text-muted mb-1">Server</div><div className="font-medium text-xs">{connectedAccount.server}</div></div>
-              <div className="bg-surface-2 rounded-xl p-3"><div className="text-xs text-muted mb-1">Account</div><div className="font-mono">{connectedAccount.login}</div></div>
-              <div className="bg-surface-2 rounded-xl p-3"><div className="text-xs text-muted mb-1">Status</div><div className="text-bull-light font-medium">Active</div></div>
-            </div>
-            <p className="text-xs text-muted mt-4">Connected at {new Date(connectedAccount.connectedAt).toLocaleString()}</p>
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">
+              Connected Accounts
+            </h2>
+            <button
+              onClick={() => setTab("connect")}
+              className="text-xs font-medium px-3 py-1.5 rounded-lg bg-accent/10 text-accent-light border border-accent/30 hover:bg-accent/15 transition-smooth"
+            >
+              + Add Another Account
+            </button>
           </div>
+          {accounts.map((a) => (
+            <AccountCard
+              key={a.id}
+              account={a}
+              active={a.id === activeId}
+              onSetActive={() => handleSetActive(a.id)}
+              onRemove={() => handleRemove(a.id)}
+            />
+          ))}
           <div className="glass-card p-6 text-center">
-            <p className="text-sm text-muted">Live balance, equity, and margin data will appear here when the MT bridge is connected to your broker.</p>
+            <p className="text-sm text-muted">Live balance, equity, and margin for each account will appear here once the MT bridge is wired to your broker.</p>
           </div>
         </div>
       )}
-      {tab === "execute" && !connectedAccount && (
+
+      {tab === "execute" && !activeAccount && (
         <div className="glass-card p-12 text-center space-y-4">
           <div className="text-4xl mb-2">&#9888;</div>
           <h3 className="text-lg font-semibold text-foreground">No account connected</h3>
@@ -388,19 +560,34 @@ export default function TradingHubPage() {
           <button onClick={() => setTab("connect")} className="px-6 py-3 rounded-xl bg-accent text-white text-sm font-semibold transition-smooth glow-accent">Connect Account</button>
         </div>
       )}
-      {tab === "execute" && connectedAccount && (
+
+      {tab === "execute" && activeAccount && (
         <div className="max-w-lg mx-auto glass-card p-6 space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-3">
             <h3 className="text-lg font-semibold">Place Manual Trade</h3>
-            <span className="text-xs text-bull-light bg-bull/10 px-2 py-0.5 rounded border border-bull/20">{connectedAccount.server}</span>
+            {accounts.length > 1 ? (
+              <select
+                value={activeId ?? ""}
+                onChange={(e) => setActiveId(e.target.value)}
+                className="text-xs bg-surface-2 border border-border rounded px-2 py-1 text-foreground"
+              >
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {(a.label || `${a.broker} · ${a.login}`)} ({a.server})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="text-xs text-bull-light bg-bull/10 px-2 py-0.5 rounded border border-bull/20">{activeAccount.server}</span>
+            )}
           </div>
           <div><label className="text-xs text-muted-light mb-1.5 block">Symbol</label>
             <select className="w-full px-4 py-3 rounded-xl bg-surface-2 border border-border text-sm text-foreground">
               <option>XAU/USD</option><option>EUR/USD</option><option>GBP/USD</option><option>USD/JPY</option><option>NAS100</option><option>US30</option><option>BTC/USD</option><option>XAG/USD</option><option>US Oil</option>
             </select></div>
           <div className="grid grid-cols-2 gap-3">
-            <button onClick={() => alert("BUY order would be sent to " + connectedAccount.server)} className="py-3 rounded-xl bg-bull/20 text-bull-light border border-bull/30 text-sm font-bold hover:bg-bull/30 transition-smooth">BUY</button>
-            <button onClick={() => alert("SELL order would be sent to " + connectedAccount.server)} className="py-3 rounded-xl bg-bear/20 text-bear-light border border-bear/30 text-sm font-bold hover:bg-bear/30 transition-smooth">SELL</button>
+            <button onClick={() => alert("BUY order would be sent to " + activeAccount.server)} className="py-3 rounded-xl bg-bull/20 text-bull-light border border-bull/30 text-sm font-bold hover:bg-bull/30 transition-smooth">BUY</button>
+            <button onClick={() => alert("SELL order would be sent to " + activeAccount.server)} className="py-3 rounded-xl bg-bear/20 text-bear-light border border-bear/30 text-sm font-bold hover:bg-bear/30 transition-smooth">SELL</button>
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div><label className="text-xs text-muted-light mb-1.5 block">Lot Size</label>
@@ -410,10 +597,11 @@ export default function TradingHubPage() {
             <div><label className="text-xs text-bull-light mb-1.5 block">Take Profit</label>
               <input type="number" step="0.01" className="w-full px-3 py-3 rounded-xl bg-surface-2 border border-bull/20 focus:border-bull focus:outline-none text-sm text-foreground font-mono" /></div>
           </div>
-          <button onClick={() => alert(`Trade order prepared for ${connectedAccount.server}. MT bridge integration required for live execution.`)}
+          <button onClick={() => alert(`Trade order prepared for ${activeAccount.server}. MT bridge integration required for live execution.`)}
             className="w-full py-3.5 rounded-xl bg-accent text-white font-semibold text-sm transition-smooth glow-accent hover:bg-accent-light">Place Trade</button>
         </div>
       )}
+
       {tab === "positions" && <PositionsTab />}
       {tab === "orders" && <div className="glass-card p-12 text-center"><p className="text-muted">No pending orders</p></div>}
       {tab === "history" && <HistoryTab />}
