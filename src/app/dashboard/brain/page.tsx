@@ -28,6 +28,7 @@ export default async function BrainStatusPage() {
     instrumentCount,
     structureStates,
     recentStructureEvents,
+    indicatorSnaps,
   ] = await Promise.all([
     prisma.scanCycle.findFirst({ orderBy: { startedAt: "desc" } }),
     prisma.scanCycle.count(),
@@ -48,6 +49,7 @@ export default async function BrainStatusPage() {
     prisma.instrument.count({ where: { isActive: true } }),
     prisma.structureState.findMany({ orderBy: [{ symbol: "asc" }, { timeframe: "asc" }] }),
     prisma.structureEvent.findMany({ orderBy: { detectedAt: "desc" }, take: 8 }),
+    prisma.indicatorSnapshot.findMany({ orderBy: [{ symbol: "asc" }, { timeframe: "asc" }] }),
   ]);
 
   const health = latestCycle
@@ -201,6 +203,51 @@ export default async function BrainStatusPage() {
                 </div>
               );
             })}
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-lg border border-border bg-card p-5">
+        <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">
+          Indicators · Latest Values
+        </h2>
+        {indicatorSnaps.length === 0 ? (
+          <p className="text-sm text-muted">No indicators computed yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-muted border-b border-border/40">
+                  <th className="text-left py-2 pr-3">Symbol · TF</th>
+                  <th className="text-right px-2">Close</th>
+                  <th className="text-right px-2">Trend</th>
+                  <th className="text-right px-2">RSI</th>
+                  <th className="text-right px-2">ATR %</th>
+                  <th className="text-right px-2">MACD</th>
+                  <th className="text-right px-2">BB %</th>
+                  <th className="text-right pl-2">Momentum</th>
+                </tr>
+              </thead>
+              <tbody>
+                {indicatorSnaps.map((s) => {
+                  const trendClass = s.trendBias === "bullish" ? "text-green-500" : s.trendBias === "bearish" ? "text-red-500" : "text-muted";
+                  const rsiClass = s.rsiState === "overbought" ? "text-red-500" : s.rsiState === "oversold" ? "text-green-500" : "text-foreground";
+                  const momentumClass = s.momentum === "up" ? "text-green-500" : s.momentum === "down" ? "text-red-500" : "text-muted";
+                  return (
+                    <tr key={`${s.symbol}-${s.timeframe}`} className="border-b border-border/20 last:border-0">
+                      <td className="py-2 pr-3 font-mono">{s.symbol} · {s.timeframe}</td>
+                      <td className="text-right px-2 font-mono">{s.close.toFixed(s.close > 100 ? 2 : 5)}</td>
+                      <td className={`text-right px-2 font-medium uppercase ${trendClass}`}>{s.trendBias}</td>
+                      <td className={`text-right px-2 font-mono ${rsiClass}`}>{s.rsi14?.toFixed(1) ?? "—"}</td>
+                      <td className="text-right px-2 font-mono">{s.atrPercent?.toFixed(3) ?? "—"}</td>
+                      <td className="text-right px-2 font-mono">{s.macdHist !== null && s.macdHist !== undefined ? (s.macdHist > 0 ? "+" : "") + s.macdHist.toFixed(4) : "—"}</td>
+                      <td className="text-right px-2 font-mono">{s.bbPercentB !== null && s.bbPercentB !== undefined ? (s.bbPercentB * 100).toFixed(0) : "—"}</td>
+                      <td className={`text-right pl-2 uppercase ${momentumClass}`}>{s.momentum}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </section>

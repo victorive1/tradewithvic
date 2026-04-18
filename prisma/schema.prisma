@@ -208,6 +208,47 @@ model StructureEvent {
   @@index([eventType])
 }
 
+// ==================== MARKET BRAIN — INDICATOR ENGINE ====================
+
+model IndicatorSnapshot {
+  id          String   @id @default(cuid())
+  symbol      String
+  timeframe   String
+  candleTime  DateTime
+  close       Float
+  candleCount Int
+
+  ema20       Float?
+  ema50       Float?
+  ema200      Float?
+
+  rsi14       Float?
+  rsiState    String?  // overbought | oversold | neutral
+
+  atr14       Float?
+  atrPercent  Float?   // atr as % of close
+
+  macdLine    Float?
+  macdSignal  Float?
+  macdHist    Float?
+
+  bbUpper     Float?
+  bbMiddle    Float?
+  bbLower     Float?
+  bbWidth     Float?
+  bbPercentB  Float?
+
+  trendBias   String   @default("neutral") // bullish | bearish | neutral
+  momentum    String   @default("neutral") // up | down | flat
+
+  computedAt  DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([symbol, timeframe])
+  @@index([updatedAt])
+  @@index([trendBias])
+}
+
 // ==================== TRADE SETUPS ====================
 
 model TradeSetup {
