@@ -392,7 +392,11 @@ export default async function BrainStatusPage() {
                   : s.qualityGrade === "B" ? "bg-blue-500/15 text-blue-400 border-blue-500/40"
                     : "bg-muted/10 text-muted border-border";
               return (
-                <div key={s.id} className={`rounded-lg border p-3 ${gradeColor}`}>
+                <Link
+                  key={s.id}
+                  href={`/dashboard/brain/decision/${s.id}`}
+                  className={`rounded-lg border p-3 block hover:opacity-90 transition-opacity ${gradeColor}`}
+                >
                   <div className="flex items-center justify-between">
                     <span className="font-mono text-sm font-semibold">{s.symbol} · {s.timeframe}</span>
                     <span className="px-2 py-0.5 text-xs font-bold rounded border border-current bg-background/40">
@@ -412,7 +416,7 @@ export default async function BrainStatusPage() {
                     <div className="flex justify-between"><span className="text-muted">TP1</span><span className="text-green-400">{s.takeProfit1.toFixed(5)}</span></div>
                     <div className="flex justify-between"><span className="text-muted">RR</span><span>{s.riskReward.toFixed(2)}x · {s.confidenceScore}/100</span></div>
                   </div>
-                </div>
+                </Link>
               );
             })}
           </div>
