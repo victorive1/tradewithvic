@@ -9,6 +9,7 @@ const navItems = [
   {
     section: "Home",
     items: [
+      { label: "Market Core Brain", href: "/dashboard/brain", icon: "brain" },
       { label: "My Dashboard", href: "/dashboard/my-dashboard", icon: "radar" },
       { label: "Market Radar", href: "/dashboard", icon: "screener" },
       { label: "Profile", href: "/dashboard/profile", icon: "watchlist" },
@@ -118,6 +119,7 @@ const navItems = [
 ];
 
 const iconMap: Record<string, React.ReactNode> = {
+  brain: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 3c-1.3 0-2.4.84-2.82 2H9a3 3 0 00-3 3v.18A3 3 0 003 11v1c0 1.3.84 2.4 2 2.82V15a3 3 0 003 3h.18A3 3 0 0011 21h2a3 3 0 002.82-2H16a3 3 0 003-3v-.18A3 3 0 0021 13v-1c0-1.3-.84-2.4-2-2.82V9a3 3 0 00-3-3h-.18A3 3 0 0013 3h-1zm0 3v12" /></svg>,
   radar: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
   setups: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>,
   strength: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" /></svg>,
