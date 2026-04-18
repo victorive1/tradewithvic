@@ -8,6 +8,7 @@ import { analyzeAllLiquidity } from "@/lib/brain/liquidity";
 import { detectAllStrategies } from "@/lib/brain/strategies";
 import { computeSentiment, persistSentiment } from "@/lib/brain/sentiment";
 import { analyzeEventRisk, seedPlaceholderEventsIfEmpty } from "@/lib/brain/fundamentals";
+import { qualifyAllActiveSetups } from "@/lib/brain/confluence";
 
 export interface ScanCycleResult {
   scanCycleId: string;
@@ -28,6 +29,11 @@ export interface ScanCycleResult {
   sentimentScore: number;
   eventRiskHigh: number;
   upcomingEvents: number;
+  setupsQualified: number;
+  aPlusSetups: number;
+  aSetups: number;
+  candidateSetups: number;
+  droppedSetups: number;
   errors: string[];
 }
 
@@ -103,6 +109,8 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
     const eventRisk = await analyzeEventRisk(CANDLE_SYMBOLS);
     const eventRiskHigh = eventRisk.results.filter((r) => r.riskLevel === "high").length;
 
+    const qualified = await qualifyAllActiveSetups();
+
     const durationMs = Date.now() - startedAt;
     await prisma.scanCycle.update({
       where: { id: cycle.id },
@@ -138,6 +146,11 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       sentimentScore: Math.round(sentiment.riskScore),
       eventRiskHigh,
       upcomingEvents: eventRisk.upcomingCount,
+      setupsQualified: qualified.scored,
+      aPlusSetups: qualified.aPlus,
+      aSetups: qualified.a,
+      candidateSetups: qualified.candidate,
+      droppedSetups: qualified.dropped,
       errors,
     };
   } catch (err: any) {
@@ -175,6 +188,11 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       sentimentScore: 0,
       eventRiskHigh: 0,
       upcomingEvents: 0,
+      setupsQualified: 0,
+      aPlusSetups: 0,
+      aSetups: 0,
+      candidateSetups: 0,
+      droppedSetups: 0,
       errors,
     };
   }
