@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { LiveRefresh } from "@/components/dashboard/LiveRefresh";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -14,6 +15,7 @@ function fmtDate(d: Date): string {
 }
 
 export default async function ReplayPage() {
+  const renderedAt = Date.now();
   const sessions = await prisma.replaySession.findMany({
     orderBy: { createdAt: "desc" },
     take: 20,
@@ -28,7 +30,10 @@ export default async function ReplayPage() {
             Re-score historical decisions against alternative weight configurations to preview upgrades safely
           </p>
         </div>
-        <Link href="/dashboard/brain" className="text-sm text-muted hover:text-foreground underline underline-offset-4">← Brain</Link>
+        <div className="flex items-center gap-3">
+          <LiveRefresh serverTimestamp={renderedAt} />
+          <Link href="/dashboard/brain" className="text-sm text-muted hover:text-foreground underline underline-offset-4">← Brain</Link>
+        </div>
       </div>
 
       <section className="rounded-lg border border-border bg-card p-5">

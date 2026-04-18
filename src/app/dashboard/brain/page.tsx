@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { Suspense } from "react";
 import Link from "next/link";
 import { RefreshButton } from "./RefreshButton";
+import { LiveRefresh } from "@/components/dashboard/LiveRefresh";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -15,7 +16,8 @@ function timeAgo(date: Date): string {
 }
 
 export default async function BrainStatusPage() {
-  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const renderedAt = Date.now();
+  const since24h = new Date(renderedAt - 24 * 60 * 60 * 1000);
 
   const [
     latestCycle,
@@ -121,7 +123,8 @@ export default async function BrainStatusPage() {
             24/7 multi-asset scanning engine · every 2 min · Vercel Cron
           </p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
+          <LiveRefresh serverTimestamp={renderedAt} />
           <Link
             href="/dashboard/brain/performance"
             className="text-sm text-muted hover:text-foreground underline underline-offset-4"

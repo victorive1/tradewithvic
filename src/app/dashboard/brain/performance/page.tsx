@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { LiveRefresh } from "@/components/dashboard/LiveRefresh";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -54,7 +55,8 @@ function AggRow({ label, agg }: { label: string; agg: Agg }) {
 }
 
 export default async function BrainPerformancePage() {
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400_000);
+  const renderedAt = Date.now();
+  const thirtyDaysAgo = new Date(renderedAt - 30 * 86400_000);
 
   const [labeledLogs, recentLabeled, latestReport] = await Promise.all([
     prisma.setupDecisionLog.findMany({
@@ -118,12 +120,15 @@ export default async function BrainPerformancePage() {
             Setup outcomes, win rates, and learning signal · 30-day window
           </p>
         </div>
-        <Link
-          href="/dashboard/brain"
-          className="text-sm text-muted hover:text-foreground underline underline-offset-4"
-        >
-          ← Back to Brain
-        </Link>
+        <div className="flex items-center gap-3">
+          <LiveRefresh serverTimestamp={renderedAt} />
+          <Link
+            href="/dashboard/brain"
+            className="text-sm text-muted hover:text-foreground underline underline-offset-4"
+          >
+            ← Back to Brain
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
