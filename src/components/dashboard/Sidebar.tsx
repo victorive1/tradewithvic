@@ -123,6 +123,7 @@ const navItems = [
       { label: "Settings", href: "/dashboard/settings", icon: "risk" },
       { label: "Billing & Plans", href: "/dashboard/billing", icon: "watchlist" },
       { label: "Payments", href: "/dashboard/payments", icon: "strength" },
+      { label: "Admin Billing", href: "/dashboard/admin/billing", icon: "risk" },
     ],
   },
 ];
