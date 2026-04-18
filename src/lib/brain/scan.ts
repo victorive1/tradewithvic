@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { fetchAllQuotes } from "@/lib/market-data";
 import { ensureInstruments } from "@/lib/brain/instruments";
+import { fetchCandleSet } from "@/lib/brain/candles";
 
 export interface ScanCycleResult {
   scanCycleId: string;
@@ -9,6 +10,7 @@ export interface ScanCycleResult {
   instrumentsScanned: number;
   quotesFetched: number;
   snapshotsWritten: number;
+  candlesWritten: number;
   errors: string[];
 }
 
@@ -47,6 +49,11 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       errors.push("No quotes returned from TwelveData");
     }
 
+    const candleResult = await fetchCandleSet(symbolToId);
+    for (const r of candleResult.results) {
+      if (r.error) errors.push(`${r.symbol} ${r.timeframe}: ${r.error}`);
+    }
+
     const durationMs = Date.now() - startedAt;
     await prisma.scanCycle.update({
       where: { id: cycle.id },
@@ -56,6 +63,7 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
         durationMs,
         instrumentsScanned: instruments.length,
         quotesFetched: quotes.length,
+        candlesFetched: candleResult.totalWritten,
         errorCount: errors.length,
         errorLogJson: JSON.stringify(errors),
       },
@@ -68,6 +76,7 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       instrumentsScanned: instruments.length,
       quotesFetched: quotes.length,
       snapshotsWritten,
+      candlesWritten: candleResult.totalWritten,
       errors,
     };
   } catch (err: any) {
@@ -93,6 +102,7 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       instrumentsScanned: 0,
       quotesFetched: 0,
       snapshotsWritten: 0,
+      candlesWritten: 0,
       errors,
     };
   }
