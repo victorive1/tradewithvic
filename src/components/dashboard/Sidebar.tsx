@@ -122,6 +122,7 @@ const navItems = [
       { label: "Alerts", href: "/dashboard/alerts", icon: "alerts" },
       { label: "Settings", href: "/dashboard/settings", icon: "risk" },
       { label: "Billing & Plans", href: "/dashboard/billing", icon: "watchlist" },
+      { label: "Payments", href: "/dashboard/payments", icon: "strength" },
     ],
   },
 ];

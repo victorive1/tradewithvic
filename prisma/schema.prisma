@@ -526,6 +526,161 @@ model EventRiskSnapshot {
   @@index([computedAt])
 }
 
+// ==================== BILLING & PAYMENTS ====================
+
+model BillingAccount {
+  id               String   @id @default(cuid())
+  userKey          String   @unique
+  currency         String   @default("USD")
+  availableBalance Float    @default(0)
+  pendingBalance   Float    @default(0)
+  lockedBalance    Float    @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  paymentMethods PaymentMethod[]
+  deposits       DepositRequest[]
+  withdrawals    WithdrawalRequest[]
+  transactions   BillingTransaction[]
+
+  @@index([createdAt])
+}
+
+model PaymentMethod {
+  id                 String   @id @default(cuid())
+  billingAccountId   String
+  methodType         String   // card | bank | wallet
+  processorName      String   // stripe | paddle | coinbase | manual
+  processorTokenRef  String   // NEVER store raw PAN — only processor token
+  brand              String?
+  last4              String?
+  expiryMonth        Int?
+  expiryYear         Int?
+  nickname           String?
+  isDefault          Boolean  @default(false)
+  isActive           Boolean  @default(true)
+  lastUsedAt         DateTime?
+  createdAt          DateTime @default(now())
+
+  billingAccount BillingAccount @relation(fields: [billingAccountId], references: [id], onDelete: Cascade)
+
+  @@index([billingAccountId, isActive])
+}
+
+model CryptoDestination {
+  id                  String   @id @default(cuid())
+  ownerScope          String   // user | business
+  ownerKey            String?  // userKey for user scope, null for business
+  currencyCode        String   // BTC | ETH | USDC | USDT | ...
+  destinationType     String   // wallet_address | processor_account
+  walletAddressRef    String?
+  processorAccountRef String?
+  network             String?  // bitcoin | ethereum | polygon | solana | ...
+  nickname            String?
+  isDefault           Boolean  @default(false)
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+
+  @@index([ownerScope, ownerKey, currencyCode])
+}
+
+model DepositRequest {
+  id                 String   @id @default(cuid())
+  billingAccountId   String
+  userKey            String
+  amount             Float
+  currency           String   @default("USD")
+  methodType         String   // card | crypto
+  methodId           String?
+  processorChargeRef String?
+  networkHash        String?
+  status             String   @default("initiated") // initiated | pending | completed | failed | reversed | under_review | cancelled
+  statusReason       String?
+  feeAmount          Float    @default(0)
+  netAmount          Float?
+  expiresAt          DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  billingAccount BillingAccount @relation(fields: [billingAccountId], references: [id], onDelete: Cascade)
+
+  @@index([billingAccountId, status])
+  @@index([userKey])
+  @@index([createdAt])
+}
+
+model WithdrawalRequest {
+  id                String   @id @default(cuid())
+  billingAccountId  String
+  userKey           String
+  amount            Float
+  currency          String   @default("USD")
+  destinationType   String   // bank | crypto
+  destinationRef    String
+  destinationLabel  String?
+  feeAmount         Float    @default(0)
+  netAmount         Float?
+  status            String   @default("initiated") // initiated | pending | completed | failed | reversed | under_review | cancelled
+  statusReason      String?
+  reviewNotes       String?
+  processedAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  billingAccount BillingAccount @relation(fields: [billingAccountId], references: [id], onDelete: Cascade)
+
+  @@index([billingAccountId, status])
+  @@index([status, createdAt])
+}
+
+model BillingTransaction {
+  id               String   @id @default(cuid())
+  billingAccountId String
+  userKey          String
+  transactionType  String   // deposit | withdrawal | fee | refund | adjustment
+  referenceType    String?  // deposit_request | withdrawal_request | manual
+  referenceId      String?
+  amount           Float
+  currency         String   @default("USD")
+  status           String   @default("completed")
+  description      String?
+  metadataJson     String   @default("{}")
+  createdAt        DateTime @default(now())
+
+  billingAccount BillingAccount @relation(fields: [billingAccountId], references: [id], onDelete: Cascade)
+
+  @@index([billingAccountId, createdAt])
+  @@index([transactionType])
+}
+
+model BillingWebhookEvent {
+  id              String   @id @default(cuid())
+  providerName    String
+  eventType       String
+  eventRef        String
+  payloadJson     String
+  processingStatus String  @default("pending") // pending | processed | failed | ignored
+  processingError String?
+  receivedAt      DateTime @default(now())
+  processedAt     DateTime?
+
+  @@unique([providerName, eventRef])
+  @@index([providerName, processingStatus])
+  @@index([receivedAt])
+}
+
+model BillingAdminSetting {
+  id              String   @id @default(cuid())
+  paymentMethodKey String  @unique
+  isEnabled       Boolean  @default(true)
+  minAmount       Float    @default(10)
+  maxAmount       Float    @default(100000)
+  feeRuleJson     String   @default("{}")
+  reviewRuleJson  String   @default("{}")
+  updatedAt       DateTime @updatedAt
+}
+
 // ==================== COMMUNITY (Phase 1) ====================
 
 model CommunityProfile {
