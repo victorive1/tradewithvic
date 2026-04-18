@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { Suspense } from "react";
+import { RefreshButton } from "./RefreshButton";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -70,16 +72,21 @@ export default async function BrainStatusPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Market Core Brain</h1>
           <p className="text-sm text-muted mt-1">
             24/7 multi-asset scanning engine · every 2 min · Vercel Cron
           </p>
         </div>
-        <div className={`flex items-center gap-2 ${healthColor}`}>
-          <span className={`h-2.5 w-2.5 rounded-full ${healthDot}`} />
-          <span className="text-sm font-medium uppercase tracking-wide">{health}</span>
+        <div className="flex items-center gap-4">
+          <Suspense fallback={null}>
+            <RefreshButton />
+          </Suspense>
+          <div className={`flex items-center gap-2 ${healthColor}`}>
+            <span className={`h-2.5 w-2.5 rounded-full ${healthDot}`} />
+            <span className="text-sm font-medium uppercase tracking-wide">{health}</span>
+          </div>
         </div>
       </div>
 
