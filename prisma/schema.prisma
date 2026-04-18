@@ -21,11 +21,11 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts      Account[]
-  sessions      Session[]
-  watchlist     Watchlist[]
-  alerts        Alert[]
-  preferences   UserPreference?
+  accounts    Account[]
+  sessions    Session[]
+  watchlist   Watchlist[]
+  alerts      Alert[]
+  preferences UserPreference?
 }
 
 model Account {
@@ -66,14 +66,14 @@ model VerificationToken {
 // ==================== USER PREFERENCES ====================
 
 model UserPreference {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  favoriteMarkets String   @default("[]")
-  defaultTimeframe String  @default("1h")
-  dashboardLayout String   @default("[]")
-  alertSettings   String   @default("{}")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  favoriteMarkets  String   @default("[]")
+  defaultTimeframe String   @default("1h")
+  dashboardLayout  String   @default("[]")
+  alertSettings    String   @default("{}")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -81,61 +81,61 @@ model UserPreference {
 // ==================== MARKET DATA ====================
 
 model Instrument {
-  id          String @id @default(cuid())
-  symbol      String @unique
-  displayName String
-  category    String
+  id            String  @id @default(cuid())
+  symbol        String  @unique
+  displayName   String
+  category      String
   baseCurrency  String?
   quoteCurrency String?
-  decimalPlaces Int    @default(5)
-  isActive    Boolean @default(true)
-  scanTier    Int     @default(1)
+  decimalPlaces Int     @default(5)
+  isActive      Boolean @default(true)
+  scanTier      Int     @default(1)
 
-  setups      TradeSetup[]
-  alerts      Alert[]
-  snapshots   MarketSnapshot[]
-  candles     Candle[]
+  setups    TradeSetup[]
+  alerts    Alert[]
+  snapshots MarketSnapshot[]
+  candles   Candle[]
 }
 
 // ==================== MARKET BRAIN — SCAN ENGINE ====================
 
 model ScanCycle {
-  id              String    @id @default(cuid())
-  startedAt       DateTime  @default(now())
-  completedAt     DateTime?
-  status          String    @default("running")
-  durationMs      Int?
-  instrumentsScanned Int    @default(0)
-  quotesFetched   Int       @default(0)
-  candlesFetched  Int       @default(0)
-  setupsGenerated Int       @default(0)
-  errorCount      Int       @default(0)
-  errorLogJson    String    @default("[]")
-  triggeredBy     String    @default("vercel-cron")
+  id                 String    @id @default(cuid())
+  startedAt          DateTime  @default(now())
+  completedAt        DateTime?
+  status             String    @default("running")
+  durationMs         Int?
+  instrumentsScanned Int       @default(0)
+  quotesFetched      Int       @default(0)
+  candlesFetched     Int       @default(0)
+  setupsGenerated    Int       @default(0)
+  errorCount         Int       @default(0)
+  errorLogJson       String    @default("[]")
+  triggeredBy        String    @default("vercel-cron")
 
-  snapshots       MarketSnapshot[]
+  snapshots MarketSnapshot[]
 
   @@index([startedAt])
   @@index([status])
 }
 
 model MarketSnapshot {
-  id             String   @id @default(cuid())
-  scanCycleId    String
-  instrumentId   String?
-  symbol         String
-  capturedAt     DateTime @default(now())
-  price          Float
-  change         Float
-  changePercent  Float
-  high           Float
-  low            Float
-  open           Float
-  previousClose  Float
+  id              String   @id @default(cuid())
+  scanCycleId     String
+  instrumentId    String?
+  symbol          String
+  capturedAt      DateTime @default(now())
+  price           Float
+  change          Float
+  changePercent   Float
+  high            Float
+  low             Float
+  open            Float
+  previousClose   Float
   sourceTimestamp Int?
 
-  scanCycle   ScanCycle   @relation(fields: [scanCycleId], references: [id], onDelete: Cascade)
-  instrument  Instrument? @relation(fields: [instrumentId], references: [id])
+  scanCycle  ScanCycle   @relation(fields: [scanCycleId], references: [id], onDelete: Cascade)
+  instrument Instrument? @relation(fields: [instrumentId], references: [id])
 
   @@index([symbol, capturedAt])
   @@index([scanCycleId])
@@ -143,19 +143,19 @@ model MarketSnapshot {
 }
 
 model Candle {
-  id            String   @id @default(cuid())
-  instrumentId  String?
-  symbol        String
-  timeframe     String
-  openTime      DateTime
-  closeTime     DateTime
-  open          Float
-  high          Float
-  low           Float
-  close         Float
-  volume        Float    @default(0)
-  isClosed      Boolean  @default(true)
-  fetchedAt     DateTime @default(now())
+  id           String   @id @default(cuid())
+  instrumentId String?
+  symbol       String
+  timeframe    String
+  openTime     DateTime
+  closeTime    DateTime
+  open         Float
+  high         Float
+  low          Float
+  close        Float
+  volume       Float    @default(0)
+  isClosed     Boolean  @default(true)
+  fetchedAt    DateTime @default(now())
 
   instrument Instrument? @relation(fields: [instrumentId], references: [id])
 
@@ -167,23 +167,23 @@ model Candle {
 // ==================== MARKET BRAIN — STRUCTURE ENGINE ====================
 
 model StructureState {
-  id                String   @id @default(cuid())
-  symbol            String
-  timeframe         String
-  bias              String   // bullish | bearish | range
-  lastSwingHigh     Float?
-  lastSwingHighTime DateTime?
-  priorSwingHigh    Float?
+  id                 String    @id @default(cuid())
+  symbol             String
+  timeframe          String
+  bias               String // bullish | bearish | range
+  lastSwingHigh      Float?
+  lastSwingHighTime  DateTime?
+  priorSwingHigh     Float?
   priorSwingHighTime DateTime?
-  lastSwingLow      Float?
-  lastSwingLowTime  DateTime?
-  priorSwingLow     Float?
-  priorSwingLowTime DateTime?
-  lastSwingsJson    String   @default("[]")
-  candlesAnalyzed   Int      @default(0)
-  lastEventType     String?
-  lastEventAt       DateTime?
-  updatedAt         DateTime @updatedAt
+  lastSwingLow       Float?
+  lastSwingLowTime   DateTime?
+  priorSwingLow      Float?
+  priorSwingLowTime  DateTime?
+  lastSwingsJson     String    @default("[]")
+  candlesAnalyzed    Int       @default(0)
+  lastEventType      String?
+  lastEventAt        DateTime?
+  updatedAt          DateTime  @updatedAt
 
   @@unique([symbol, timeframe])
   @@index([updatedAt])
@@ -191,17 +191,17 @@ model StructureState {
 }
 
 model StructureEvent {
-  id              String   @id @default(cuid())
-  symbol          String
-  timeframe       String
-  eventType       String   // bos_bullish | bos_bearish | choch_bullish | choch_bearish
-  detectedAt      DateTime @default(now())
-  priceLevel      Float
+  id               String   @id @default(cuid())
+  symbol           String
+  timeframe        String
+  eventType        String // bos_bullish | bos_bearish | choch_bullish | choch_bearish
+  detectedAt       DateTime @default(now())
+  priceLevel       Float
   brokerCandleTime DateTime
-  brokerClose     Float
-  priorBias       String
-  newBias         String
-  scanCycleId     String?
+  brokerClose      Float
+  priorBias        String
+  newBias          String
+  scanCycleId      String?
 
   @@index([symbol, timeframe, detectedAt])
   @@index([detectedAt])
@@ -211,17 +211,17 @@ model StructureEvent {
 // ==================== MARKET BRAIN — LIQUIDITY ENGINE ====================
 
 model LiquidityLevel {
-  id          String   @id @default(cuid())
-  symbol      String
-  timeframe   String
-  levelType   String   // equal_high | equal_low | prev_day_high | prev_day_low | prev_week_high | prev_week_low | session_high | session_low
-  price       Float
-  firstSeenAt DateTime @default(now())
-  lastSeenAt  DateTime @default(now())
-  status      String   @default("active") // active | swept | expired
-  strength    Int      @default(1)        // number of touches for equal H/L, 1 for single levels
+  id           String   @id @default(cuid())
+  symbol       String
+  timeframe    String
+  levelType    String // equal_high | equal_low | prev_day_high | prev_day_low | prev_week_high | prev_week_low | session_high | session_low
+  price        Float
+  firstSeenAt  DateTime @default(now())
+  lastSeenAt   DateTime @default(now())
+  status       String   @default("active") // active | swept | expired
+  strength     Int      @default(1) // number of touches for equal H/L, 1 for single levels
   metadataJson String   @default("{}")
-  updatedAt   DateTime @updatedAt
+  updatedAt    DateTime @updatedAt
 
   @@unique([symbol, timeframe, levelType, price])
   @@index([symbol, timeframe, status])
@@ -229,19 +229,19 @@ model LiquidityLevel {
 }
 
 model LiquidityEvent {
-  id              String   @id @default(cuid())
-  symbol          String
-  timeframe       String
-  levelType       String
-  levelPrice      Float
-  sweepCandleTime DateTime
-  sweepHigh       Float
-  sweepLow        Float
-  sweepClose      Float
-  sweepDirection  String   // bullish_sweep | bearish_sweep
-  reversalStrength Float   // how far the close reversed from the wick, in ATR units or absolute
-  detectedAt      DateTime @default(now())
-  scanCycleId     String?
+  id               String   @id @default(cuid())
+  symbol           String
+  timeframe        String
+  levelType        String
+  levelPrice       Float
+  sweepCandleTime  DateTime
+  sweepHigh        Float
+  sweepLow         Float
+  sweepClose       Float
+  sweepDirection   String // bullish_sweep | bearish_sweep
+  reversalStrength Float // how far the close reversed from the wick, in ATR units or absolute
+  detectedAt       DateTime @default(now())
+  scanCycleId      String?
 
   @@unique([symbol, timeframe, levelType, levelPrice, sweepCandleTime])
   @@index([symbol, timeframe, detectedAt])
@@ -252,51 +252,51 @@ model LiquidityEvent {
 // ==================== MARKET BRAIN — EXECUTION ENGINE (Layer 5) ====================
 
 model ExecutionAccount {
-  id                     String   @id @default(cuid())
-  name                   String   @unique @default("paper-default")
-  mode                   String   @default("paper") // paper | live
-  baseCurrency           String   @default("USD")
-  startingBalance        Float    @default(10000)
-  currentBalance         Float    @default(10000)
-  equityHigh             Float    @default(10000)
-  equityLow              Float    @default(10000)
-  totalRealizedPnl       Float    @default(0)
-  totalUnrealizedPnl     Float    @default(0)
-  totalClosedTrades      Int      @default(0)
-  totalWins              Int      @default(0)
-  totalLosses            Int      @default(0)
-  dailyPnl               Float    @default(0)
-  dailyPnlResetAt        DateTime?
-  riskPerTradePct        Float    @default(1.0)
-  maxConcurrentPositions Int      @default(5)
-  maxDailyLossPct        Float    @default(3.0)
-  allowedGrades          String   @default("[\"A+\",\"A\"]")
-  maxTotalRiskPct        Float    @default(5.0)   // max % of balance risked across all open positions
-  maxSameDirectionPositions  Int  @default(3)    // no more than N positions all long or all short
-  maxSameAssetClassPositions Int  @default(3)    // e.g., max 3 forex positions concurrently
-  maxSameStrategyPositions   Int  @default(2)    // max 2 of same setup family (e.g., 2 sweep_reversals)
-  maxCurrencyExposurePct     Float @default(60)  // max % of risk sitting on one currency
-  weeklyLossLimitPct     Float    @default(8.0)
-  weeklyPnl              Float    @default(0)
-  weeklyPnlResetAt       DateTime?
-  smartExitMode          String   @default("balanced") // off | conservative | balanced | aggressive
-  minConfidenceScore     Int      @default(65)
-  minRiskReward          Float    @default(1.2)
-  selectedSymbolsJson    String   @default("[]")   // empty = all CANDLE_SYMBOLS
-  allowedSessionsJson    String   @default("[\"london\",\"newyork\",\"overlap\",\"crypto_24_7\"]")
-  newsFilterEnabled      Boolean  @default(true)
-  fridayCloseProtection  Boolean  @default(true)
-  executionMode          String   @default("paper") // paper | mt_shadow | mt_live
-  orderPlacementMode     String   @default("pending_limit") // instant_market | pending_limit | hybrid
-  pendingOrderTtlMinutes Int      @default(240)
-  pendingEntryTolerancePct Float  @default(0.08) // how close price must come to entry to fill (% of entry)
-  selectedMtAccountIdsJson String @default("[]")    // MT account IDs from localStorage (future live routing)
-  autoExecuteEnabled     Boolean  @default(true)
-  killSwitchEngaged      Boolean  @default(false)
-  isActive               Boolean  @default(true)
-  lastCycleAt            DateTime?
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  id                         String    @id @default(cuid())
+  name                       String    @unique @default("paper-default")
+  mode                       String    @default("paper") // paper | live
+  baseCurrency               String    @default("USD")
+  startingBalance            Float     @default(10000)
+  currentBalance             Float     @default(10000)
+  equityHigh                 Float     @default(10000)
+  equityLow                  Float     @default(10000)
+  totalRealizedPnl           Float     @default(0)
+  totalUnrealizedPnl         Float     @default(0)
+  totalClosedTrades          Int       @default(0)
+  totalWins                  Int       @default(0)
+  totalLosses                Int       @default(0)
+  dailyPnl                   Float     @default(0)
+  dailyPnlResetAt            DateTime?
+  riskPerTradePct            Float     @default(1.0)
+  maxConcurrentPositions     Int       @default(5)
+  maxDailyLossPct            Float     @default(3.0)
+  allowedGrades              String    @default("[\"A+\",\"A\"]")
+  maxTotalRiskPct            Float     @default(5.0) // max % of balance risked across all open positions
+  maxSameDirectionPositions  Int       @default(3) // no more than N positions all long or all short
+  maxSameAssetClassPositions Int       @default(3) // e.g., max 3 forex positions concurrently
+  maxSameStrategyPositions   Int       @default(2) // max 2 of same setup family (e.g., 2 sweep_reversals)
+  maxCurrencyExposurePct     Float     @default(60) // max % of risk sitting on one currency
+  weeklyLossLimitPct         Float     @default(8.0)
+  weeklyPnl                  Float     @default(0)
+  weeklyPnlResetAt           DateTime?
+  smartExitMode              String    @default("balanced") // off | conservative | balanced | aggressive
+  minConfidenceScore         Int       @default(65)
+  minRiskReward              Float     @default(1.2)
+  selectedSymbolsJson        String    @default("[]") // empty = all CANDLE_SYMBOLS
+  allowedSessionsJson        String    @default("[\"london\",\"newyork\",\"overlap\",\"crypto_24_7\"]")
+  newsFilterEnabled          Boolean   @default(true)
+  fridayCloseProtection      Boolean   @default(true)
+  executionMode              String    @default("paper") // paper | mt_shadow | mt_live
+  orderPlacementMode         String    @default("pending_limit") // instant_market | pending_limit | hybrid
+  pendingOrderTtlMinutes     Int       @default(240)
+  pendingEntryTolerancePct   Float     @default(0.08) // how close price must come to entry to fill (% of entry)
+  selectedMtAccountIdsJson   String    @default("[]") // MT account IDs from localStorage (future live routing)
+  autoExecuteEnabled         Boolean   @default(true)
+  killSwitchEngaged          Boolean   @default(false)
+  isActive                   Boolean   @default(true)
+  lastCycleAt                DateTime?
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
 
   orders    ExecutionOrder[]
   positions ExecutionPosition[]
@@ -306,14 +306,14 @@ model ExecutionAccount {
 }
 
 model ExecutionOrder {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   accountId       String
-  setupId         String   @unique
+  setupId         String    @unique
   decisionLogId   String?
   symbol          String
   timeframe       String
   direction       String
-  orderType       String   @default("instant_market") // instant_market | pending_limit
+  orderType       String    @default("instant_market") // instant_market | pending_limit
   entry           Float
   stopLoss        Float
   takeProfit1     Float
@@ -323,14 +323,14 @@ model ExecutionOrder {
   sizeUnits       Float
   grade           String
   confidenceScore Int
-  status          String   @default("queued") // pending | queued | filled | cancelled | rejected
+  status          String    @default("queued") // pending | queued | filled | cancelled | rejected
   rejectReason    String?
   cancelReason    String?
   validUntil      DateTime?
   filledAt        DateTime?
   filledPrice     Float?
   cancelledAt     DateTime?
-  createdAt       DateTime @default(now())
+  createdAt       DateTime  @default(now())
 
   account  ExecutionAccount   @relation(fields: [accountId], references: [id])
   position ExecutionPosition?
@@ -420,15 +420,15 @@ model ExecutionTrade {
 }
 
 model ExecutionEvent {
-  id          String   @id @default(cuid())
-  positionId  String
-  eventType   String   // opened | sl_hit | tp1_hit | tp2_hit | tp3_hit | partial_closed | sl_moved_breakeven | sl_moved_trail | thesis_change | closed_manual | closed_thesis
-  price       Float?
-  fromValue   String?
-  toValue     String?
-  reason      String?
-  metadataJson String  @default("{}")
-  createdAt   DateTime @default(now())
+  id           String   @id @default(cuid())
+  positionId   String
+  eventType    String // opened | sl_hit | tp1_hit | tp2_hit | tp3_hit | partial_closed | sl_moved_breakeven | sl_moved_trail | thesis_change | closed_manual | closed_thesis
+  price        Float?
+  fromValue    String?
+  toValue      String?
+  reason       String?
+  metadataJson String   @default("{}")
+  createdAt    DateTime @default(now())
 
   position ExecutionPosition @relation(fields: [positionId], references: [id], onDelete: Cascade)
 
@@ -465,23 +465,23 @@ model PortfolioSnapshot {
   weeklyPnl             Float
   longCount             Int      @default(0)
   shortCount            Int      @default(0)
-  categoryBreakdownJson String   @default("{}")  // { forex: 2, crypto: 1, metals: 0, ... }
-  strategyBreakdownJson String   @default("{}")  // { sweep_reversal: 2, breakout: 1, ... }
-  currencyExposureJson  String   @default("{}")  // { USD: 50, EUR: 20, ... } — % of total risk
+  categoryBreakdownJson String   @default("{}") // { forex: 2, crypto: 1, metals: 0, ... }
+  strategyBreakdownJson String   @default("{}") // { sweep_reversal: 2, breakout: 1, ... }
+  currencyExposureJson  String   @default("{}") // { USD: 50, EUR: 20, ... } — % of total risk
   drawdownPct           Float    @default(0)
 
   @@index([accountId, capturedAt])
 }
 
 model PortfolioDecisionLog {
-  id          String   @id @default(cuid())
-  accountId   String
-  setupId     String
-  decision    String   // allow | reduce | reject
-  reasons     String   @default("[]")
+  id           String   @id @default(cuid())
+  accountId    String
+  setupId      String
+  decision     String // allow | reduce | reject
+  reasons      String   @default("[]")
   originalRisk Float
   adjustedRisk Float?
-  createdAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
 
   @@index([setupId])
   @@index([createdAt])
@@ -491,19 +491,19 @@ model PortfolioDecisionLog {
 // ==================== MARKET BRAIN — FUNDAMENTAL ENGINE ====================
 
 model FundamentalEvent {
-  id              String   @id @default(cuid())
-  eventTime       DateTime
-  country         String
-  eventName       String
-  impact          String   // high | medium | low
-  forecast        String?
-  previous        String?
-  actual          String?
-  affectedCurrenciesJson String @default("[]")
-  affectedSymbolsJson    String @default("[]")
-  source          String   @default("manual")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                     String   @id @default(cuid())
+  eventTime              DateTime
+  country                String
+  eventName              String
+  impact                 String // high | medium | low
+  forecast               String?
+  previous               String?
+  actual                 String?
+  affectedCurrenciesJson String   @default("[]")
+  affectedSymbolsJson    String   @default("[]")
+  source                 String   @default("manual")
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   @@unique([eventTime, country, eventName])
   @@index([eventTime])
@@ -511,15 +511,15 @@ model FundamentalEvent {
 }
 
 model EventRiskSnapshot {
-  id              String   @id @default(cuid())
-  symbol          String
-  riskLevel       String   // none | low | medium | high
-  nearestEventId  String?
-  nearestEventName String?
+  id                 String   @id @default(cuid())
+  symbol             String
+  riskLevel          String // none | low | medium | high
+  nearestEventId     String?
+  nearestEventName   String?
   nearestEventImpact String?
-  minutesToEvent  Int?
-  computedAt      DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  minutesToEvent     Int?
+  computedAt         DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   @@unique([symbol])
   @@index([riskLevel])
@@ -548,20 +548,20 @@ model BillingAccount {
 }
 
 model PaymentMethod {
-  id                 String   @id @default(cuid())
-  billingAccountId   String
-  methodType         String   // card | bank | wallet
-  processorName      String   // stripe | paddle | coinbase | manual
-  processorTokenRef  String   // NEVER store raw PAN — only processor token
-  brand              String?
-  last4              String?
-  expiryMonth        Int?
-  expiryYear         Int?
-  nickname           String?
-  isDefault          Boolean  @default(false)
-  isActive           Boolean  @default(true)
-  lastUsedAt         DateTime?
-  createdAt          DateTime @default(now())
+  id                String    @id @default(cuid())
+  billingAccountId  String
+  methodType        String // card | bank | wallet
+  processorName     String // stripe | paddle | coinbase | manual
+  processorTokenRef String // NEVER store raw PAN — only processor token
+  brand             String?
+  last4             String?
+  expiryMonth       Int?
+  expiryYear        Int?
+  nickname          String?
+  isDefault         Boolean   @default(false)
+  isActive          Boolean   @default(true)
+  lastUsedAt        DateTime?
+  createdAt         DateTime  @default(now())
 
   billingAccount BillingAccount @relation(fields: [billingAccountId], references: [id], onDelete: Cascade)
 
@@ -570,13 +570,13 @@ model PaymentMethod {
 
 model CryptoDestination {
   id                  String   @id @default(cuid())
-  ownerScope          String   // user | business
-  ownerKey            String?  // userKey for user scope, null for business
-  currencyCode        String   // BTC | ETH | USDC | USDT | ...
-  destinationType     String   // wallet_address | processor_account
+  ownerScope          String // user | business
+  ownerKey            String? // userKey for user scope, null for business
+  currencyCode        String // BTC | ETH | USDC | USDT | ...
+  destinationType     String // wallet_address | processor_account
   walletAddressRef    String?
   processorAccountRef String?
-  network             String?  // bitcoin | ethereum | polygon | solana | ...
+  network             String? // bitcoin | ethereum | polygon | solana | ...
   nickname            String?
   isDefault           Boolean  @default(false)
   isActive            Boolean  @default(true)
@@ -586,23 +586,23 @@ model CryptoDestination {
 }
 
 model DepositRequest {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   billingAccountId   String
   userKey            String
   amount             Float
-  currency           String   @default("USD")
-  methodType         String   // card | crypto
+  currency           String    @default("USD")
+  methodType         String // card | crypto
   methodId           String?
   processorChargeRef String?
   networkHash        String?
-  status             String   @default("initiated") // initiated | pending | completed | failed | reversed | under_review | cancelled
+  status             String    @default("initiated") // initiated | pending | completed | failed | reversed | under_review | cancelled
   statusReason       String?
-  feeAmount          Float    @default(0)
+  feeAmount          Float     @default(0)
   netAmount          Float?
   expiresAt          DateTime?
   completedAt        DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   billingAccount BillingAccount @relation(fields: [billingAccountId], references: [id], onDelete: Cascade)
 
@@ -612,22 +612,22 @@ model DepositRequest {
 }
 
 model WithdrawalRequest {
-  id                String   @id @default(cuid())
-  billingAccountId  String
-  userKey           String
-  amount            Float
-  currency          String   @default("USD")
-  destinationType   String   // bank | crypto
-  destinationRef    String
-  destinationLabel  String?
-  feeAmount         Float    @default(0)
-  netAmount         Float?
-  status            String   @default("initiated") // initiated | pending | completed | failed | reversed | under_review | cancelled
-  statusReason      String?
-  reviewNotes       String?
-  processedAt       DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id               String    @id @default(cuid())
+  billingAccountId String
+  userKey          String
+  amount           Float
+  currency         String    @default("USD")
+  destinationType  String // bank | crypto
+  destinationRef   String
+  destinationLabel String?
+  feeAmount        Float     @default(0)
+  netAmount        Float?
+  status           String    @default("initiated") // initiated | pending | completed | failed | reversed | under_review | cancelled
+  statusReason     String?
+  reviewNotes      String?
+  processedAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   billingAccount BillingAccount @relation(fields: [billingAccountId], references: [id], onDelete: Cascade)
 
@@ -639,8 +639,8 @@ model BillingTransaction {
   id               String   @id @default(cuid())
   billingAccountId String
   userKey          String
-  transactionType  String   // deposit | withdrawal | fee | refund | adjustment
-  referenceType    String?  // deposit_request | withdrawal_request | manual
+  transactionType  String // deposit | withdrawal | fee | refund | adjustment
+  referenceType    String? // deposit_request | withdrawal_request | manual
   referenceId      String?
   amount           Float
   currency         String   @default("USD")
@@ -656,15 +656,15 @@ model BillingTransaction {
 }
 
 model BillingWebhookEvent {
-  id              String   @id @default(cuid())
-  providerName    String
-  eventType       String
-  eventRef        String
-  payloadJson     String
-  processingStatus String  @default("pending") // pending | processed | failed | ignored
-  processingError String?
-  receivedAt      DateTime @default(now())
-  processedAt     DateTime?
+  id               String    @id @default(cuid())
+  providerName     String
+  eventType        String
+  eventRef         String
+  payloadJson      String
+  processingStatus String    @default("pending") // pending | processed | failed | ignored
+  processingError  String?
+  receivedAt       DateTime  @default(now())
+  processedAt      DateTime?
 
   @@unique([providerName, eventRef])
   @@index([providerName, processingStatus])
@@ -672,38 +672,38 @@ model BillingWebhookEvent {
 }
 
 model BillingAdminSetting {
-  id              String   @id @default(cuid())
-  paymentMethodKey String  @unique
-  isEnabled       Boolean  @default(true)
-  minAmount       Float    @default(10)
-  maxAmount       Float    @default(100000)
-  feeRuleJson     String   @default("{}")
-  reviewRuleJson  String   @default("{}")
-  updatedAt       DateTime @updatedAt
+  id               String   @id @default(cuid())
+  paymentMethodKey String   @unique
+  isEnabled        Boolean  @default(true)
+  minAmount        Float    @default(10)
+  maxAmount        Float    @default(100000)
+  feeRuleJson      String   @default("{}")
+  reviewRuleJson   String   @default("{}")
+  updatedAt        DateTime @updatedAt
 }
 
 // ==================== COMMUNITY (Phase 1) ====================
 
 model CommunityProfile {
-  id                   String   @id @default(cuid())
-  userKey              String   @unique
-  username             String   @unique
-  displayName          String
-  bio                  String?
-  avatarEmoji          String   @default("👤")
-  favoriteMarketsJson  String   @default("[]")
-  tradingStyle         String?
-  followerCount        Int      @default(0)
-  followingCount       Int      @default(0)
-  postCount            Int      @default(0)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  userKey             String   @unique
+  username            String   @unique
+  displayName         String
+  bio                 String?
+  avatarEmoji         String   @default("👤")
+  favoriteMarketsJson String   @default("[]")
+  tradingStyle        String?
+  followerCount       Int      @default(0)
+  followingCount      Int      @default(0)
+  postCount           Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
-  posts       CommunityPost[]     @relation("authored")
-  comments    CommunityComment[]
-  reactions   CommunityReaction[]
-  followers   CommunityFollow[]   @relation("followTarget")
-  following   CommunityFollow[]   @relation("followOrigin")
+  posts     CommunityPost[]     @relation("authored")
+  comments  CommunityComment[]
+  reactions CommunityReaction[]
+  followers CommunityFollow[]   @relation("followTarget")
+  following CommunityFollow[]   @relation("followOrigin")
 
   @@index([createdAt])
 }
@@ -755,9 +755,9 @@ model CommunityComment {
   body      String
   createdAt DateTime @default(now())
 
-  post    CommunityPost     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  author  CommunityProfile  @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  parent  CommunityComment? @relation("replies", fields: [parentId], references: [id], onDelete: SetNull)
+  post    CommunityPost      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author  CommunityProfile   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent  CommunityComment?  @relation("replies", fields: [parentId], references: [id], onDelete: SetNull)
   replies CommunityComment[] @relation("replies")
 
   @@index([postId, createdAt])
@@ -781,17 +781,17 @@ model CommunityReaction {
 // ==================== MARKET BRAIN — SIMULATION & REPLAY (Layer 9) ====================
 
 model ReplaySession {
-  id                  String   @id @default(cuid())
-  label               String
-  windowStart         DateTime
-  windowEnd           DateTime
-  weightsOverrideJson String   @default("{}")
-  decisionCount       Int      @default(0)
-  baselineMetricsJson String   @default("{}")
-  simulatedMetricsJson String  @default("{}")
-  deltaJson           String   @default("{}")
-  createdAt           DateTime @default(now())
-  notes               String?
+  id                   String   @id @default(cuid())
+  label                String
+  windowStart          DateTime
+  windowEnd            DateTime
+  weightsOverrideJson  String   @default("{}")
+  decisionCount        Int      @default(0)
+  baselineMetricsJson  String   @default("{}")
+  simulatedMetricsJson String   @default("{}")
+  deltaJson            String   @default("{}")
+  createdAt            DateTime @default(now())
+  notes                String?
 
   @@index([createdAt])
 }
@@ -799,19 +799,19 @@ model ReplaySession {
 // ==================== MARKET BRAIN — REGIME ENGINE (Layer 7) ====================
 
 model RegimeSnapshot {
-  id                String   @id @default(cuid())
-  symbol            String
-  timeframe         String
-  structureRegime   String   // trending | ranging | compression | expansion | transitioning
-  volatilityRegime  String   // low | normal | high | spike
-  trendStrength     String   // none | weak | moderate | strong
-  directionalBias   String   // bullish | bearish | neutral
-  bbWidth           Float?
-  atrPercent        Float?
-  unstable          Boolean  @default(false)
-  unstableReasons   String   @default("[]")
-  computedAt        DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id               String   @id @default(cuid())
+  symbol           String
+  timeframe        String
+  structureRegime  String // trending | ranging | compression | expansion | transitioning
+  volatilityRegime String // low | normal | high | spike
+  trendStrength    String // none | weak | moderate | strong
+  directionalBias  String // bullish | bearish | neutral
+  bbWidth          Float?
+  atrPercent       Float?
+  unstable         Boolean  @default(false)
+  unstableReasons  String   @default("[]")
+  computedAt       DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@unique([symbol, timeframe])
   @@index([structureRegime])
@@ -820,15 +820,15 @@ model RegimeSnapshot {
 }
 
 model MacroRegimeSnapshot {
-  id              String   @id @default(cuid())
-  capturedAt      DateTime @default(now())
-  macroTone       String   // risk_on | risk_off | neutral
-  macroStability  String   // stable | unstable
-  usdRegime       String   // strong | weak | neutral
-  yieldPressure   String   // rising | falling | mixed | unknown
-  dominantTheme   String?
-  reasoning       String
-  reasoningJson   String   @default("[]")
+  id             String   @id @default(cuid())
+  capturedAt     DateTime @default(now())
+  macroTone      String // risk_on | risk_off | neutral
+  macroStability String // stable | unstable
+  usdRegime      String // strong | weak | neutral
+  yieldPressure  String // rising | falling | mixed | unknown
+  dominantTheme  String?
+  reasoning      String
+  reasoningJson  String   @default("[]")
 
   @@index([capturedAt])
 }
@@ -836,19 +836,19 @@ model MacroRegimeSnapshot {
 // ==================== MARKET BRAIN — SENTIMENT ENGINE ====================
 
 model SentimentSnapshot {
-  id          String   @id @default(cuid())
-  scanCycleId String?
-  computedAt  DateTime @default(now())
-  riskTone    String   // risk_on | risk_off | neutral
-  riskScore   Int      // -100 (risk-off) to +100 (risk-on)
-  usdBias     String   // strong | weak | neutral
-  usdScore    Float
-  goldBias    String   // bid | offered | neutral
-  goldChange  Float
-  cryptoBias  String   // bid | offered | neutral
-  cryptoChange Float
-  reasoningJson String  @default("[]")
-  reasoning   String
+  id            String   @id @default(cuid())
+  scanCycleId   String?
+  computedAt    DateTime @default(now())
+  riskTone      String // risk_on | risk_off | neutral
+  riskScore     Int // -100 (risk-off) to +100 (risk-on)
+  usdBias       String // strong | weak | neutral
+  usdScore      Float
+  goldBias      String // bid | offered | neutral
+  goldChange    Float
+  cryptoBias    String // bid | offered | neutral
+  cryptoChange  Float
+  reasoningJson String   @default("[]")
+  reasoning     String
 
   @@index([computedAt])
   @@index([riskTone])
@@ -864,31 +864,31 @@ model IndicatorSnapshot {
   close       Float
   candleCount Int
 
-  ema20       Float?
-  ema50       Float?
-  ema200      Float?
+  ema20  Float?
+  ema50  Float?
+  ema200 Float?
 
-  rsi14       Float?
-  rsiState    String?  // overbought | oversold | neutral
+  rsi14    Float?
+  rsiState String? // overbought | oversold | neutral
 
-  atr14       Float?
-  atrPercent  Float?   // atr as % of close
+  atr14      Float?
+  atrPercent Float? // atr as % of close
 
-  macdLine    Float?
-  macdSignal  Float?
-  macdHist    Float?
+  macdLine   Float?
+  macdSignal Float?
+  macdHist   Float?
 
-  bbUpper     Float?
-  bbMiddle    Float?
-  bbLower     Float?
-  bbWidth     Float?
-  bbPercentB  Float?
+  bbUpper    Float?
+  bbMiddle   Float?
+  bbLower    Float?
+  bbWidth    Float?
+  bbPercentB Float?
 
-  trendBias   String   @default("neutral") // bullish | bearish | neutral
-  momentum    String   @default("neutral") // up | down | flat
+  trendBias String @default("neutral") // bullish | bearish | neutral
+  momentum  String @default("neutral") // up | down | flat
 
-  computedAt  DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  computedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@unique([symbol, timeframe])
   @@index([updatedAt])
@@ -898,7 +898,7 @@ model IndicatorSnapshot {
 // ==================== TRADE SETUPS ====================
 
 model TradeSetup {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   instrumentId    String
   symbol          String
   direction       String
@@ -914,10 +914,10 @@ model TradeSetup {
   qualityGrade    String
   explanation     String?
   invalidation    String?
-  status          String   @default("active")
+  status          String    @default("active")
   validUntil      DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   instrument Instrument @relation(fields: [instrumentId], references: [id])
 
@@ -942,17 +942,17 @@ model Watchlist {
 // ==================== ALERTS ====================
 
 model Alert {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   userId       String
   instrumentId String?
   symbol       String
   alertType    String
   condition    String
   message      String?
-  isTriggered  Boolean  @default(false)
+  isTriggered  Boolean   @default(false)
   triggeredAt  DateTime?
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
 
   user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   instrument Instrument? @relation(fields: [instrumentId], references: [id])
@@ -964,44 +964,44 @@ model Alert {
 // ==================== ADAPTIVE INTELLIGENCE - DECISION LOGGING ====================
 
 model SetupDecisionLog {
-  id                     String   @id @default(cuid())
-  setupId                String?
-  createdAt              DateTime @default(now())
-  symbol                 String
-  timeframe              String
-  session                String
-  marketRegime           String?
-  rulesEngineVersion     String   @default("v1")
-  modelVersionUsed       String?
-  adaptiveConfigVersion  String?
-  direction              String
-  setupType              String
-  rulesScore             Float
-  hybridScore            Float?
-  qualityLabel           String
-  entry                  Float
-  stopLoss               Float
-  takeProfit1            Float
-  takeProfit2            Float?
-  takeProfit3            Float?
-  pairStrengthSpread     Float?
-  alignmentScore         Float?
-  structureScore         Float?
-  momentumScore          Float?
-  entryLocationScore     Float?
-  rrScore                Float?
-  volatilityScore        Float?
-  eventRiskScore         Float?
-  featureVectorJson      String   @default("{}")
-  reasoningJson          String   @default("[]")
-  invalidationRulesJson  String   @default("[]")
-  marketContextJson      String   @default("{}")
-  rawInputSnapshotJson   String   @default("{}")
+  id                    String   @id @default(cuid())
+  setupId               String?
+  createdAt             DateTime @default(now())
+  symbol                String
+  timeframe             String
+  session               String
+  marketRegime          String?
+  rulesEngineVersion    String   @default("v1")
+  modelVersionUsed      String?
+  adaptiveConfigVersion String?
+  direction             String
+  setupType             String
+  rulesScore            Float
+  hybridScore           Float?
+  qualityLabel          String
+  entry                 Float
+  stopLoss              Float
+  takeProfit1           Float
+  takeProfit2           Float?
+  takeProfit3           Float?
+  pairStrengthSpread    Float?
+  alignmentScore        Float?
+  structureScore        Float?
+  momentumScore         Float?
+  entryLocationScore    Float?
+  rrScore               Float?
+  volatilityScore       Float?
+  eventRiskScore        Float?
+  featureVectorJson     String   @default("{}")
+  reasoningJson         String   @default("[]")
+  invalidationRulesJson String   @default("[]")
+  marketContextJson     String   @default("{}")
+  rawInputSnapshotJson  String   @default("{}")
 
-  outcomes               SetupOutcome[]
-  interactions           SetupUserInteraction[]
-  liveScoringLogs        LiveScoringLog[]
-  shadowPredictionLogs   ShadowPredictionLog[]
+  outcomes             SetupOutcome[]
+  interactions         SetupUserInteraction[]
+  liveScoringLogs      LiveScoringLog[]
+  shadowPredictionLogs ShadowPredictionLog[]
 
   @@index([createdAt])
   @@index([symbol, timeframe])
@@ -1011,31 +1011,31 @@ model SetupDecisionLog {
 // ==================== ADAPTIVE INTELLIGENCE - OUTCOMES ====================
 
 model SetupOutcome {
-  id                     String   @id @default(cuid())
-  setupDecisionLogId     String   @unique
-  labeledAt              DateTime @default(now())
-  triggered              Boolean
-  entryTriggeredAt       DateTime?
-  tp1Hit                 Boolean  @default(false)
-  tp1HitAt               DateTime?
-  tp2Hit                 Boolean  @default(false)
-  tp2HitAt               DateTime?
-  tp3Hit                 Boolean  @default(false)
-  tp3HitAt               DateTime?
-  slHit                  Boolean  @default(false)
-  slHitAt                DateTime?
-  expired                Boolean  @default(false)
-  invalidated            Boolean  @default(false)
-  neverTriggered         Boolean  @default(false)
-  maxFavorableExcursion  Float?
-  maxAdverseExcursion    Float?
-  barsToTrigger          Int?
-  barsToTp1              Int?
-  barsToSl               Int?
-  outcomeClass           String   // excellent, good, neutral, poor, invalid
-  outcomeScore           Float?
-  labelingWindowMinutes  Int      @default(360)
-  labelQuality           String   @default("medium") // high, medium, low
+  id                    String    @id @default(cuid())
+  setupDecisionLogId    String    @unique
+  labeledAt             DateTime  @default(now())
+  triggered             Boolean
+  entryTriggeredAt      DateTime?
+  tp1Hit                Boolean   @default(false)
+  tp1HitAt              DateTime?
+  tp2Hit                Boolean   @default(false)
+  tp2HitAt              DateTime?
+  tp3Hit                Boolean   @default(false)
+  tp3HitAt              DateTime?
+  slHit                 Boolean   @default(false)
+  slHitAt               DateTime?
+  expired               Boolean   @default(false)
+  invalidated           Boolean   @default(false)
+  neverTriggered        Boolean   @default(false)
+  maxFavorableExcursion Float?
+  maxAdverseExcursion   Float?
+  barsToTrigger         Int?
+  barsToTp1             Int?
+  barsToSl              Int?
+  outcomeClass          String // excellent, good, neutral, poor, invalid
+  outcomeScore          Float?
+  labelingWindowMinutes Int       @default(360)
+  labelQuality          String    @default("medium") // high, medium, low
 
   setupDecisionLog SetupDecisionLog @relation(fields: [setupDecisionLogId], references: [id], onDelete: Cascade)
 
@@ -1044,13 +1044,13 @@ model SetupOutcome {
 }
 
 model SetupUserInteraction {
-  id                  String   @id @default(cuid())
-  setupDecisionLogId  String
-  userId              String?
-  eventType           String   // viewed, expanded, clicked_chart, saved, ignored
-  eventValue          String?
-  metadataJson        String?
-  createdAt           DateTime @default(now())
+  id                 String   @id @default(cuid())
+  setupDecisionLogId String
+  userId             String?
+  eventType          String // viewed, expanded, clicked_chart, saved, ignored
+  eventValue         String?
+  metadataJson       String?
+  createdAt          DateTime @default(now())
 
   setupDecisionLog SetupDecisionLog @relation(fields: [setupDecisionLogId], references: [id], onDelete: Cascade)
 
@@ -1071,7 +1071,7 @@ model TrainingDataset {
   featureListJson      String   @default("[]")
   targetDefinitionJson String   @default("{}")
   artifactPath         String?
-  status               String   // ready, training, completed, failed
+  status               String // ready, training, completed, failed
 
   models ModelRegistry[]
 
@@ -1079,20 +1079,20 @@ model TrainingDataset {
 }
 
 model ModelRegistry {
-  id                     String   @id @default(cuid())
+  id                     String    @id @default(cuid())
   modelName              String
   modelFamily            String
-  version                String   @unique
-  status                 String   // candidate, shadow, active, rejected, archived, rolled_back
-  createdAt              DateTime @default(now())
+  version                String    @unique
+  status                 String // candidate, shadow, active, rejected, archived, rolled_back
+  createdAt              DateTime  @default(now())
   trainedAt              DateTime
   trainingWindowStart    DateTime
   trainingWindowEnd      DateTime
   datasetId              String?
   targetName             String
-  featureListJson        String   @default("[]")
-  hyperparamsJson        String   @default("{}")
-  metricsJson            String   @default("{}")
+  featureListJson        String    @default("[]")
+  hyperparamsJson        String    @default("{}")
+  metricsJson            String    @default("{}")
   calibrationMetricsJson String?
   artifactPath           String
   evaluationReportPath   String?
@@ -1101,10 +1101,10 @@ model ModelRegistry {
   demotedAt              DateTime?
   replacedByVersion      String?
 
-  dataset          TrainingDataset? @relation(fields: [datasetId], references: [id])
-  promotionsFrom   ModelPromotion[] @relation("PromotionFrom")
-  promotionsTo     ModelPromotion[] @relation("PromotionTo")
-  driftReports     FeatureDriftReport[]
+  dataset        TrainingDataset?     @relation(fields: [datasetId], references: [id])
+  promotionsFrom ModelPromotion[]     @relation("PromotionFrom")
+  promotionsTo   ModelPromotion[]     @relation("PromotionTo")
+  driftReports   FeatureDriftReport[]
 
   @@index([status])
   @@index([modelName])
@@ -1115,7 +1115,7 @@ model ModelPromotion {
   createdAt           DateTime @default(now())
   fromVersion         String?
   toVersion           String
-  actionType          String   // promote_to_shadow, promote_to_active, rollback, reject
+  actionType          String // promote_to_shadow, promote_to_active, rollback, reject
   decisionReason      String
   approvedBy          String
   metricsSnapshotJson String   @default("{}")
@@ -1130,23 +1130,23 @@ model ModelPromotion {
 // ==================== ADAPTIVE INTELLIGENCE - CONFIG ====================
 
 model AdaptiveConfigVersion {
-  id                     String   @id @default(cuid())
-  version                String   @unique
-  status                 String   // candidate, active, archived, rolled_back
-  createdAt              DateTime @default(now())
+  id                     String    @id @default(cuid())
+  version                String    @unique
+  status                 String // candidate, active, archived, rolled_back
+  createdAt              DateTime  @default(now())
   activatedAt            DateTime?
   deactivatedAt          DateTime?
   parentVersion          String?
   changeReason           String?
-  maxDailyChangePercent  Float    @default(5)
-  weightsJson            String   @default("{}")
-  thresholdsJson         String   @default("{}")
-  symbolModifiersJson    String   @default("{}")
-  timeframeModifiersJson String   @default("{}")
-  sessionModifiersJson   String   @default("{}")
-  freshnessRulesJson     String   @default("{}")
-  stalenessRulesJson     String   @default("{}")
-  eventRiskRulesJson     String   @default("{}")
+  maxDailyChangePercent  Float     @default(5)
+  weightsJson            String    @default("{}")
+  thresholdsJson         String    @default("{}")
+  symbolModifiersJson    String    @default("{}")
+  timeframeModifiersJson String    @default("{}")
+  sessionModifiersJson   String    @default("{}")
+  freshnessRulesJson     String    @default("{}")
+  stalenessRulesJson     String    @default("{}")
+  eventRiskRulesJson     String    @default("{}")
   notes                  String?
 
   @@index([status])
@@ -1156,23 +1156,23 @@ model AdaptiveConfigVersion {
 // ==================== ADAPTIVE INTELLIGENCE - SCORING AUDIT ====================
 
 model LiveScoringLog {
-  id                       String   @id @default(cuid())
-  setupDecisionLogId       String
-  createdAt                DateTime @default(now())
-  scoringMode              String   // rules_only, shadow, hybrid
-  rulesScore               Float
-  modelScore               Float?
-  calibratedProbability    Float?
-  visibleScore             Float
-  rulesWeight              Float
-  modelWeight              Float
-  activeModelVersion       String?
-  shadowModelVersion       String?
-  adaptiveConfigVersion    String?
-  fallbackUsed             Boolean  @default(false)
-  fallbackReason           String?
-  guardrailApplied         Boolean  @default(false)
-  guardrailReasonsJson     String?
+  id                    String   @id @default(cuid())
+  setupDecisionLogId    String
+  createdAt             DateTime @default(now())
+  scoringMode           String // rules_only, shadow, hybrid
+  rulesScore            Float
+  modelScore            Float?
+  calibratedProbability Float?
+  visibleScore          Float
+  rulesWeight           Float
+  modelWeight           Float
+  activeModelVersion    String?
+  shadowModelVersion    String?
+  adaptiveConfigVersion String?
+  fallbackUsed          Boolean  @default(false)
+  fallbackReason        String?
+  guardrailApplied      Boolean  @default(false)
+  guardrailReasonsJson  String?
 
   setupDecisionLog SetupDecisionLog @relation(fields: [setupDecisionLogId], references: [id], onDelete: Cascade)
 
@@ -1182,17 +1182,17 @@ model LiveScoringLog {
 }
 
 model ShadowPredictionLog {
-  id                    String   @id @default(cuid())
-  setupDecisionLogId    String
-  createdAt             DateTime @default(now())
-  activeScore           Float
-  activeModelVersion    String?
-  shadowModelVersion    String
-  shadowProbability     Float
-  shadowScore           Float
-  divergence            Float
-  featureHash           String?
-  notesJson             String?
+  id                 String   @id @default(cuid())
+  setupDecisionLogId String
+  createdAt          DateTime @default(now())
+  activeScore        Float
+  activeModelVersion String?
+  shadowModelVersion String
+  shadowProbability  Float
+  shadowScore        Float
+  divergence         Float
+  featureHash        String?
+  notesJson          String?
 
   setupDecisionLog SetupDecisionLog @relation(fields: [setupDecisionLogId], references: [id], onDelete: Cascade)
 
@@ -1203,14 +1203,14 @@ model ShadowPredictionLog {
 // ==================== ADAPTIVE INTELLIGENCE - MONITORING ====================
 
 model FeatureDriftReport {
-  id                   String   @id @default(cuid())
-  createdAt            DateTime @default(now())
-  modelVersion         String?
-  windowStart          DateTime
-  windowEnd            DateTime
-  driftSummaryJson     String   @default("{}")
-  severity             String   // stable, warning, critical
-  recommendedAction    String?
+  id                String   @id @default(cuid())
+  createdAt         DateTime @default(now())
+  modelVersion      String?
+  windowStart       DateTime
+  windowEnd         DateTime
+  driftSummaryJson  String   @default("{}")
+  severity          String // stable, warning, critical
+  recommendedAction String?
 
   model ModelRegistry? @relation(fields: [modelVersion], references: [version])
 
@@ -1219,21 +1219,21 @@ model FeatureDriftReport {
 }
 
 model MonitoringAlert {
-  id                 String   @id @default(cuid())
-  createdAt          DateTime @default(now())
-  resolvedAt         DateTime?
-  level              String   // info, warning, critical
-  category           String   // operational, calibration, drift, outcome
-  title              String
-  message            String
-  modelVersion       String?
-  configVersion      String?
-  metricName         String?
-  metricValue        Float?
-  thresholdValue     Float?
-  status             String   @default("open") // open, acknowledged, resolved
-  recommendedAction  String?
-  actionTaken        String?
+  id                String    @id @default(cuid())
+  createdAt         DateTime  @default(now())
+  resolvedAt        DateTime?
+  level             String // info, warning, critical
+  category          String // operational, calibration, drift, outcome
+  title             String
+  message           String
+  modelVersion      String?
+  configVersion     String?
+  metricName        String?
+  metricValue       Float?
+  thresholdValue    Float?
+  status            String    @default("open") // open, acknowledged, resolved
+  recommendedAction String?
+  actionTaken       String?
 
   @@index([createdAt])
   @@index([level])
@@ -1258,16 +1258,16 @@ model MonitoringSnapshot {
 }
 
 model DailyLearningReport {
-  id                      String   @id @default(cuid())
-  reportDate              DateTime @unique
-  createdAt               DateTime @default(now())
-  setupsLogged            Int
-  setupsLabeled           Int
-  candidateModelVersion   String?
-  baselineMetricsJson     String   @default("{}")
-  candidateMetricsJson    String?
-  recommendationsJson     String?
-  promotionDecision       String?
+  id                    String   @id @default(cuid())
+  reportDate            DateTime @unique
+  createdAt             DateTime @default(now())
+  setupsLogged          Int
+  setupsLabeled         Int
+  candidateModelVersion String?
+  baselineMetricsJson   String   @default("{}")
+  candidateMetricsJson  String?
+  recommendationsJson   String?
+  promotionDecision     String?
 
   @@index([createdAt])
 }
@@ -1301,4 +1301,126 @@ model SystemControlState {
   shadowModelVersion     String?
   activeConfigVersion    String?
   notes                  String?
+}
+
+// ============================================================================
+// Direct Trade Execution (MT4/MT5) — spec §6
+// Lets users place trades directly from the platform to their linked MT
+// accounts. Kept separate from ExecutionAccount (which is the Brain's
+// auto-executor); this scope is for user-initiated manual tickets.
+// ============================================================================
+
+model LinkedTradingAccount {
+  id                String    @id @default(cuid())
+  userKey           String // same localStorage user identity pattern as billing
+  platformType      String // "MT4" | "MT5"
+  brokerName        String
+  serverName        String
+  accountLogin      String // broker login id
+  accountLabel      String?
+  baseCurrency      String    @default("USD")
+  leverage          Int?
+  connectionStatus  String    @default("linked") // linked | disconnected | error | pending_verification
+  lastConnectedAt   DateTime?
+  adapterKind       String    @default("pending_queue") // pending_queue | metaapi | ea_webhook | mock
+  adapterConfigJson String? // JSON — adapter-specific config (API key ref, webhook URL, etc.)
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  requests TradeExecutionRequest[]
+
+  @@index([userKey, isActive])
+  @@index([connectionStatus])
+}
+
+model TradeExecutionRequest {
+  id              String    @id @default(cuid())
+  userKey         String
+  accountId       String
+  internalSymbol  String // FX Wonders canonical symbol (e.g. "EURUSD")
+  brokerSymbol    String? // mapped broker symbol (e.g. "EURUSD.m")
+  side            String // "buy" | "sell"
+  orderType       String // "market" | "limit" | "stop" | "stop_limit"
+  requestedVolume Float // lots
+  sizingMode      String    @default("fixed_lots") // fixed_lots | risk_percent
+  riskPercent     Float? // present when sizingMode = risk_percent
+  entryPrice      Float? // required for non-market orders
+  stopLoss        Float?
+  takeProfit      Float?
+  timeInForce     String    @default("gtc") // gtc | day | ioc | fok
+  expiresAt       DateTime?
+  slippagePips    Int?
+  comment         String?
+  magicNumber     Int?
+  sourceType      String? // signal | setup | editors_pick | brain | manual
+  sourceRef       String? // id of originating signal/setup
+  status          String    @default("pending_submission") // pending_submission | validating | submitted | filled | rejected | cancelled | expired | failed
+  statusReason    String?
+  submittedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  account LinkedTradingAccount     @relation(fields: [accountId], references: [id])
+  result  TradeExecutionResult?
+  audit   TradeExecutionAuditLog[]
+
+  @@index([userKey, status])
+  @@index([accountId, status])
+  @@index([createdAt])
+}
+
+model TradeExecutionResult {
+  id              String   @id @default(cuid())
+  requestId       String   @unique
+  executionStatus String // accepted | rejected | partial | pending | error
+  brokerTicketRef String?
+  fillPrice       Float?
+  filledVolume    Float?
+  remainingVolume Float?
+  slippagePips    Float?
+  commissionCost  Float?
+  swap            Float?
+  rejectionReason String?
+  adapterResponse String? // raw response JSON from adapter (truncated)
+  returnedAt      DateTime @default(now())
+
+  request TradeExecutionRequest @relation(fields: [requestId], references: [id])
+
+  @@index([executionStatus])
+  @@index([returnedAt])
+}
+
+model TradeExecutionAuditLog {
+  id          String   @id @default(cuid())
+  requestId   String
+  eventType   String // created | validated | submitted | ack | fill | reject | cancel | error
+  actor       String   @default("user") // user | system | adapter
+  payloadJson String?
+  createdAt   DateTime @default(now())
+
+  request TradeExecutionRequest @relation(fields: [requestId], references: [id])
+
+  @@index([requestId])
+  @@index([eventType, createdAt])
+}
+
+model SymbolMappingRule {
+  id             String   @id @default(cuid())
+  internalSymbol String // canonical platform symbol
+  brokerSymbol   String // broker-specific symbol (suffix varies)
+  brokerName     String? // null = applies to all brokers
+  platformType   String // "MT4" | "MT5" | "both"
+  contractSize   Float? // standard lot size, e.g. 100000 for FX
+  digits         Int?
+  minVolume      Float?
+  maxVolume      Float?
+  volumeStep     Float?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([internalSymbol, brokerName, platformType])
+  @@index([internalSymbol])
+  @@index([brokerName])
 }

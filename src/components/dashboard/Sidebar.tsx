@@ -79,6 +79,8 @@ const navItems = [
   {
     section: "Trading Hub",
     items: [
+      { label: "Execute Trade", href: "/dashboard/trading/execute", icon: "setups" },
+      { label: "Execution History", href: "/dashboard/trading/executions", icon: "screener" },
       { label: "Trading Hub", href: "/dashboard/trading-hub", icon: "setups" },
       { label: "MT5 Multi Account Hub", href: "/dashboard/mt5-hub", icon: "radar" },
       { label: "Multi MT5", href: "/dashboard/multi-mt5", icon: "radar" },
