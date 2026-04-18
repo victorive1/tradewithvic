@@ -158,29 +158,34 @@ export default function BrainExecutionPage() {
   }, []);
 
   const handleManualRefresh = useCallback(async () => {
-    if (refreshStatus !== "idle") return;
     setRefreshStatus("scanning");
-    try {
-      // Trigger a fresh scan cycle (this can take up to ~60s on Vercel).
-      const scanRes = await fetch("/api/brain/execution/scan-now", {
-        method: "POST",
-        cache: "no-store",
+    // Kick off the scan in the background — DON'T await it so the UI stays snappy.
+    // Scan cycles can take 30-60s; blocking that long would make the button feel frozen.
+    fetch("/api/brain/execution/scan-now", { method: "POST", cache: "no-store" })
+      .then(async (res) => {
+        if (!res.ok) {
+          console.warn("scan-now returned", res.status);
+          return;
+        }
+        // Re-fetch state again once scan completes so latest results land in UI.
+        await fetchState();
+      })
+      .catch((err) => {
+        console.warn("scan-now failed", err);
       });
-      // Regardless of scan outcome, re-fetch state so the UI shows the freshest DB row.
-      setRefreshStatus("refreshing");
+
+    // Meanwhile, immediately re-fetch current state so the user sees *something* change.
+    try {
       await fetchState();
-      if (!scanRes.ok) {
-        setStateError(`Scan returned ${scanRes.status}; showing last persisted state.`);
-      } else {
-        setStateError(null);
-      }
       setRefreshStatus("success");
-      setTimeout(() => setRefreshStatus("idle"), 1500);
     } catch (e: any) {
       setStateError(e?.message || "Refresh failed");
       setRefreshStatus("idle");
+      return;
     }
-  }, [fetchState, refreshStatus]);
+    // Hold the "Updated" confirmation briefly, then return to idle.
+    setTimeout(() => setRefreshStatus("idle"), 1800);
+  }, [fetchState]);
 
   const fetchConfig = useCallback(async () => {
     try {
@@ -293,33 +298,8 @@ export default function BrainExecutionPage() {
               Showcase
             </button>
           </div>
-          <button
-            onClick={handleManualRefresh}
-            disabled={refreshStatus !== "idle"}
-            className={cn(
-              "text-xs px-3 py-1.5 rounded-lg border transition-smooth inline-flex items-center gap-2",
-              refreshStatus === "success"
-                ? "bg-bull/15 border-bull/40 text-bull-light"
-                : refreshStatus !== "idle"
-                  ? "bg-surface-2 border-accent/40 text-accent-light cursor-wait"
-                  : "bg-surface-2 border-border/50 hover:border-accent"
-            )}
-          >
-            {refreshStatus === "scanning" && (
-              <>
-                <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity=".25" /><path d="M12 2a10 10 0 0110 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /></svg>
-                Scanning…
-              </>
-            )}
-            {refreshStatus === "refreshing" && (
-              <>
-                <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity=".25" /><path d="M12 2a10 10 0 0110 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /></svg>
-                Refreshing…
-              </>
-            )}
-            {refreshStatus === "success" && <>✓ Updated</>}
-            {refreshStatus === "idle" && <>↻ Refresh</>}
-          </button>
+          <RefreshButton status={refreshStatus} onClick={handleManualRefresh} />
+
           <Link href="/dashboard/brain" className="text-xs px-3 py-1.5 rounded-lg text-muted hover:text-foreground underline underline-offset-4">← Brain</Link>
         </div>
       </div>
@@ -374,6 +354,61 @@ export default function BrainExecutionPage() {
         />
       )}
     </div>
+  );
+}
+
+function RefreshButton({ status, onClick }: { status: "idle" | "refreshing" | "scanning" | "success"; onClick: () => void }) {
+  const busy = status === "scanning" || status === "refreshing";
+  const done = status === "success";
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "relative overflow-hidden text-xs font-medium px-3.5 py-2 rounded-lg border inline-flex items-center gap-2 transition-all",
+        done
+          ? "bg-bull/15 border-bull/40 text-bull-light"
+          : busy
+            ? "bg-accent/15 border-accent/50 text-accent-light shadow-[0_0_20px_rgba(129,140,248,0.25)]"
+            : "bg-surface-2 border-border/50 text-foreground hover:border-accent hover:text-accent-light active:scale-95"
+      )}
+    >
+      {/* Shimmer sweep while busy */}
+      {busy && (
+        <span
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: "linear-gradient(90deg, transparent, rgba(129,140,248,0.25), transparent)",
+            animation: "shimmer 1.3s linear infinite",
+            transform: "translateX(-100%)",
+          }}
+        />
+      )}
+      {/* Icon */}
+      {done ? (
+        <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="none" aria-hidden>
+          <path d="M4 10.5l4 4 8-8" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ) : (
+        <svg
+          className={cn("w-3.5 h-3.5", busy && "animate-spin")}
+          viewBox="0 0 24 24"
+          fill="none"
+          aria-hidden
+        >
+          <path d="M4 12a8 8 0 0114-5.3L20 4M20 12a8 8 0 01-14 5.3L4 20M20 4v5h-5M4 20v-5h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
+      <span>
+        {status === "scanning" ? "Scanning…" : status === "refreshing" ? "Refreshing…" : status === "success" ? "Updated" : "Refresh"}
+      </span>
+      <style jsx>{`
+        @keyframes shimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+      `}</style>
+    </button>
   );
 }
 
