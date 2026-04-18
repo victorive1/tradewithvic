@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import { SplineScene } from "@/components/ui/splite";
+import { Card } from "@/components/ui/card";
+import { Spotlight } from "@/components/ui/spotlight";
 
 interface LiveCard {
   symbol: string;
@@ -79,38 +82,57 @@ export function HeroSection() {
       <div className="grid-bg absolute inset-0" />
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
-        <div className="grid lg:grid-cols-2 gap-12 items-center">
-          <div className="max-w-2xl">
-            <div className="animate-fade-in-up">
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent/10 border border-accent/20 text-accent-light text-sm mb-6">
-                <span className="w-2 h-2 rounded-full bg-bull pulse-live" />
-                Live Market Intelligence
+        {/* 3D Hero Card */}
+        <Card className="w-full bg-black/[0.96] relative overflow-hidden border-border/30 mb-12">
+          <Spotlight
+            className="-top-40 left-0 md:left-60 md:-top-20"
+            fill="white"
+          />
+
+          <div className="flex flex-col lg:flex-row min-h-[500px]">
+            {/* Left content */}
+            <div className="flex-1 p-8 lg:p-12 relative z-10 flex flex-col justify-center">
+              <div className="animate-fade-in-up">
+                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent/10 border border-accent/20 text-accent-light text-sm mb-6">
+                  <span className="w-2 h-2 rounded-full bg-bull pulse-live" />
+                  Live Market Intelligence
+                </div>
+              </div>
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6 animate-fade-in-up-delay-1 bg-clip-text text-transparent bg-gradient-to-b from-neutral-50 to-neutral-400">
+                Trade Smarter{" "}
+                <span className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">
+                  Across Every Market
+                </span>
+              </h1>
+              <p className="text-base sm:text-lg text-neutral-300 max-w-lg mb-8 leading-relaxed animate-fade-in-up-delay-2">
+                Analyze forex, metals, indices, and crypto with real-time insights,
+                clean setups, and confidence-driven trade intelligence.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 animate-fade-in-up-delay-3">
+                <Link href="/auth/signup" className="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-accent hover:bg-accent-light text-white font-semibold text-lg transition-smooth glow-accent">
+                  Get Started Free
+                </Link>
+                <Link href="/dashboard" className="inline-flex items-center justify-center px-8 py-4 rounded-xl border border-white/20 hover:border-white/40 text-white font-medium text-lg transition-smooth">
+                  View Dashboard
+                </Link>
               </div>
             </div>
-            <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight mb-6 animate-fade-in-up-delay-1">
-              Trade Smarter{" "}
-              <span className="gradient-text-accent">Across Every Market</span>
-            </h1>
-            <p className="text-lg sm:text-xl text-muted-light max-w-xl mb-8 leading-relaxed animate-fade-in-up-delay-2">
-              Analyze forex, metals, indices, and crypto with real-time insights,
-              clean setups, and confidence-driven trade intelligence.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 animate-fade-in-up-delay-3">
-              <Link href="/auth/signup" className="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-accent hover:bg-accent-light text-white font-semibold text-lg transition-smooth glow-accent">
-                Get Started Free
-              </Link>
-              <Link href="/dashboard" className="inline-flex items-center justify-center px-8 py-4 rounded-xl border border-border hover:border-border-light text-foreground font-medium text-lg transition-smooth">
-                View Dashboard
-              </Link>
+
+            {/* Right 3D scene */}
+            <div className="flex-1 relative min-h-[300px] lg:min-h-0">
+              <SplineScene
+                scene="https://prod.spline.design/kZDDjO5HuC9GJUM2/scene.splinecode"
+                className="w-full h-full"
+              />
             </div>
           </div>
+        </Card>
 
-          <div className="relative hidden lg:block h-[500px]">
-            <FloatingCard card={cards[0]} className="absolute top-8 right-8 animate-float" />
-            <FloatingCard card={cards[1]} className="absolute top-32 right-48 animate-float-delayed" />
-            <FloatingCard card={cards[2]} className="absolute top-64 right-4 animate-float" />
-            <FloatingCard card={cards[3]} className="absolute bottom-8 right-36 animate-float-delayed" />
-          </div>
+        {/* Live market cards below */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {cards.map((card, idx) => (
+            <FloatingCard key={idx} card={card} className="animate-fade-in-up" />
+          ))}
         </div>
       </div>
     </section>

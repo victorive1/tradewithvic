@@ -216,3 +216,23 @@ body {
 .animate-fade-in-up-delay-1 { animation: fadeInUp 0.8s ease-out 0.1s forwards; opacity: 0; }
 .animate-fade-in-up-delay-2 { animation: fadeInUp 0.8s ease-out 0.2s forwards; opacity: 0; }
 .animate-fade-in-up-delay-3 { animation: fadeInUp 0.8s ease-out 0.3s forwards; opacity: 0; }
+
+/* Spotlight animation */
+@keyframes spotlight {
+  0% { opacity: 0; transform: translate(-72%, -62%) scale(0.5); }
+  100% { opacity: 1; transform: translate(-50%, -40%) scale(1); }
+}
+.animate-spotlight { animation: spotlight 2s ease forwards; }
+
+/* Spline loader */
+.loader {
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--bd);
+  border-top-color: var(--acl);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
