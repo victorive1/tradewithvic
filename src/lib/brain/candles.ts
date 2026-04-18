@@ -95,30 +95,14 @@ export async function fetchAndPersistCandles(
       })
       .filter((r) => Number.isFinite(r.open) && r.isClosed);
 
-    let written = 0;
-    for (const row of rows) {
-      const res = await prisma.candle.upsert({
-        where: {
-          symbol_timeframe_openTime: {
-            symbol: row.symbol,
-            timeframe: row.timeframe,
-            openTime: row.openTime,
-          },
-        },
-        update: {
-          close: row.close,
-          high: row.high,
-          low: row.low,
-          open: row.open,
-          volume: row.volume,
-          fetchedAt: new Date(),
-        },
-        create: row,
-      });
-      if (res) written++;
+    if (rows.length === 0) {
+      return { symbol, timeframe, written: 0, fetched: raw.length };
     }
-
-    return { symbol, timeframe, written, fetched: raw.length };
+    const result = await prisma.candle.createMany({
+      data: rows,
+      skipDuplicates: true,
+    });
+    return { symbol, timeframe, written: result.count, fetched: raw.length };
   } catch (err: any) {
     return { symbol, timeframe, written: 0, fetched: 0, error: err?.message || String(err) };
   }

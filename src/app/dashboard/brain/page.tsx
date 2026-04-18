@@ -29,6 +29,8 @@ export default async function BrainStatusPage() {
     structureStates,
     recentStructureEvents,
     indicatorSnaps,
+    activeLiquidityLevels,
+    recentLiquidityEvents,
   ] = await Promise.all([
     prisma.scanCycle.findFirst({ orderBy: { startedAt: "desc" } }),
     prisma.scanCycle.count(),
@@ -50,6 +52,12 @@ export default async function BrainStatusPage() {
     prisma.structureState.findMany({ orderBy: [{ symbol: "asc" }, { timeframe: "asc" }] }),
     prisma.structureEvent.findMany({ orderBy: { detectedAt: "desc" }, take: 8 }),
     prisma.indicatorSnapshot.findMany({ orderBy: [{ symbol: "asc" }, { timeframe: "asc" }] }),
+    prisma.liquidityLevel.findMany({
+      where: { status: "active" },
+      orderBy: [{ symbol: "asc" }, { timeframe: "asc" }, { levelType: "asc" }],
+      take: 40,
+    }),
+    prisma.liquidityEvent.findMany({ orderBy: { detectedAt: "desc" }, take: 10 }),
   ]);
 
   const health = latestCycle
@@ -206,6 +214,67 @@ export default async function BrainStatusPage() {
           </div>
         )}
       </section>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <section className="rounded-lg border border-border bg-card p-5">
+          <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">
+            Active Liquidity Levels
+          </h2>
+          {activeLiquidityLevels.length === 0 ? (
+            <p className="text-sm text-muted">No active levels tracked yet.</p>
+          ) : (
+            <div className="space-y-1.5 max-h-80 overflow-y-auto">
+              {activeLiquidityLevels.map((l) => {
+                const isHigh = l.levelType.endsWith("high");
+                const badgeColor = l.levelType.startsWith("equal") ? "bg-yellow-500/10 text-yellow-500"
+                  : l.levelType.startsWith("prev_day") ? "bg-blue-500/10 text-blue-500"
+                    : "bg-purple-500/10 text-purple-500";
+                return (
+                  <div key={l.id} className="flex items-center justify-between text-xs py-1 border-b border-border/30 last:border-0">
+                    <div className="flex items-center gap-2">
+                      <span className={`px-1.5 py-0.5 rounded font-mono text-[10px] uppercase ${badgeColor}`}>
+                        {l.levelType.replace(/_/g, " ")}
+                      </span>
+                      <span className="font-mono">{l.symbol} · {l.timeframe}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className={`font-mono ${isHigh ? "text-red-400" : "text-green-400"}`}>{l.price.toFixed(l.price > 100 ? 2 : 5)}</span>
+                      {l.strength > 1 && <span className="text-[10px] text-muted">×{l.strength}</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-lg border border-border bg-card p-5">
+          <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">
+            Recent Liquidity Sweeps
+          </h2>
+          {recentLiquidityEvents.length === 0 ? (
+            <p className="text-sm text-muted">No sweeps detected yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {recentLiquidityEvents.map((e) => {
+                const isBull = e.sweepDirection === "bullish_sweep";
+                return (
+                  <div key={e.id} className="flex items-center justify-between text-sm py-1.5 border-b border-border/40 last:border-0">
+                    <div className="flex items-center gap-3">
+                      <span className={`px-2 py-0.5 text-[10px] font-mono uppercase rounded ${isBull ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500"}`}>
+                        SWEEP {isBull ? "↑" : "↓"}
+                      </span>
+                      <span className="font-mono text-xs">{e.symbol} · {e.timeframe}</span>
+                      <span className="text-xs text-muted">{e.levelType.replace(/_/g, " ")} @ {e.levelPrice.toFixed(4)}</span>
+                    </div>
+                    <span className="font-mono text-xs text-muted">{timeAgo(e.detectedAt)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      </div>
 
       <section className="rounded-lg border border-border bg-card p-5">
         <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">
