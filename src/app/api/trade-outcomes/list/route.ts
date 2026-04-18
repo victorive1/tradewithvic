@@ -22,10 +22,41 @@ export async function GET(req: NextRequest) {
       orderBy: { closedAt: "desc" },
       take,
     });
+
+    // Batch-resolve original confidenceScore from the ExecutionOrder that
+    // opened each trade (stored on the order, not the trade row), plus the
+    // component breakdown from the originating SetupDecisionLog.
+    const setupIds = trades.map((t: any) => t.setupId).filter(Boolean);
+    const orders = setupIds.length
+      ? await prisma.executionOrder.findMany({
+          where: { setupId: { in: setupIds } },
+          select: { setupId: true, confidenceScore: true, decisionLogId: true },
+        })
+      : [];
+    const orderBySetupId = new Map(orders.map((o: any) => [o.setupId, o]));
+
+    const decisionLogIds = orders.map((o: any) => o.decisionLogId).filter(Boolean) as string[];
+    const decisionLogs = decisionLogIds.length
+      ? await prisma.setupDecisionLog.findMany({
+          where: { id: { in: decisionLogIds } },
+          select: {
+            id: true,
+            rulesScore: true, hybridScore: true,
+            alignmentScore: true, structureScore: true, momentumScore: true,
+            entryLocationScore: true, rrScore: true, volatilityScore: true, eventRiskScore: true,
+            setupType: true,
+          },
+        })
+      : [];
+    const logById = new Map(decisionLogs.map((d: any) => [d.id, d]));
+
     for (const t of trades) {
       const outcomeState = t.realizedPnl > 0
         ? (t.rMultiple >= 1.5 ? "tp_full" : "tp_partial")
         : t.realizedPnl < 0 ? "sl_hit" : "breakeven";
+      const order = orderBySetupId.get(t.setupId) as any;
+      const log = order?.decisionLogId ? (logById.get(order.decisionLogId) as any) : null;
+      const originalScore = order?.confidenceScore ?? null;
       rows.push({
         id: t.id,
         source: "brain_paper",
@@ -33,9 +64,25 @@ export async function GET(req: NextRequest) {
         symbol: t.symbol,
         displayName: t.symbol,
         timeframe: t.timeframe,
-        strategy: "—", // ExecutionTrade doesn't carry setupType; audit via setupId for detail
+        strategy: log?.setupType ?? "—",
         setupId: t.setupId,
         grade: t.grade,
+        originalScore,
+        scoreBreakdown: log ? {
+          rulesScore: log.rulesScore,
+          hybridScore: log.hybridScore,
+          alignment: log.alignmentScore,
+          structure: log.structureScore,
+          momentum: log.momentumScore,
+          entryLocation: log.entryLocationScore,
+          rr: log.rrScore,
+          volatility: log.volatilityScore,
+          eventRisk: log.eventRiskScore,
+        } : null,
+        liveScoreRange: {
+          max: t.maxThesisScore ?? null,
+          min: t.minThesisScore ?? null,
+        },
         direction: t.direction,
         outcomeState,
         entry: t.entry,
@@ -71,6 +118,7 @@ export async function GET(req: NextRequest) {
           : o.outcomeClass === "poor" ? "sl_hit"
             : o.outcomeClass === "invalid" ? "never_triggered"
               : o.expired ? "expired" : "breakeven";
+      const rawScore = log.hybridScore ?? log.rulesScore ?? null;
       rows.push({
         id: o.id,
         source: "brain_virtual",
@@ -81,6 +129,19 @@ export async function GET(req: NextRequest) {
         strategy: log.setupType,
         setupId: log.setupId,
         grade: log.qualityLabel,
+        originalScore: rawScore != null ? Math.round(rawScore) : null,
+        scoreBreakdown: {
+          rulesScore: log.rulesScore,
+          hybridScore: log.hybridScore,
+          alignment: log.alignmentScore,
+          structure: log.structureScore,
+          momentum: log.momentumScore,
+          entryLocation: log.entryLocationScore,
+          rr: log.rrScore,
+          volatility: log.volatilityScore,
+          eventRisk: log.eventRiskScore,
+        },
+        liveScoreRange: { max: null, min: null },
         direction: log.direction,
         outcomeState,
         entry: log.entry,

@@ -23,6 +23,19 @@ export async function GET() {
     }),
   ]);
 
+  // Resolve original confidenceScore for each executed trade by joining
+  // to the ExecutionOrder that opened it. Used for score-band analytics.
+  const setupIds = trades.map((t: any) => t.setupId).filter(Boolean);
+  const orders = setupIds.length
+    ? await prisma.executionOrder.findMany({
+        where: { setupId: { in: setupIds } },
+        select: { setupId: true, confidenceScore: true },
+      })
+    : [];
+  const scoreBySetupId = new Map<string, number>(
+    orders.map((o: any) => [o.setupId, o.confidenceScore as number])
+  );
+
   const totalExec = trades.length;
   const wins = trades.filter((t: any) => t.realizedPnl > 0).length;
   const losses = trades.filter((t: any) => t.realizedPnl < 0).length;
@@ -66,6 +79,46 @@ export async function GET() {
 
   const bySymbol = aggregate("symbol");
   const byGrade = aggregate("grade");
+
+  // Score-band analytics: bucket trades by their original confidence score.
+  // Answers "do my high-rated trades actually win more than my low-rated ones?"
+  const scoreBands = [
+    { key: "85+",   min: 85, max: 101 },
+    { key: "75–84", min: 75, max: 85 },
+    { key: "65–74", min: 65, max: 75 },
+    { key: "<65",   min: 0,  max: 65 },
+  ];
+  const byScoreBand = scoreBands.map((b) => {
+    const inBand = trades.filter((t: any) => {
+      const s = scoreBySetupId.get(t.setupId);
+      return s != null && s >= b.min && s < b.max;
+    });
+    const w = inBand.filter((t: any) => t.realizedPnl > 0).length;
+    const pnl = inBand.reduce((s: number, t: any) => s + t.realizedPnl, 0);
+    const avgR = inBand.length ? inBand.reduce((s: number, t: any) => s + (t.rMultiple ?? 0), 0) / inBand.length : 0;
+    return {
+      key: b.key,
+      count: inBand.length,
+      wins: w,
+      winRate: inBand.length ? (w / inBand.length) * 100 : 0,
+      pnl,
+      avgR,
+    };
+  });
+
+  // Unscored bucket so users see how many trades we couldn't resolve a score for
+  const unscoredTrades = trades.filter((t: any) => scoreBySetupId.get(t.setupId) == null);
+  const unscoredW = unscoredTrades.filter((t: any) => t.realizedPnl > 0).length;
+  if (unscoredTrades.length > 0) {
+    byScoreBand.push({
+      key: "unrated",
+      count: unscoredTrades.length,
+      wins: unscoredW,
+      winRate: (unscoredW / unscoredTrades.length) * 100,
+      pnl: unscoredTrades.reduce((s: number, t: any) => s + t.realizedPnl, 0),
+      avgR: unscoredTrades.reduce((s: number, t: any) => s + (t.rMultiple ?? 0), 0) / unscoredTrades.length,
+    });
+  }
   const byStrategy = trades.reduce((acc: Record<string, any>, t: any) => {
     // trades don't carry setupType; fall back to exitReason bucketing
     const k = t.exitReason ?? "unknown";
@@ -99,6 +152,7 @@ export async function GET() {
     },
     bySymbol,
     byGrade,
+    byScoreBand,
     byExitReason: Object.entries(byStrategy).map(([k, v]: [string, any]) => ({
       key: k,
       count: v.count,

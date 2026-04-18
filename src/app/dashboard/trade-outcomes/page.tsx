@@ -8,6 +8,18 @@ type SourceFilter = "all" | "executed" | "virtual";
 type OutcomeFilter = "all" | "wins" | "losses" | "breakeven" | "expired" | "invalid";
 type TimePeriod = "24h" | "7d" | "30d" | "all";
 
+interface ScoreBreakdown {
+  rulesScore: number | null;
+  hybridScore: number | null;
+  alignment: number | null;
+  structure: number | null;
+  momentum: number | null;
+  entryLocation: number | null;
+  rr: number | null;
+  volatility: number | null;
+  eventRisk: number | null;
+}
+
 interface OutcomeRow {
   id: string;
   source: string;
@@ -18,6 +30,9 @@ interface OutcomeRow {
   strategy: string;
   setupId: string;
   grade: string;
+  originalScore: number | null;
+  scoreBreakdown: ScoreBreakdown | null;
+  liveScoreRange: { max: number | null; min: number | null };
   direction: string;
   outcomeState: string;
   entry: number;
@@ -42,6 +57,7 @@ interface Overview {
   virtual: any;
   bySymbol: any[];
   byGrade: any[];
+  byScoreBand: any[];
   byExitReason: any[];
 }
 
@@ -232,9 +248,10 @@ export default function TradeOutcomesHubPage() {
           </section>
 
           {overview && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <BreakdownCard title="By Symbol" entries={overview.bySymbol.slice(0, 8)} />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <ScoreBandCard entries={overview.byScoreBand ?? []} />
               <BreakdownCard title="By Grade" entries={overview.byGrade} />
+              <BreakdownCard title="By Symbol" entries={overview.bySymbol.slice(0, 8)} />
               <BreakdownCard title="By Exit Reason" entries={overview.byExitReason.slice(0, 8)} formatKey={(k) => k.replace(/_/g, " ")} />
             </div>
           )}
@@ -307,7 +324,8 @@ export default function TradeOutcomesHubPage() {
                       <th className="text-left py-2.5 px-3">CLOSED</th>
                       <th className="text-left px-2">SRC</th>
                       <th className="text-left px-2">SYMBOL · TF</th>
-                      <th className="text-left px-2">DIR · GRADE</th>
+                      <th className="text-left px-2">DIR</th>
+                      <th className="text-left px-2">RATING</th>
                       <th className="text-left px-2">STRATEGY</th>
                       <th className="text-left px-2">OUTCOME</th>
                       <th className="text-right px-2">ENTRY</th>
@@ -342,7 +360,9 @@ export default function TradeOutcomesHubPage() {
                             <span className={cn("uppercase font-bold", o.direction === "bullish" ? "text-bull-light" : "text-bear-light")}>
                               {o.direction === "bullish" ? "LONG" : "SHORT"}
                             </span>
-                            <span className="ml-2 text-muted">{o.grade}</span>
+                          </td>
+                          <td className="px-2">
+                            <RatingCell score={o.originalScore} grade={o.grade} outcome={o.outcomeState} />
                           </td>
                           <td className="px-2 uppercase text-muted text-[10px]">{o.strategy?.replace(/_/g, " ") ?? "—"}</td>
                           <td className={cn("px-2 font-bold uppercase", outcomeColor)}>{o.outcomeState.replace(/_/g, " ")}</td>
@@ -492,6 +512,8 @@ function OutcomeDrawer({
           <KV label="MAE" value={outcome.mae.toFixed(4)} />
         </div>
 
+        <ScoreBreakdownPanel outcome={outcome} />
+
         {outcome.setupId && (
           <Link
             href={`/dashboard/brain/decision/${outcome.setupId}`}
@@ -559,4 +581,190 @@ function fmtPrice(p: number): string {
   if (p >= 100) return p.toFixed(3);
   if (p >= 1) return p.toFixed(4);
   return p.toFixed(5);
+}
+
+function scoreColorClass(score: number | null): string {
+  if (score == null) return "text-muted";
+  if (score >= 85) return "text-bull-light";
+  if (score >= 75) return "text-accent-light";
+  if (score >= 65) return "text-warn";
+  return "text-bear-light";
+}
+
+function RatingCell({ score, grade, outcome }: { score: number | null; grade: string; outcome: string }) {
+  const isWin = outcome === "tp_full" || outcome === "tp_partial";
+  const isLoss = outcome === "sl_hit";
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className={cn("font-mono font-bold text-[13px] tabular-nums", scoreColorClass(score))}>
+        {score != null ? score : "—"}
+      </span>
+      <span className={cn(
+        "px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border",
+        grade === "A+" ? "border-bull/40 text-bull-light bg-bull/10" :
+        grade === "A"  ? "border-accent/40 text-accent-light bg-accent/10" :
+        grade === "candidate" ? "border-warn/40 text-warn bg-warn/10" :
+        "border-border text-muted bg-surface-2"
+      )}>{grade}</span>
+      {isWin && <span className="text-[9px] text-bull">✓</span>}
+      {isLoss && <span className="text-[9px] text-bear">✕</span>}
+    </div>
+  );
+}
+
+function ScoreBandCard({ entries }: { entries: any[] }) {
+  if (!entries || entries.length === 0) {
+    return (
+      <section className="glass-card p-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted mb-3">By Rating Band</h3>
+        <p className="text-xs text-muted">No rated trades yet.</p>
+      </section>
+    );
+  }
+  const maxCount = Math.max(1, ...entries.map((e) => e.count));
+  return (
+    <section className="glass-card p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">By Rating Band</h3>
+        <span className="text-[10px] text-muted">Original confidence score</span>
+      </div>
+      <div className="space-y-2">
+        {entries.map((e: any) => {
+          const pct = (e.count / maxCount) * 100;
+          const bandColor =
+            e.key === "85+"   ? "bg-bull"         :
+            e.key === "75–84" ? "bg-accent-light" :
+            e.key === "65–74" ? "bg-warn"         :
+            e.key === "<65"   ? "bg-bear-light"   :
+            "bg-muted";
+          return (
+            <div key={e.key}>
+              <div className="flex items-center justify-between text-xs mb-1">
+                <div className="flex items-center gap-2">
+                  <span className={cn("w-1.5 h-1.5 rounded-full", bandColor)} />
+                  <span className="font-mono font-semibold">{e.key}</span>
+                  <span className="text-muted">({e.count})</span>
+                </div>
+                <div className="flex items-center gap-3 font-mono">
+                  <span className={cn(e.winRate >= 55 ? "text-bull-light" : e.winRate > 0 ? "text-warn" : "text-muted")}>
+                    {e.winRate.toFixed(0)}%
+                  </span>
+                  <span className={cn(e.avgR >= 0 ? "text-bull-light" : "text-bear-light")}>
+                    {e.avgR >= 0 ? "+" : ""}{e.avgR.toFixed(2)}R
+                  </span>
+                  <span className={cn(e.pnl >= 0 ? "text-bull-light" : "text-bear-light", "min-w-[60px] text-right")}>
+                    {e.pnl >= 0 ? "+" : ""}${e.pnl.toFixed(0)}
+                  </span>
+                </div>
+              </div>
+              <div className="h-1 rounded-full bg-surface-2/80 overflow-hidden">
+                <div className={cn("h-full rounded-full transition-all", bandColor)} style={{ width: `${pct}%` }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <p className="mt-3 pt-3 border-t border-border/40 text-[10px] text-muted leading-relaxed">
+        Shows whether trades with higher original ratings actually win more often. If lower bands outperform higher ones, the scoring model needs recalibration.
+      </p>
+    </section>
+  );
+}
+
+function ScoreBreakdownPanel({ outcome }: { outcome: OutcomeRow }) {
+  const b = outcome.scoreBreakdown;
+  const liveMax = outcome.liveScoreRange?.max;
+  const liveMin = outcome.liveScoreRange?.min;
+  const hasBreakdown = b && Object.values(b).some((v) => v != null);
+
+  if (outcome.originalScore == null && !hasBreakdown) {
+    return (
+      <div className="glass-card p-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted mb-2">Rating</h3>
+        <p className="text-xs text-muted italic">No rating data recorded for this trade.</p>
+      </div>
+    );
+  }
+
+  const components = b ? [
+    { key: "Alignment", value: b.alignment, hint: "Pair strength + multi-TF agreement" },
+    { key: "Structure", value: b.structure, hint: "Trend structure + BOS/CHoCH quality" },
+    { key: "Momentum", value: b.momentum, hint: "RSI + MACD confluence" },
+    { key: "Entry location", value: b.entryLocation, hint: "Proximity to premium/discount zone" },
+    { key: "Risk/reward", value: b.rr, hint: "Setup R:R before fees" },
+    { key: "Volatility", value: b.volatility, hint: "ATR fit vs historical" },
+    { key: "Event risk", value: b.eventRisk, hint: "Upcoming news / session proximity" },
+  ].filter((c) => c.value != null) : [];
+
+  return (
+    <div className="glass-card p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">Rating at entry</h3>
+        {outcome.originalScore != null && (
+          <div className={cn("text-2xl font-bold font-mono tabular-nums", scoreColorClass(outcome.originalScore))}>
+            {outcome.originalScore}
+            <span className="text-xs text-muted font-normal ml-1">/100</span>
+          </div>
+        )}
+      </div>
+
+      {b?.hybridScore != null && b?.rulesScore != null && Math.abs(b.hybridScore - b.rulesScore) > 0.5 && (
+        <div className="rounded-lg bg-surface-2/60 border border-border/40 p-2 text-[11px] flex items-center justify-between">
+          <span className="text-muted">Rules / Hybrid blend</span>
+          <span className="font-mono">
+            <span className="text-muted-light">{b.rulesScore.toFixed(0)}</span>
+            <span className="mx-2 text-muted">→</span>
+            <span className={scoreColorClass(b.hybridScore)}>{b.hybridScore.toFixed(0)}</span>
+          </span>
+        </div>
+      )}
+
+      {components.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="text-[10px] text-muted uppercase tracking-wider mb-1">Component scores</div>
+          {components.map((c) => (
+            <div key={c.key} className="flex items-center gap-2 text-[11px]">
+              <span className="w-28 shrink-0 text-muted-light truncate" title={c.hint}>{c.key}</span>
+              <div className="flex-1 h-1 rounded-full bg-surface-2/80 overflow-hidden">
+                <div className={cn("h-full rounded-full", scoreBarColor(c.value as number))}
+                  style={{ width: `${Math.max(2, Math.min(100, c.value as number))}%` }} />
+              </div>
+              <span className={cn("w-8 text-right font-mono tabular-nums", scoreColorClass(c.value as number))}>
+                {(c.value as number).toFixed(0)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {(liveMax != null || liveMin != null) && (
+        <div className="pt-2 border-t border-border/40">
+          <div className="text-[10px] text-muted uppercase tracking-wider mb-1.5">Thesis score during trade</div>
+          <div className="flex items-center gap-3 text-xs">
+            <div className="flex items-center gap-1.5">
+              <span className="text-muted">Best</span>
+              <span className={cn("font-mono font-bold", scoreColorClass(liveMax))}>{liveMax ?? "—"}</span>
+            </div>
+            <span className="text-muted">·</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-muted">Worst</span>
+              <span className={cn("font-mono font-bold", scoreColorClass(liveMin))}>{liveMin ?? "—"}</span>
+            </div>
+            {liveMax != null && liveMin != null && outcome.originalScore != null && (
+              <span className="text-[10px] text-muted ml-auto">
+                Entry · {outcome.originalScore}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function scoreBarColor(score: number): string {
+  if (score >= 85) return "bg-bull";
+  if (score >= 75) return "bg-accent-light";
+  if (score >= 65) return "bg-warn";
+  return "bg-bear-light";
 }
