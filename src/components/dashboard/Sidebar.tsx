@@ -73,6 +73,7 @@ const navItems = [
     section: "Trading Hub",
     items: [
       { label: "Trading Hub", href: "/dashboard/trading-hub", icon: "setups" },
+      { label: "MT5 Multi Account Hub", href: "/dashboard/mt5-hub", icon: "radar" },
       { label: "Multi MT5", href: "/dashboard/multi-mt5", icon: "radar" },
       { label: "Copy Trading", href: "/dashboard/copy-trading", icon: "strength" },
     ],
