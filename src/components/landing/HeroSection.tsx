@@ -148,7 +148,7 @@ export function HeroSection() {
   }, []);
 
   return (
-    <section className="relative pt-28 pb-20 lg:pt-36 lg:pb-28 overflow-hidden">
+    <section className="relative pt-24 sm:pt-28 lg:pt-36 pb-16 sm:pb-20 lg:pb-28 overflow-hidden">
       {/* Ambient atmosphere */}
       <div className="absolute inset-0 grid-bg pointer-events-none" />
       <div className="orb w-[620px] h-[620px] -top-52 -right-52" style={{ background: "radial-gradient(circle, rgba(99,102,241,0.35), transparent 70%)" }} />
@@ -169,13 +169,13 @@ export function HeroSection() {
               <span>Scanning every 2 minutes</span>
             </div>
 
-            <h1 className="font-display text-5xl sm:text-6xl lg:text-7xl xl:text-[5.25rem] font-bold tracking-tight leading-[0.95] mb-6 animate-fade-in-up-delay-1">
+            <h1 className="font-display text-fluid-hero font-bold mb-6 animate-fade-in-up-delay-1">
               <span className="block text-foreground">The terminal</span>
               <span className="block gradient-text-accent">modern traders</span>
               <span className="block text-foreground">actually want.</span>
             </h1>
 
-            <p className="text-base sm:text-lg text-muted-light max-w-xl mb-8 leading-relaxed animate-fade-in-up-delay-2">
+            <p className="text-fluid-lg text-muted-light max-w-xl mb-8 animate-fade-in-up-delay-2">
               TradeWithVic fuses a 24/7 market-core brain, multi-account execution, and an adaptive
               intelligence engine into a single surface — built for forex, metals, indices, and crypto.
             </p>

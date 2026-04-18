@@ -173,6 +173,57 @@ body {
   transition: background 0.3s ease, color 0.3s ease;
 }
 
+/* ==========================================================================
+   Fluid type scale — clamp() bridges mobile→desktop without choppy jumps.
+   Use these instead of `text-xl sm:text-2xl lg:text-3xl` chains.
+   ========================================================================== */
+:root {
+  --fs-xs:    clamp(0.6875rem, 0.66rem + 0.15vw, 0.75rem);    /* 11 → 12 */
+  --fs-sm:    clamp(0.8125rem, 0.78rem + 0.2vw, 0.875rem);    /* 13 → 14 */
+  --fs-base:  clamp(0.9375rem, 0.9rem + 0.25vw, 1rem);        /* 15 → 16 */
+  --fs-lg:    clamp(1rem, 0.95rem + 0.35vw, 1.125rem);        /* 16 → 18 */
+  --fs-xl:    clamp(1.125rem, 1.05rem + 0.45vw, 1.375rem);    /* 18 → 22 */
+  --fs-2xl:   clamp(1.375rem, 1.25rem + 0.85vw, 1.875rem);    /* 22 → 30 */
+  --fs-3xl:   clamp(1.75rem, 1.45rem + 1.5vw, 2.5rem);        /* 28 → 40 */
+  --fs-4xl:   clamp(2rem, 1.55rem + 2.3vw, 3.25rem);          /* 32 → 52 */
+  --fs-5xl:   clamp(2.5rem, 1.85rem + 3.2vw, 4.25rem);        /* 40 → 68 */
+  --fs-hero:  clamp(2.75rem, 1.95rem + 4vw, 5.25rem);         /* 44 → 84 */
+
+  --lh-tight: 1.05;
+  --lh-snug: 1.2;
+  --lh-normal: 1.5;
+  --lh-relaxed: 1.65;
+
+  /* Fluid spacing */
+  --sp-gutter: clamp(1rem, 0.65rem + 1.6vw, 2rem);       /* 16 → 32 px */
+  --sp-section-y: clamp(3.5rem, 2.5rem + 5vw, 7rem);     /* 56 → 112 px */
+  --sp-section-y-sm: clamp(2rem, 1.5rem + 2.5vw, 4rem);  /* 32 → 64 px */
+
+  /* Page container max width */
+  --container-max: 1280px;
+}
+
+.text-fluid-xs    { font-size: var(--fs-xs);   line-height: var(--lh-normal); }
+.text-fluid-sm    { font-size: var(--fs-sm);   line-height: var(--lh-normal); }
+.text-fluid-base  { font-size: var(--fs-base); line-height: var(--lh-relaxed); }
+.text-fluid-lg    { font-size: var(--fs-lg);   line-height: var(--lh-relaxed); }
+.text-fluid-xl    { font-size: var(--fs-xl);   line-height: var(--lh-snug); }
+.text-fluid-2xl   { font-size: var(--fs-2xl);  line-height: var(--lh-snug); }
+.text-fluid-3xl   { font-size: var(--fs-3xl);  line-height: var(--lh-snug); letter-spacing: -0.02em; }
+.text-fluid-4xl   { font-size: var(--fs-4xl);  line-height: var(--lh-tight); letter-spacing: -0.025em; }
+.text-fluid-5xl   { font-size: var(--fs-5xl);  line-height: var(--lh-tight); letter-spacing: -0.03em; }
+.text-fluid-hero  { font-size: var(--fs-hero); line-height: 0.95;            letter-spacing: -0.035em; }
+
+/* Page-level layout helpers — consistent container + vertical rhythm */
+.page-container {
+  width: 100%;
+  max-width: var(--container-max);
+  margin-inline: auto;
+  padding-inline: var(--sp-gutter);
+}
+.section-py    { padding-block: var(--sp-section-y); }
+.section-py-sm { padding-block: var(--sp-section-y-sm); }
+
 /* Typography rhythm */
 h1, h2, h3, h4, h5 { letter-spacing: -0.02em; }
 .font-display {

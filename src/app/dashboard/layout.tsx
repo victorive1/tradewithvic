@@ -1,5 +1,5 @@
 import { DashboardSidebar } from "@/components/dashboard/Sidebar";
-import { DashboardHeader } from "@/components/dashboard/Header";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { ChatWidget } from "@/components/chatbot/ChatWidget";
 
 export default function DashboardLayout({
@@ -10,10 +10,7 @@ export default function DashboardLayout({
   return (
     <div className="min-h-screen bg-background flex">
       <DashboardSidebar />
-      <div className="flex-1 flex flex-col min-w-0">
-        <DashboardHeader />
-        <main className="flex-1 p-4 sm:p-6 overflow-auto">{children}</main>
-      </div>
+      <DashboardShell>{children}</DashboardShell>
       <ChatWidget />
     </div>
   );

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { Logo } from "@/components/ui/Logo";
 import { cn } from "@/lib/utils";
 
@@ -143,24 +144,11 @@ const iconMap: Record<string, React.ReactNode> = {
   alerts: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" /></svg>,
 };
 
-export function DashboardSidebar() {
+function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
 
   return (
-    <aside className="hidden lg:flex w-64 flex-col h-screen sticky top-0 relative isolate border-r border-border/60">
-      {/* Ambient sidebar glow — subtle, cinematic */}
-      <div className="absolute inset-0 -z-10 bg-surface" />
-      <div className="absolute inset-0 -z-10 pointer-events-none opacity-60">
-        <div className="orb w-[280px] h-[280px] bg-accent/20 -top-20 -left-20" />
-        <div className="orb w-[200px] h-[200px] bg-bull/10 bottom-10 -left-10" />
-      </div>
-
-      <div className="p-5 border-b border-border/40 relative">
-        <Link href="/" className="inline-block transition-smooth hover:opacity-85">
-          <Logo size="sm" />
-        </Link>
-      </div>
-
+    <>
       <nav className="flex-1 overflow-y-auto p-3 space-y-5 relative">
         {navItems.map((section) => (
           <div key={section.section}>
@@ -174,8 +162,9 @@ export function DashboardSidebar() {
                   <Link
                     key={item.href}
                     href={item.href}
+                    onClick={onNavigate}
                     className={cn(
-                      "group relative flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium transition-smooth",
+                      "group relative flex items-center gap-3 px-3 py-2 rounded-xl text-fluid-sm font-medium transition-smooth",
                       isActive
                         ? "text-foreground bg-gradient-to-r from-accent/15 via-accent/10 to-transparent border border-accent/25 shadow-[0_0_20px_var(--color-accent-glow)]"
                         : "text-muted-light hover:text-foreground hover:bg-surface-2/70"
@@ -188,7 +177,7 @@ export function DashboardSidebar() {
                       />
                     )}
                     <span className={cn(
-                      "transition-smooth",
+                      "transition-smooth shrink-0",
                       isActive ? "text-accent-light" : "text-muted group-hover:text-foreground"
                     )}>
                       {iconMap[item.icon]}
@@ -202,9 +191,10 @@ export function DashboardSidebar() {
         ))}
       </nav>
 
-      <div className="p-3 border-t border-border/40 relative">
+      <div className="p-3 border-t border-border/40 relative shrink-0">
         <Link
           href="/dashboard/profile"
+          onClick={onNavigate}
           className="flex items-center gap-3 p-2 rounded-xl transition-smooth hover:bg-surface-2/70 border border-transparent hover:border-border/50"
         >
           <div className="relative">
@@ -219,6 +209,122 @@ export function DashboardSidebar() {
           </div>
         </Link>
       </div>
+    </>
+  );
+}
+
+export function DashboardSidebar() {
+  return (
+    <aside className="hidden lg:flex w-64 flex-col h-screen sticky top-0 relative isolate border-r border-border/60 shrink-0">
+      {/* Ambient sidebar glow — subtle, cinematic */}
+      <div className="absolute inset-0 -z-10 bg-surface" />
+      <div className="absolute inset-0 -z-10 pointer-events-none opacity-60">
+        <div className="orb w-[280px] h-[280px] bg-accent/20 -top-20 -left-20" />
+        <div className="orb w-[200px] h-[200px] bg-bull/10 bottom-10 -left-10" />
+      </div>
+
+      <div className="p-5 border-b border-border/40 relative shrink-0">
+        <Link href="/" className="inline-block transition-smooth hover:opacity-85">
+          <Logo size="sm" />
+        </Link>
+      </div>
+
+      <SidebarBody />
     </aside>
   );
+}
+
+/**
+ * Mobile drawer — slides in from the left, triggered by the header hamburger.
+ * Handles ESC key, backdrop click, and scroll lock.
+ */
+export function MobileSidebarDrawer({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [open, onClose]);
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        aria-hidden={!open}
+        onClick={onClose}
+        className={cn(
+          "lg:hidden fixed inset-0 z-50 bg-background/70 backdrop-blur-md transition-opacity duration-300",
+          open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        )}
+      />
+      {/* Drawer */}
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label="Navigation"
+        className={cn(
+          "lg:hidden fixed top-0 left-0 bottom-0 z-[51] w-[84vw] max-w-[320px] flex flex-col border-r border-border/60 bg-surface shadow-[20px_0_60px_rgba(0,0,0,0.45)] transition-transform duration-300 ease-[cubic-bezier(0.25,0.8,0.25,1)]",
+          open ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        <div className="absolute inset-0 -z-10 pointer-events-none opacity-60">
+          <div className="orb w-[280px] h-[280px] bg-accent/20 -top-20 -left-20" />
+          <div className="orb w-[200px] h-[200px] bg-bull/10 bottom-10 -left-10" />
+        </div>
+
+        <div className="p-4 border-b border-border/40 flex items-center justify-between shrink-0">
+          <Link href="/" onClick={onClose} className="inline-block transition-smooth hover:opacity-85">
+            <Logo size="sm" />
+          </Link>
+          <button
+            onClick={onClose}
+            aria-label="Close navigation"
+            className="w-9 h-9 rounded-xl bg-surface-2/60 border border-border hover:border-border-light hover:bg-surface-2 flex items-center justify-center transition-smooth text-muted hover:text-foreground"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <SidebarBody onNavigate={onClose} />
+      </aside>
+    </>
+  );
+}
+
+export function MobileMenuButton({ onOpen }: { onOpen: () => void }) {
+  return (
+    <button
+      onClick={onOpen}
+      aria-label="Open navigation"
+      className="lg:hidden w-10 h-10 rounded-xl bg-surface-2/60 border border-border hover:border-border-light hover:bg-surface-2 flex items-center justify-center transition-smooth text-muted hover:text-foreground"
+    >
+      <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 6h16M4 12h16M4 18h16" />
+      </svg>
+    </button>
+  );
+}
+
+/**
+ * Hook that owns drawer open/close state. Used by Header + Layout.
+ * Auto-closes when the route changes.
+ */
+export function useSidebarDrawer() {
+  const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+  useEffect(() => { setOpen(false); }, [pathname]);
+  return { open, setOpen };
 }

@@ -41,19 +41,23 @@ const features = [
 
 export function FeaturesSection() {
   return (
-    <section id="features" className="relative py-24">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
-          <h2 className="text-3xl sm:text-4xl font-bold mb-4">
+    <section id="features" className="relative section-py">
+      <div className="page-container">
+        <div className="text-center mb-10 sm:mb-14 lg:mb-16 max-w-2xl mx-auto">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-2/60 border border-border text-fluid-xs text-muted mb-4">
+            <span className="w-1 h-1 rounded-full bg-accent-light" />
+            <span className="font-semibold tracking-wider uppercase">Capabilities</span>
+          </div>
+          <h2 className="font-display text-fluid-4xl font-bold mb-4">
             Everything a{" "}
-            <span className="gradient-text-accent">Serious Trader</span> Needs
+            <span className="gradient-text-accent">serious trader</span> needs
           </h2>
-          <p className="text-muted-light text-lg max-w-2xl mx-auto">
+          <p className="text-muted-light text-fluid-lg">
             Clean, digestible market intelligence. Not chart noise.
           </p>
         </div>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 lg:gap-6">
           {features.map((feature) => (
             <div
               key={feature.title}
@@ -62,10 +66,10 @@ export function FeaturesSection() {
               <div className="w-12 h-12 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center text-accent-light mb-4 group-hover:bg-accent/20 transition-smooth">
                 {feature.icon}
               </div>
-              <h3 className="text-lg font-semibold mb-2 text-foreground">
+              <h3 className="text-fluid-xl font-semibold mb-2 text-foreground">
                 {feature.title}
               </h3>
-              <p className="text-sm text-muted leading-relaxed">
+              <p className="text-fluid-sm text-muted">
                 {feature.description}
               </p>
             </div>

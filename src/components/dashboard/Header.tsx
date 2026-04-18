@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { LastUpdated, LiveIndicator } from "@/components/ui/LastUpdated";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { MobileMenuButton } from "@/components/dashboard/Sidebar";
 
-export function DashboardHeader() {
+export function DashboardHeader({ onMenuOpen }: { onMenuOpen?: () => void }) {
   return (
     <header className="h-16 sticky top-0 z-40 flex items-center justify-between px-4 sm:px-6 relative isolate">
       {/* Blurred background — sits behind everything so content scrolls under */}
@@ -20,7 +21,8 @@ export function DashboardHeader() {
         style={{ background: "linear-gradient(90deg, transparent, color-mix(in srgb, var(--color-accent) 25%, transparent), transparent)" }}
       />
 
-      <div className="flex items-center gap-3 sm:gap-4">
+      <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+        {onMenuOpen && <MobileMenuButton onOpen={onMenuOpen} />}
         <LiveIndicator />
         <LastUpdated />
       </div>
