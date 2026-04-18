@@ -440,6 +440,16 @@ h1, h2, h3, h4, h5 { letter-spacing: -0.02em; }
 .animate-fade-in-up-delay-2 { animation: fadeInUp 0.7s cubic-bezier(0.25, 0.8, 0.25, 1) 0.16s forwards; opacity: 0; }
 .animate-fade-in-up-delay-3 { animation: fadeInUp 0.7s cubic-bezier(0.25, 0.8, 0.25, 1) 0.24s forwards; opacity: 0; }
 
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.animate-marquee {
+  animation: marquee linear infinite;
+  width: max-content;
+}
+.animate-marquee:hover { animation-play-state: paused; }
+
 @keyframes shimmer {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
