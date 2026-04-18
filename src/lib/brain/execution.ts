@@ -92,6 +92,11 @@ function evaluateGuardrails(setup: any, ctx: GuardrailContext): { passed: boolea
     reasons.push(`session_${currentSession}_not_allowed`);
   }
 
+  const allowedTimeframes = parseJsonArray(ctx.account.allowedTimeframesJson, ["4h", "1h", "15min", "5min"]);
+  if (setup.timeframe && !allowedTimeframes.includes(setup.timeframe)) {
+    reasons.push(`timeframe_${setup.timeframe}_not_allowed`);
+  }
+
   if (ctx.openPositions.length >= ctx.account.maxConcurrentPositions) {
     reasons.push(`max_concurrent_positions_${ctx.account.maxConcurrentPositions}`);
   }

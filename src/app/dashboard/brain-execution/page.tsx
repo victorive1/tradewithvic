@@ -55,6 +55,7 @@ interface ExecutionAccount {
   minConfidenceScore: number;
   minRiskReward: number;
   selectedSymbolsJson: string;
+  allowedTimeframesJson: string;
   allowedSessionsJson: string;
   selectedMtAccountIdsJson: string;
   orderPlacementMode: string;
@@ -93,6 +94,12 @@ function readMtAccounts(): ConnectedMtAccount[] {
 }
 
 const ALL_GRADES = ["A+", "A", "candidate", "watch"];
+const ALL_TIMEFRAMES = [
+  { id: "4h",    label: "4h",  tag: "Swing",  desc: "Higher-TF bias, fewer but cleaner entries" },
+  { id: "1h",    label: "1h",  tag: "Swing",  desc: "Structural continuation, best session overlap setups" },
+  { id: "15min", label: "15m", tag: "Intra",  desc: "Intraday execution on confirmed HTF bias" },
+  { id: "5min",  label: "5m",  tag: "Scalp",  desc: "Fast execution — noisier, best with tight risk" },
+];
 const ALL_SESSIONS = [
   { id: "london", label: "London" },
   { id: "newyork", label: "New York" },
@@ -1081,6 +1088,7 @@ function ConfigTab({
 
   const allowedGrades = parseJsonArray(draft.allowedGrades, ["A+", "A"]);
   const selectedSymbols = parseJsonArray(draft.selectedSymbolsJson, []);
+  const allowedTimeframes = parseJsonArray(draft.allowedTimeframesJson, ["4h", "1h", "15min", "5min"]);
   const allowedSessions = parseJsonArray(draft.allowedSessionsJson, ["london", "newyork", "overlap", "crypto_24_7"]);
   const selectedMtAccountIds = parseJsonArray(draft.selectedMtAccountIdsJson, []);
 
@@ -1095,6 +1103,10 @@ function ConfigTab({
   function toggleSession(id: string) {
     const next = allowedSessions.includes(id) ? allowedSessions.filter((x) => x !== id) : [...allowedSessions, id];
     patchDraft("allowedSessionsJson", JSON.stringify(next));
+  }
+  function toggleTimeframe(tf: string) {
+    const next = allowedTimeframes.includes(tf) ? allowedTimeframes.filter((x) => x !== tf) : [...allowedTimeframes, tf];
+    patchDraft("allowedTimeframesJson", JSON.stringify(next));
   }
   function toggleSymbol(sym: string) {
     const next = selectedSymbols.includes(sym) ? selectedSymbols.filter((x) => x !== sym) : [...selectedSymbols, sym];
@@ -1130,6 +1142,7 @@ function ConfigTab({
       fridayCloseProtection: draft.fridayCloseProtection,
       allowedGrades,
       selectedSymbols,
+      allowedTimeframes,
       allowedSessions,
       selectedMtAccountIds,
     };
@@ -1314,6 +1327,70 @@ function ConfigTab({
           checked={draft.fridayCloseProtection}
           onChange={(v) => patchDraft("fridayCloseProtection", v)}
         />
+      </div>
+
+      {/* Timeframes */}
+      <div className="glass-card p-5">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-sm font-semibold">Allowed Timeframes</h3>
+          <span className="text-[10px] text-muted">
+            {allowedTimeframes.length === 0 ? "none — no trades will fire" : `${allowedTimeframes.length} enabled`}
+          </span>
+        </div>
+        <p className="text-xs text-muted mb-3">
+          Only setups on enabled timeframes can place trades. Deselect noisy timeframes to keep the
+          algo focused on your preferred bias horizons.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {ALL_TIMEFRAMES.map((tf) => {
+            const active = allowedTimeframes.includes(tf.id);
+            return (
+              <button
+                key={tf.id}
+                onClick={() => toggleTimeframe(tf.id)}
+                className={cn(
+                  "px-4 py-2 rounded-xl text-xs font-semibold transition-smooth border",
+                  active
+                    ? "bg-accent/15 border-accent/40 text-accent-light shadow-[0_0_16px_var(--color-accent-glow)]"
+                    : "bg-surface-2 border-border/50 text-muted-light hover:border-border-light",
+                )}
+                title={tf.desc}
+              >
+                <span className="font-mono">{tf.label}</span>
+                <span className="ml-2 text-[10px] opacity-70">{tf.tag}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex gap-2 mt-3 text-[10px]">
+          <button
+            onClick={() => patchDraft("allowedTimeframesJson", JSON.stringify(ALL_TIMEFRAMES.map((t) => t.id)))}
+            className="text-muted hover:text-muted-light"
+          >
+            Enable all
+          </button>
+          <span className="text-muted">·</span>
+          <button
+            onClick={() => patchDraft("allowedTimeframesJson", JSON.stringify([]))}
+            className="text-muted hover:text-muted-light"
+          >
+            Disable all
+          </button>
+          <span className="text-muted">·</span>
+          <button
+            onClick={() => patchDraft("allowedTimeframesJson", JSON.stringify(["4h", "1h"]))}
+            className="text-muted hover:text-muted-light"
+          >
+            Swing only (4h · 1h)
+          </button>
+          <span className="text-muted">·</span>
+          <button
+            onClick={() => patchDraft("allowedTimeframesJson", JSON.stringify(["15min", "5min"]))}
+            className="text-muted hover:text-muted-light"
+          >
+            Scalp only (15m · 5m)
+          </button>
+        </div>
       </div>
 
       {/* Sessions */}

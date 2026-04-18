@@ -61,12 +61,14 @@ export async function POST(req: NextRequest) {
   strField("executionMode", ALLOWED_MODES);
   jsonArrayField("allowedGrades");
   jsonArrayField("selectedSymbolsJson");
+  jsonArrayField("allowedTimeframesJson");
   jsonArrayField("allowedSessionsJson");
   jsonArrayField("selectedMtAccountIdsJson");
 
   // Rename shorthand keys that clients may send
   if (Array.isArray(body.allowedSessions)) patch.allowedSessionsJson = JSON.stringify(body.allowedSessions);
   if (Array.isArray(body.selectedSymbols)) patch.selectedSymbolsJson = JSON.stringify(body.selectedSymbols);
+  if (Array.isArray(body.allowedTimeframes)) patch.allowedTimeframesJson = JSON.stringify(body.allowedTimeframes);
   if (Array.isArray(body.selectedMtAccountIds)) patch.selectedMtAccountIdsJson = JSON.stringify(body.selectedMtAccountIds);
 
   const updated = await prisma.executionAccount.update({

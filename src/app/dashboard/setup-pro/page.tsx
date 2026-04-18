@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { TradingViewWidget } from "@/components/charts/TradingViewWidget";
 import { useTheme } from "@/components/ui/ThemeProvider";
 import type { TradeSetup } from "@/lib/setup-engine";
+import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
 
 function ProSetupCard({ setup, onViewChart }: { setup: TradeSetup; onViewChart: (symbol: string) => void }) {
   const [expanded, setExpanded] = useState(false);
@@ -76,9 +77,27 @@ function ProSetupCard({ setup, onViewChart }: { setup: TradeSetup; onViewChart: 
           <p className="text-sm text-muted-light leading-relaxed">{setup.explanation}</p>
         </div>
 
-        <button onClick={() => setExpanded(!expanded)} className="text-xs text-accent-light hover:text-accent transition-smooth">
-          {expanded ? "Hide scoring breakdown" : "View scoring breakdown"}
-        </button>
+        <div className="flex items-center gap-3 mb-2 flex-wrap">
+          <ExecuteTradeButton
+            setup={{
+              symbol: setup.symbol,
+              direction: setup.direction,
+              entry: setup.entry,
+              stopLoss: setup.stopLoss,
+              takeProfit: setup.takeProfit1,
+              timeframe: setup.timeframe,
+              setupType: setup.setupType,
+              qualityGrade: setup.qualityGrade,
+              confidenceScore: setup.confidenceScore,
+              sourceType: "setup_pro",
+              sourceRef: setup.id,
+            }}
+            size="md"
+          />
+          <button onClick={() => setExpanded(!expanded)} className="text-xs text-accent-light hover:text-accent transition-smooth">
+            {expanded ? "Hide scoring breakdown" : "View scoring breakdown"}
+          </button>
+        </div>
 
         {expanded && (
           <div className="mt-4 pt-4 border-t border-border/30">

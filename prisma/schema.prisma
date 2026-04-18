@@ -283,6 +283,7 @@ model ExecutionAccount {
   minConfidenceScore         Int       @default(65)
   minRiskReward              Float     @default(1.2)
   selectedSymbolsJson        String    @default("[]") // empty = all CANDLE_SYMBOLS
+  allowedTimeframesJson      String    @default("[\"4h\",\"1h\",\"15min\",\"5min\"]") // which TFs may fire trades
   allowedSessionsJson        String    @default("[\"london\",\"newyork\",\"overlap\",\"crypto_24_7\"]")
   newsFilterEnabled          Boolean   @default(true)
   fridayCloseProtection      Boolean   @default(true)

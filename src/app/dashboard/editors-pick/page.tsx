@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { TradingViewWidget } from "@/components/charts/TradingViewWidget";
+import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
 import { useTheme } from "@/components/ui/ThemeProvider";
 import type { TradeSetup } from "@/lib/setup-engine";
 
@@ -198,8 +199,23 @@ export default function EditorsPickPage() {
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex gap-2">
+                  <div className="flex items-center justify-between flex-wrap gap-3">
+                    <div className="flex gap-2 flex-wrap items-center">
+                      <ExecuteTradeButton
+                        setup={{
+                          symbol: pick.setup.symbol,
+                          direction: pick.setup.direction,
+                          entry: pick.setup.entry,
+                          stopLoss: pick.setup.stopLoss,
+                          takeProfit: pick.setup.takeProfit1,
+                          timeframe: pick.setup.timeframe,
+                          setupType: pick.setup.setupType,
+                          qualityGrade: pick.setup.qualityGrade,
+                          confidenceScore: pick.setup.confidenceScore,
+                          sourceType: "editors_pick",
+                          sourceRef: pick.setup.id,
+                        }}
+                      />
                       <button onClick={() => setChartSymbol(pick.setup.symbol)} className="px-3 py-1.5 rounded-lg text-xs bg-accent/10 text-accent-light border border-accent/20 hover:bg-accent/20 transition-smooth">View Chart</button>
                       <button onClick={() => setExpandedId(isExpanded ? null : pick.setup.id)} className="px-3 py-1.5 rounded-lg text-xs bg-surface-2 text-muted-light border border-border/50 hover:border-border-light transition-smooth">{isExpanded ? "Hide Details" : "Scoring Details"}</button>
                     </div>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
 
 interface OrderBlock {
   symbol: string;
@@ -197,8 +198,26 @@ export default function OrderBlocksPage() {
                     </div>
                   </div>
 
-                  <div className="text-xs text-muted">
-                    Current: <span className="font-mono text-foreground">{fmt(ob.price)}</span>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-xs text-muted">
+                      Current: <span className="font-mono text-foreground">{fmt(ob.price)}</span>
+                    </div>
+                    <ExecuteTradeButton
+                      setup={{
+                        symbol: ob.symbol,
+                        direction: isBull ? "buy" : "sell",
+                        entry: (ob.zoneHigh + ob.zoneLow) / 2,
+                        stopLoss: isBull ? ob.zoneLow * 0.998 : ob.zoneHigh * 1.002,
+                        takeProfit: isBull
+                          ? ob.zoneHigh + (ob.zoneHigh - ob.zoneLow) * 2
+                          : ob.zoneLow - (ob.zoneHigh - ob.zoneLow) * 2,
+                        setupType: ob.type,
+                        qualityGrade: ob.confidence >= 75 ? "A" : ob.confidence >= 60 ? "candidate" : "watch",
+                        confidenceScore: ob.confidence,
+                        sourceType: "order_block",
+                        sourceRef: ob.symbol,
+                      }}
+                    />
                   </div>
                 </div>
               </div>

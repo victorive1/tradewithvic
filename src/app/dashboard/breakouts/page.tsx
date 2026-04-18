@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
 
 const breakoutTypes = ["All", "Structure", "Momentum", "Range", "Retest", "Trendline", "FVG", "Session", "Order Block", "S/R"];
 
@@ -66,10 +67,24 @@ export default function BreakoutsPage() {
                   <span className="text-muted">{b.posted}</span>
                   <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-bull pulse-live" />Active</span>
                 </div>
-                <button onClick={() => setExpanded(expanded === b.symbol ? null : b.symbol)}
-                  className="text-xs text-accent-light hover:text-accent transition-smooth">
-                  {expanded === b.symbol ? "Hide analysis" : "View More Analysis"}
-                </button>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <ExecuteTradeButton
+                    setup={{
+                      symbol: b.symbol.replace("/", ""),
+                      direction: isBull ? "buy" : "sell",
+                      timeframe: b.timeframe,
+                      setupType: `${b.type}_breakout`,
+                      qualityGrade: b.confidence,
+                      confidenceScore: b.score,
+                      sourceType: "breakout",
+                      sourceRef: `${b.symbol}-${b.type}`,
+                    }}
+                  />
+                  <button onClick={() => setExpanded(expanded === b.symbol ? null : b.symbol)}
+                    className="text-xs text-accent-light hover:text-accent transition-smooth">
+                    {expanded === b.symbol ? "Hide analysis" : "View More Analysis"}
+                  </button>
+                </div>
                 {expanded === b.symbol && (
                   <div className="mt-3 pt-3 border-t border-border/30">
                     <p className="text-xs text-muted-light leading-relaxed">{b.reasoning}</p>
