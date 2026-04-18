@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
+import { StripeCardForm } from "@/components/billing/StripeCardForm";
 
 type Tab = "overview" | "deposit" | "withdraw" | "cards" | "crypto" | "history";
 
@@ -102,7 +103,7 @@ export default function BillingPaymentsPage() {
             Deposits, withdrawals, cards, crypto methods, and full transaction history.
           </p>
         </div>
-        <SandboxBanner />
+        <LiveBanner />
       </header>
 
       {statusMsg && <div className="glass-card p-3 text-sm text-bull-light border border-bull/30">{statusMsg}</div>}
@@ -163,11 +164,11 @@ export default function BillingPaymentsPage() {
   );
 }
 
-function SandboxBanner() {
+function LiveBanner() {
   return (
-    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-warn/40 bg-warn/10 text-warn text-[11px] font-semibold uppercase tracking-wider">
-      <span className="w-1.5 h-1.5 rounded-full bg-warn pulse-live" />
-      Sandbox
+    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-bull/40 bg-bull/10 text-bull-light text-[11px] font-semibold uppercase tracking-wider">
+      <span className="w-1.5 h-1.5 rounded-full bg-bull pulse-live" />
+      Live
     </span>
   );
 }
@@ -266,36 +267,29 @@ function CardTile({ card }: { card: Card }) {
 function DepositPanel({ cards, headers, onComplete }: { cards: Card[]; headers: Record<string, string>; onComplete: (msg: string) => void }) {
   const [method, setMethod] = useState<"card" | "crypto">("card");
   const [amount, setAmount] = useState("100");
-  const [selectedCard, setSelectedCard] = useState<string>(cards.find((c) => c.isDefault)?.id ?? cards[0]?.id ?? "");
+  const [stage, setStage] = useState<"pick" | "pay">("pick");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!selectedCard && cards[0]) setSelectedCard(cards.find((c) => c.isDefault)?.id ?? cards[0].id);
-  }, [cards, selectedCard]);
+  const userKey = headers["x-billing-user-key"] ?? "";
 
   const amountNum = Number(amount);
-  const fee = method === "crypto" ? 0 : Math.max(0.3, amountNum * 0.029);
+  const fee = method === "crypto" ? Math.max(1, amountNum * 0.01) : Math.max(0.3, amountNum * 0.029);
   const net = amountNum - fee;
 
-  async function submit() {
+  async function startCrypto() {
     setSubmitting(true); setError(null);
     try {
-      if (method === "card") {
-        const res = await fetch("/api/billing/deposits", {
-          method: "POST", headers,
-          body: JSON.stringify({ amount: amountNum, methodType: "card", methodId: selectedCard }),
-        });
-        if (!res.ok) throw new Error((await res.json()).error ?? "deposit_failed");
-        onComplete(`✓ Card deposit of ${fmtUsd(net)} completed (sandbox).`);
-      } else {
-        const res = await fetch("/api/billing/crypto/payment-intents", {
-          method: "POST", headers,
-          body: JSON.stringify({ amount: amountNum, currency: "BTC" }),
-        });
-        if (!res.ok) throw new Error((await res.json()).error ?? "intent_failed");
-        onComplete(`✓ Crypto invoice created — ${fmtUsd(amountNum)} pending network confirmation.`);
+      const res = await fetch("/api/billing/bitpay/invoice", {
+        method: "POST", headers,
+        body: JSON.stringify({ amount: amountNum, currency: "USD" }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? "bitpay_invoice_failed");
+      const data = await res.json();
+      if (data?.invoice?.url) {
+        window.location.href = data.invoice.url;
+        return;
       }
+      throw new Error("no_invoice_url");
     } catch (e: any) { setError(e.message ?? "Something went wrong"); }
     finally { setSubmitting(false); }
   }
@@ -305,81 +299,90 @@ function DepositPanel({ cards, headers, onComplete }: { cards: Card[]; headers: 
       <h2 className="text-lg font-semibold">Deposit Funds</h2>
 
       <div className="grid grid-cols-2 gap-2">
-        <button onClick={() => setMethod("card")}
+        <button onClick={() => { setMethod("card"); setStage("pick"); }}
           className={cn("py-3 rounded-xl text-sm font-semibold border transition-smooth",
             method === "card" ? "bg-accent/15 border-accent/40 text-accent-light" : "bg-surface-2 border-border/50")}>
-          💳 Card
+          💳 Card · Stripe
         </button>
-        <button onClick={() => setMethod("crypto")}
+        <button onClick={() => { setMethod("crypto"); setStage("pick"); }}
           className={cn("py-3 rounded-xl text-sm font-semibold border transition-smooth",
             method === "crypto" ? "bg-accent/15 border-accent/40 text-accent-light" : "bg-surface-2 border-border/50")}>
-          ₿ Crypto
+          ₿ Crypto · BitPay
         </button>
       </div>
 
-      <div>
-        <label className="text-xs text-muted mb-1.5 block uppercase tracking-wider">Amount (USD)</label>
-        <div className="flex items-center gap-2">
-          <input
-            type="number"
-            inputMode="decimal"
-            min={10}
-            step={1}
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            className="flex-1 px-4 py-3 rounded-xl bg-surface-2 border border-border focus:border-accent focus:outline-none text-xl font-mono"
-          />
-          <div className="flex gap-1">
-            {[50, 100, 500, 1000].map((q) => (
-              <button key={q} onClick={() => setAmount(String(q))}
-                className="px-2.5 py-1.5 rounded-lg text-xs bg-surface-2 border border-border hover:border-accent">
-                ${q}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {method === "card" && (
+      {stage === "pick" && (
         <>
-          {cards.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted">
-              No saved cards. Add one from the <span className="text-accent-light">Cards</span> tab first.
-            </div>
-          ) : (
-            <div>
-              <label className="text-xs text-muted mb-1.5 block uppercase tracking-wider">Card</label>
-              <select value={selectedCard} onChange={(e) => setSelectedCard(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl bg-surface-2 border border-border">
-                {cards.map((c) => (
-                  <option key={c.id} value={c.id}>{c.brand ?? "Card"} •••• {c.last4} {c.nickname ? `(${c.nickname})` : ""}</option>
+          <div>
+            <label className="text-xs text-muted mb-1.5 block uppercase tracking-wider">Amount (USD)</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                inputMode="decimal"
+                min={10}
+                step={1}
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="flex-1 px-4 py-3 rounded-xl bg-surface-2 border border-border focus:border-accent focus:outline-none text-xl font-mono"
+              />
+              <div className="flex gap-1">
+                {[50, 100, 500, 1000].map((q) => (
+                  <button key={q} onClick={() => setAmount(String(q))}
+                    className="px-2.5 py-1.5 rounded-lg text-xs bg-surface-2 border border-border hover:border-accent">
+                    ${q}
+                  </button>
                 ))}
-              </select>
+              </div>
             </div>
+          </div>
+
+          <div className="rounded-xl bg-surface-2 p-4 space-y-1 text-xs">
+            <div className="flex justify-between"><span className="text-muted">Gross amount</span><span className="font-mono">{fmtUsd(amountNum || 0)}</span></div>
+            <div className="flex justify-between"><span className="text-muted">{method === "card" ? "Stripe fee (~2.9% + $0.30)" : "BitPay network fee (~1%)"}</span><span className="font-mono">{fmtUsd(fee)}</span></div>
+            <div className="flex justify-between pt-2 border-t border-border/50"><span className="font-semibold">Net credit</span><span className="font-mono font-bold gradient-text-accent">{fmtUsd(net)}</span></div>
+          </div>
+
+          {error && <div className="text-xs text-bear-light">{error}</div>}
+
+          {method === "card" ? (
+            <button onClick={() => { setError(null); setStage("pay"); }} disabled={!amountNum || amountNum < 10} className="btn-primary w-full">
+              Continue to secure card entry →
+            </button>
+          ) : (
+            <button onClick={startCrypto} disabled={submitting || !amountNum || amountNum < 10} className="btn-primary w-full">
+              {submitting ? "Creating invoice…" : `Pay ${fmtUsd(amountNum || 0)} with crypto`}
+            </button>
+          )}
+
+          <p className="text-[10px] text-muted text-center">
+            Minimum $10. Card payments processed by Stripe — your PAN/CVV never touches our servers.
+            Crypto payments processed by BitPay — pay from any BTC, ETH, USDC, USDT wallet.
+          </p>
+          {cards.length > 0 && method === "card" && (
+            <p className="text-[10px] text-muted text-center">
+              You can also save this card during checkout for faster future payments.
+            </p>
           )}
         </>
       )}
 
-      {method === "crypto" && (
-        <div className="rounded-xl border border-warn/40 bg-warn/5 p-4 text-xs text-muted-light">
-          <span className="text-warn font-semibold">Crypto deposit flow:</span> we'll mint a BTC invoice with a unique address.
-          Funds show as <span className="text-foreground font-mono">pending</span> until network confirmation arrives, then credit to your available balance.
+      {stage === "pay" && method === "card" && (
+        <div className="space-y-4">
+          <button onClick={() => setStage("pick")} className="text-xs text-muted hover:text-foreground">← Back to amount</button>
+          <div className="rounded-xl bg-surface-2 p-3 text-xs flex justify-between">
+            <span className="text-muted">Charging</span>
+            <span className="font-mono font-bold">{fmtUsd(amountNum)}</span>
+          </div>
+          <StripeCardForm
+            userKey={userKey}
+            amount={amountNum}
+            savePaymentMethod
+            onSuccess={() => onComplete(`✓ Card payment of ${fmtUsd(amountNum)} submitted — balance updates once Stripe confirms.`)}
+            onError={(msg) => setError(msg)}
+          />
+          {error && <div className="text-xs text-bear-light">{error}</div>}
         </div>
       )}
-
-      <div className="rounded-xl bg-surface-2 p-4 space-y-1 text-xs">
-        <div className="flex justify-between"><span className="text-muted">Gross amount</span><span className="font-mono">{fmtUsd(amountNum || 0)}</span></div>
-        <div className="flex justify-between"><span className="text-muted">Processor fee</span><span className="font-mono">{fmtUsd(fee)}</span></div>
-        <div className="flex justify-between pt-2 border-t border-border/50"><span className="font-semibold">Net credit</span><span className="font-mono font-bold gradient-text-accent">{fmtUsd(net)}</span></div>
-      </div>
-
-      {error && <div className="text-xs text-bear-light">{error}</div>}
-
-      <button onClick={submit} disabled={submitting || !amountNum || amountNum < 10 || (method === "card" && !selectedCard)}
-        className="btn-primary w-full">
-        {submitting ? "Processing…" : `Deposit ${fmtUsd(amountNum || 0)}`}
-      </button>
-      <p className="text-[10px] text-muted text-center">Minimum $10. Fee shown is sandbox — live Stripe/Coinbase rates when wired in Phase 2.</p>
     </section>
   );
 }
@@ -576,24 +579,25 @@ function CardsPanel({ cards, headers, refresh }: { cards: Card[]; headers: Recor
   );
 }
 
-function CryptoPanel({ headers, onComplete }: { headers: Record<string, string>; onComplete: (msg: string) => void }) {
-  const [currency, setCurrency] = useState("BTC");
+function CryptoPanel({ headers, onComplete: _onComplete }: { headers: Record<string, string>; onComplete: (msg: string) => void }) {
   const [amount, setAmount] = useState("250");
-  const [invoice, setInvoice] = useState<any>(null);
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   async function mint() {
     setSubmitting(true); setErr(null);
     try {
-      const res = await fetch("/api/billing/crypto/payment-intents", {
+      const res = await fetch("/api/billing/bitpay/invoice", {
         method: "POST", headers,
-        body: JSON.stringify({ amount: Number(amount), currency }),
+        body: JSON.stringify({ amount: Number(amount), currency: "USD" }),
       });
-      if (!res.ok) throw new Error((await res.json()).error ?? "intent_failed");
+      if (!res.ok) throw new Error((await res.json()).error ?? "bitpay_invoice_failed");
       const data = await res.json();
-      setInvoice(data.invoice);
-      onComplete(`✓ ${currency} invoice created — pending network confirmation.`);
+      if (data?.invoice?.url) {
+        window.location.href = data.invoice.url;
+        return;
+      }
+      throw new Error("no_invoice_url");
     } catch (e: any) { setErr(e.message ?? "Failed"); }
     finally { setSubmitting(false); }
   }
@@ -601,15 +605,11 @@ function CryptoPanel({ headers, onComplete }: { headers: Record<string, string>;
   return (
     <section className="glass-card p-6 space-y-5 max-w-xl mx-auto">
       <h2 className="text-lg font-semibold">Pay with Crypto</h2>
-      <div className="flex gap-1.5">
-        {["BTC", "ETH", "USDC", "USDT"].map((c) => (
-          <button key={c} onClick={() => setCurrency(c)}
-            className={cn("flex-1 py-2 rounded-xl text-xs font-semibold border transition-smooth",
-              currency === c ? "bg-accent/15 border-accent/40 text-accent-light" : "bg-surface-2 border-border/50")}>
-            {c}
-          </button>
-        ))}
-      </div>
+      <p className="text-xs text-muted">
+        We hand you off to BitPay's hosted checkout, where you pick the coin and wallet.
+        Supported: BTC · ETH · USDC · USDT · LTC · DOGE · BCH · XRP. Your balance credits
+        automatically once the network confirms.
+      </p>
       <div>
         <label className="text-xs text-muted mb-1.5 block uppercase tracking-wider">Amount (USD)</label>
         <input type="number" inputMode="decimal" min={10} step={1} value={amount} onChange={(e) => setAmount(e.target.value)}
@@ -617,22 +617,11 @@ function CryptoPanel({ headers, onComplete }: { headers: Record<string, string>;
       </div>
       {err && <div className="text-xs text-bear-light">{err}</div>}
       <button onClick={mint} disabled={submitting || !Number(amount)} className="btn-primary w-full">
-        {submitting ? "Creating invoice…" : "Create crypto invoice"}
+        {submitting ? "Creating invoice…" : `Pay ${fmtUsd(Number(amount) || 0)} via BitPay`}
       </button>
-
-      {invoice && (
-        <div className="rounded-xl border border-accent/30 bg-accent/5 p-4 space-y-2 font-mono text-xs">
-          <div className="flex justify-between"><span className="text-muted">Network</span><span>{invoice.network}</span></div>
-          <div className="flex justify-between"><span className="text-muted">Currency</span><span>{invoice.currency}</span></div>
-          <div className="flex justify-between"><span className="text-muted">Amount</span><span>${invoice.amount}</span></div>
-          <div>
-            <div className="text-muted mb-1">Deposit address</div>
-            <div className="text-foreground break-all bg-surface-2 p-2 rounded">{invoice.address}</div>
-          </div>
-          <div className="text-muted">Expires {new Date(invoice.expiresAt).toLocaleString()}</div>
-          <div className="text-warn italic">{invoice.note}</div>
-        </div>
-      )}
+      <p className="text-[10px] text-muted text-center">
+        You'll be redirected back to this page after payment. Funds show as pending until network confirmation.
+      </p>
     </section>
   );
 }

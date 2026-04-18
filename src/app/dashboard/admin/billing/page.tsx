@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 
-type Tab = "overview" | "review" | "settings" | "transactions" | "accounts" | "destinations" | "webhooks";
+type Tab = "overview" | "review" | "settings" | "transactions" | "accounts" | "destinations" | "webhooks" | "processors";
 
 function fmt(n: number): string {
   const abs = Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -31,6 +31,7 @@ export default function AdminBillingPage() {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [settings, setSettings] = useState<any[]>([]);
   const [destinations, setDestinations] = useState<any[]>([]);
+  const [processorStatus, setProcessorStatus] = useState<any>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const checkUnlock = useCallback(async () => {
@@ -64,6 +65,9 @@ export default function AdminBillingPage() {
       } else if (tab === "webhooks") {
         const res = await fetch("/api/admin/billing/overview", { cache: "no-store" });
         if (res.ok) setOverview(await res.json());
+      } else if (tab === "processors") {
+        const res = await fetch("/api/admin/billing/processors", { cache: "no-store" });
+        if (res.ok) setProcessorStatus(await res.json());
       }
     }
     load();
@@ -143,7 +147,7 @@ export default function AdminBillingPage() {
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold text-foreground">Admin Billing</h1>
           <span className="badge badge-accent">OPERATOR</span>
-          <span className="badge badge-warn">SANDBOX</span>
+          <span className="badge badge-bull">LIVE</span>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setRefreshKey((k) => k + 1)} className="btn-ghost text-xs">↻ Refresh</button>
@@ -160,6 +164,7 @@ export default function AdminBillingPage() {
           ["accounts", "User Accounts"],
           ["destinations", "Business Wallets"],
           ["webhooks", "Webhooks"],
+          ["processors", "Processors"],
         ] as [Tab, string][]).map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)}
             className={cn("px-3.5 py-1.5 rounded-full text-xs font-medium border transition-smooth",
@@ -181,6 +186,7 @@ export default function AdminBillingPage() {
       {tab === "accounts" && overview && <AccountsPanel overview={overview} />}
       {tab === "destinations" && <DestinationsPanel destinations={destinations} refresh={() => setRefreshKey((k) => k + 1)} />}
       {tab === "webhooks" && overview && <WebhooksPanel webhooks={overview.recentWebhooks ?? []} />}
+      {tab === "processors" && <ProcessorsPanel status={processorStatus} refresh={() => setRefreshKey((k) => k + 1)} />}
     </div>
   );
 }
@@ -634,6 +640,130 @@ function DestinationsPanel({ destinations, refresh }: { destinations: any[]; ref
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function ProcessorsPanel({ status, refresh }: { status: any; refresh: () => void }) {
+  if (!status) {
+    return <div className="glass-card p-10 text-center text-sm text-muted">Loading processor status…</div>;
+  }
+  const s = status.stripe ?? {};
+  const b = status.bitpay ?? {};
+  const origin = typeof window !== "undefined" ? window.location.origin : "https://tradewithvic.com";
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted">
+          Live status of your payment processors. All fields read from Vercel env vars —
+          set keys there, then click Refresh.
+        </p>
+        <button onClick={refresh} className="btn-ghost text-xs">↻ Re-check</button>
+      </div>
+
+      <section className="glass-card p-5 space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-3">
+            <h3 className="text-base font-semibold">Stripe</h3>
+            <span className={cn("badge", s.configured ? (s.mode === "live" ? "badge-bull" : "badge-warn") : "badge-neutral")}>
+              {s.configured ? s.mode?.toUpperCase() : "NOT CONFIGURED"}
+            </span>
+            {s.configured && (
+              <span className={cn("badge", s.connectionOk ? "badge-bull" : "badge-bear")}>
+                {s.connectionOk ? "CONNECTION OK" : "CONNECTION FAILED"}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+          <KV label="Secret key" value={s.configured ? "Set" : "Missing"} />
+          <KV label="Publishable key" value={s.publishableKeySet ? "Set" : "Missing"} />
+          <KV label="Webhook secret" value={s.webhookConfigured ? "Set" : "Missing"} />
+          <KV label="Mode" value={s.mode ?? "—"} />
+        </div>
+        {s.error && (
+          <div className="text-xs text-bear-light bg-bear/5 border border-bear/30 rounded-lg p-3 font-mono">
+            {s.error}
+          </div>
+        )}
+        {s.account && (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs pt-3 border-t border-border/40">
+            <KV label="Account" value={s.account.id} mono />
+            <KV label="Business name" value={s.account.businessProfileName ?? "—"} />
+            <KV label="Country" value={(s.account.country ?? "—").toUpperCase()} />
+            <KV label="Default currency" value={(s.account.defaultCurrency ?? "—").toUpperCase()} />
+            <KV label="Charges enabled" value={s.account.chargesEnabled ? "Yes" : "No"} />
+            <KV label="Payouts enabled" value={s.account.payoutsEnabled ? "Yes" : "No"} />
+          </div>
+        )}
+        <div className="pt-3 border-t border-border/40 space-y-2 text-xs">
+          <div className="text-[10px] text-muted uppercase tracking-wider">Required env vars (set in Vercel → Project → Settings → Environment Variables)</div>
+          <EnvRow name="STRIPE_SECRET_KEY" desc="Server-side key — sk_live_… for production or sk_test_… for test mode" />
+          <EnvRow name="NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY" desc="Browser-safe key — pk_live_… or pk_test_…" />
+          <EnvRow name="STRIPE_WEBHOOK_SECRET" desc="whsec_… from Stripe Dashboard → Developers → Webhooks after creating an endpoint" />
+        </div>
+        <div className="pt-3 border-t border-border/40 text-xs">
+          <div className="text-[10px] text-muted uppercase tracking-wider mb-1">Webhook endpoint to configure in Stripe</div>
+          <div className="font-mono text-muted-light break-all bg-surface-2 border border-border px-3 py-2 rounded-lg">
+            {origin}/api/billing/stripe/webhook
+          </div>
+          <p className="text-[11px] text-muted mt-2">
+            Events to enable: <code>payment_intent.succeeded</code>, <code>payment_intent.payment_failed</code>, <code>charge.refunded</code>.
+          </p>
+        </div>
+      </section>
+
+      <section className="glass-card p-5 space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-3">
+            <h3 className="text-base font-semibold">BitPay</h3>
+            <span className={cn("badge", b.configured ? (b.env === "prod" ? "badge-bull" : "badge-warn") : "badge-neutral")}>
+              {b.configured ? (b.env === "prod" ? "LIVE" : b.env.toUpperCase()) : "NOT CONFIGURED"}
+            </span>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+          <KV label="Merchant token" value={b.configured ? "Set" : "Missing"} />
+          <KV label="Webhook secret" value={b.webhookSecretSet ? "Set" : "Missing"} />
+          <KV label="Environment" value={b.env ?? "—"} />
+        </div>
+        <div className="pt-3 border-t border-border/40 space-y-2 text-xs">
+          <div className="text-[10px] text-muted uppercase tracking-wider">Required env vars</div>
+          <EnvRow name="BITPAY_TOKEN" desc="Merchant API token from BitPay dashboard (Account → API Tokens)" />
+          <EnvRow name="BITPAY_ENV" desc="prod for live, test for testnet" />
+          <EnvRow name="BITPAY_WEBHOOK_SECRET" desc="Shared secret you invent — used to sign webhook URLs (optional but recommended)" />
+        </div>
+        <div className="pt-3 border-t border-border/40 text-xs">
+          <div className="text-[10px] text-muted uppercase tracking-wider mb-1">IPN / Notification URL to configure in BitPay</div>
+          <div className="font-mono text-muted-light break-all bg-surface-2 border border-border px-3 py-2 rounded-lg">
+            {origin}/api/billing/bitpay/webhook
+          </div>
+          <p className="text-[11px] text-muted mt-2">
+            BitPay posts every invoice status change here. Server re-fetches the invoice from BitPay
+            before crediting — webhook body is treated as a notification only.
+          </p>
+        </div>
+      </section>
+
+      <section className="glass-card p-5">
+        <h3 className="text-sm font-semibold mb-3">How money actually moves</h3>
+        <ol className="space-y-2 text-xs text-muted-light list-decimal list-inside">
+          <li>User deposits via card → Stripe charges the card → Stripe sends webhook → we credit balance.</li>
+          <li>User deposits via crypto → BitPay hosts checkout → BitPay sends IPN → we re-fetch invoice → we credit balance.</li>
+          <li>Balances never get credited from the initial client request — only from verified webhooks.</li>
+          <li>Payouts (withdrawals) still go through the admin Review Queue → funds land in your connected Stripe / BitPay account per their schedule.</li>
+        </ol>
+      </section>
+    </div>
+  );
+}
+
+function EnvRow({ name, desc }: { name: string; desc: string }) {
+  return (
+    <div className="flex items-start gap-3 py-1">
+      <code className="text-accent-light font-mono text-[11px] shrink-0">{name}</code>
+      <span className="text-muted text-[11px]">{desc}</span>
     </div>
   );
 }
