@@ -116,6 +116,7 @@ export default function BrainExecutionPage() {
   const [loadingState, setLoadingState] = useState(true);
   const [stateError, setStateError] = useState<string | null>(null);
   const [lastFetchedAt, setLastFetchedAt] = useState<number | null>(null);
+  const [refreshStatus, setRefreshStatus] = useState<"idle" | "refreshing" | "scanning" | "success">("idle");
 
   const [config, setConfig] = useState<ExecutionAccount | null>(null);
   const [loadingConfig, setLoadingConfig] = useState(true);
@@ -155,6 +156,31 @@ export default function BrainExecutionPage() {
       setLoadingState(false);
     }
   }, []);
+
+  const handleManualRefresh = useCallback(async () => {
+    if (refreshStatus !== "idle") return;
+    setRefreshStatus("scanning");
+    try {
+      // Trigger a fresh scan cycle (this can take up to ~60s on Vercel).
+      const scanRes = await fetch("/api/brain/execution/scan-now", {
+        method: "POST",
+        cache: "no-store",
+      });
+      // Regardless of scan outcome, re-fetch state so the UI shows the freshest DB row.
+      setRefreshStatus("refreshing");
+      await fetchState();
+      if (!scanRes.ok) {
+        setStateError(`Scan returned ${scanRes.status}; showing last persisted state.`);
+      } else {
+        setStateError(null);
+      }
+      setRefreshStatus("success");
+      setTimeout(() => setRefreshStatus("idle"), 1500);
+    } catch (e: any) {
+      setStateError(e?.message || "Refresh failed");
+      setRefreshStatus("idle");
+    }
+  }, [fetchState, refreshStatus]);
 
   const fetchConfig = useCallback(async () => {
     try {
@@ -267,8 +293,32 @@ export default function BrainExecutionPage() {
               Showcase
             </button>
           </div>
-          <button onClick={fetchState} className="text-xs px-3 py-1.5 rounded-lg bg-surface-2 border border-border/50 hover:border-accent transition-smooth">
-            ↻ Refresh
+          <button
+            onClick={handleManualRefresh}
+            disabled={refreshStatus !== "idle"}
+            className={cn(
+              "text-xs px-3 py-1.5 rounded-lg border transition-smooth inline-flex items-center gap-2",
+              refreshStatus === "success"
+                ? "bg-bull/15 border-bull/40 text-bull-light"
+                : refreshStatus !== "idle"
+                  ? "bg-surface-2 border-accent/40 text-accent-light cursor-wait"
+                  : "bg-surface-2 border-border/50 hover:border-accent"
+            )}
+          >
+            {refreshStatus === "scanning" && (
+              <>
+                <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity=".25" /><path d="M12 2a10 10 0 0110 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /></svg>
+                Scanning…
+              </>
+            )}
+            {refreshStatus === "refreshing" && (
+              <>
+                <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity=".25" /><path d="M12 2a10 10 0 0110 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /></svg>
+                Refreshing…
+              </>
+            )}
+            {refreshStatus === "success" && <>✓ Updated</>}
+            {refreshStatus === "idle" && <>↻ Refresh</>}
           </button>
           <Link href="/dashboard/brain" className="text-xs px-3 py-1.5 rounded-lg text-muted hover:text-foreground underline underline-offset-4">← Brain</Link>
         </div>
