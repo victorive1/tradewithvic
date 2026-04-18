@@ -1,12 +1,33 @@
 "use client";
 
+import Link from "next/link";
 import { Logo } from "@/components/ui/Logo";
 
-const links = {
-  Product: ["Market Radar", "Trade Setups", "Liquidity Maps", "Smart Money"],
-  Markets: ["Forex", "Metals", "Indices", "Crypto", "Energy"],
-  Company: ["About", "Pricing", "Contact", "Blog"],
-  Legal: ["Privacy Policy", "Terms of Service", "Cookie Policy"],
+const links: Record<string, { label: string; href: string }[]> = {
+  Product: [
+    { label: "Market Radar", href: "/dashboard" },
+    { label: "Trade Setups", href: "/dashboard/setups" },
+    { label: "Liquidity Maps", href: "/dashboard/liquidity" },
+    { label: "Smart Money", href: "/dashboard/sharp-money" },
+  ],
+  Markets: [
+    { label: "Forex", href: "/dashboard/screener" },
+    { label: "Metals", href: "/dashboard/screener" },
+    { label: "Indices", href: "/dashboard/screener" },
+    { label: "Crypto", href: "/dashboard/screener" },
+    { label: "Energy", href: "/dashboard/screener" },
+  ],
+  Company: [
+    { label: "About", href: "/about" },
+    { label: "Pricing", href: "/dashboard/billing" },
+    { label: "Contact", href: "/contact" },
+    { label: "Blog", href: "/blog" },
+  ],
+  Legal: [
+    { label: "Privacy Policy", href: "/privacy" },
+    { label: "Terms of Service", href: "/terms" },
+    { label: "Cookie Policy", href: "/cookies" },
+  ],
 };
 
 export function Footer() {
@@ -27,10 +48,13 @@ export function Footer() {
               </h4>
               <ul className="space-y-2">
                 {items.map((item) => (
-                  <li key={item}>
-                    <span className="text-sm text-muted hover:text-muted-light cursor-pointer transition-smooth">
-                      {item}
-                    </span>
+                  <li key={item.label}>
+                    <Link
+                      href={item.href}
+                      className="text-sm text-muted hover:text-muted-light transition-smooth"
+                    >
+                      {item.label}
+                    </Link>
                   </li>
                 ))}
               </ul>
