@@ -46,6 +46,7 @@ const navItems = [
       { label: "Central Banks", href: "/dashboard/central-banks", icon: "levels" },
       { label: "Trade Outcomes", href: "/dashboard/trade-outcomes", icon: "risk" },
       { label: "Capital Flow", href: "/dashboard/capital-flow", icon: "setups" },
+      { label: "Signal Analytics", href: "/dashboard/signal-analytics", icon: "radar" },
     ],
   },
   {
