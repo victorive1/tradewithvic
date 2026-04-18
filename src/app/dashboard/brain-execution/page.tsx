@@ -4,6 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
+import { ShowcaseView } from "./ShowcaseView";
+
+type ViewMode = "operator" | "showcase";
+const VIEW_MODE_KEY = "tradewithvic.brain.viewMode";
 
 type SubTab = "live" | "config" | "positions" | "trades" | "events";
 
@@ -107,6 +111,7 @@ const EXECUTION_MODES = [
 
 export default function BrainExecutionPage() {
   const [tab, setTab] = useState<SubTab>("live");
+  const [viewMode, setViewMode] = useState<ViewMode>("operator");
   const [state, setState] = useState<any>(null);
   const [loadingState, setLoadingState] = useState(true);
   const [stateError, setStateError] = useState<string | null>(null);
@@ -125,7 +130,16 @@ export default function BrainExecutionPage() {
   useEffect(() => {
     setAdminToken(readAdminToken());
     setMtAccounts(readMtAccounts());
+    try {
+      const saved = window.localStorage.getItem(VIEW_MODE_KEY);
+      if (saved === "operator" || saved === "showcase") setViewMode(saved);
+    } catch {}
   }, []);
+
+  function switchViewMode(mode: ViewMode) {
+    setViewMode(mode);
+    try { window.localStorage.setItem(VIEW_MODE_KEY, mode); } catch {}
+  }
 
   const fetchState = useCallback(async () => {
     try {
@@ -235,7 +249,27 @@ export default function BrainExecutionPage() {
             {lastFetchedAt && <span className="ml-2 text-[11px]">updated {Math.round((Date.now() - lastFetchedAt) / 1000)}s ago</span>}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          <div className="inline-flex rounded-lg bg-surface-2 border border-border/50 p-0.5">
+            <button
+              onClick={() => switchViewMode("operator")}
+              className={cn(
+                "px-3 py-1.5 rounded-md text-xs font-medium transition-smooth",
+                viewMode === "operator" ? "bg-accent text-white" : "text-muted-light hover:text-foreground"
+              )}
+            >
+              Operator
+            </button>
+            <button
+              onClick={() => switchViewMode("showcase")}
+              className={cn(
+                "px-3 py-1.5 rounded-md text-xs font-medium transition-smooth",
+                viewMode === "showcase" ? "bg-accent text-white" : "text-muted-light hover:text-foreground"
+              )}
+            >
+              Showcase
+            </button>
+          </div>
           <button onClick={fetchState} className="text-xs px-3 py-1.5 rounded-lg bg-surface-2 border border-border/50 hover:border-accent transition-smooth">
             ↻ Refresh
           </button>
@@ -243,6 +277,14 @@ export default function BrainExecutionPage() {
         </div>
       </div>
 
+      {viewMode === "showcase" && <ShowcaseView state={state} />}
+      {viewMode === "showcase" && (
+        <div className="text-center text-xs text-muted">
+          Showcase mode polls the same live data every 10 seconds. Switch to Operator to edit config and see full tables.
+        </div>
+      )}
+
+      {viewMode === "operator" && (
       <div className="flex flex-wrap gap-2">
         {subtabs.map((t) => (
           <button
@@ -262,11 +304,12 @@ export default function BrainExecutionPage() {
           </button>
         ))}
       </div>
+      )}
 
-      {tab === "live" && (
+      {viewMode === "operator" && tab === "live" && (
         <LiveTab state={state} loading={loadingState} error={stateError} account={account} equity={equity} equityPctFromStart={equityPctFromStart} winRate={winRate} />
       )}
-      {tab === "config" && (
+      {viewMode === "operator" && tab === "config" && (
         <ConfigTab
           config={config}
           loading={loadingConfig}
@@ -279,9 +322,9 @@ export default function BrainExecutionPage() {
           onRefreshToken={() => setAdminToken(readAdminToken())}
         />
       )}
-      {tab === "positions" && <PositionsTab positions={state?.positions ?? []} />}
-      {tab === "trades" && <TradesTab trades={state?.trades ?? []} />}
-      {tab === "events" && <EventsTab events={state?.events ?? []} rejected={state?.rejectedOrders ?? []} portfolioDecisions={state?.portfolioDecisions ?? []} />}
+      {viewMode === "operator" && tab === "positions" && <PositionsTab positions={state?.positions ?? []} />}
+      {viewMode === "operator" && tab === "trades" && <TradesTab trades={state?.trades ?? []} />}
+      {viewMode === "operator" && tab === "events" && <EventsTab events={state?.events ?? []} rejected={state?.rejectedOrders ?? []} portfolioDecisions={state?.portfolioDecisions ?? []} />}
     </div>
   );
 }

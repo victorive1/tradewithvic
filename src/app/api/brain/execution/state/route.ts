@@ -10,7 +10,7 @@ export async function GET(_req: NextRequest) {
     return NextResponse.json({ account: null, positions: [], trades: [], portfolio: null, events: [] });
   }
 
-  const [positions, trades, portfolio, events, rejectedOrders, portfolioDecisions] = await Promise.all([
+  const [positions, trades, portfolio, events, rejectedOrders, portfolioDecisions, latestSnapshotsRaw, latestCycle] = await Promise.all([
     prisma.executionPosition.findMany({
       where: { accountId: account.id, status: "open" },
       orderBy: { openedAt: "desc" },
@@ -36,7 +36,23 @@ export async function GET(_req: NextRequest) {
       orderBy: { createdAt: "desc" },
       take: 10,
     }),
+    // Latest quote per symbol — raw list (we'll dedupe below)
+    prisma.marketSnapshot.findMany({
+      orderBy: { capturedAt: "desc" },
+      take: 200,
+      select: { symbol: true, price: true, change: true, changePercent: true, high: true, low: true, capturedAt: true },
+    }),
+    prisma.scanCycle.findFirst({ orderBy: { startedAt: "desc" } }),
   ]);
+
+  // Dedupe: keep only the latest snapshot per symbol.
+  const seen = new Set<string>();
+  const latestSnapshots: any[] = [];
+  for (const row of latestSnapshotsRaw) {
+    if (seen.has(row.symbol)) continue;
+    seen.add(row.symbol);
+    latestSnapshots.push(row);
+  }
 
   return NextResponse.json({
     account,
@@ -46,6 +62,8 @@ export async function GET(_req: NextRequest) {
     events,
     rejectedOrders,
     portfolioDecisions,
+    quotes: latestSnapshots,
+    latestCycle,
     fetchedAt: Date.now(),
   });
 }
