@@ -7,6 +7,7 @@ import { analyzeAllIndicators } from "@/lib/brain/indicators";
 import { analyzeAllLiquidity } from "@/lib/brain/liquidity";
 import { detectAllStrategies } from "@/lib/brain/strategies";
 import { computeSentiment, persistSentiment } from "@/lib/brain/sentiment";
+import { analyzeEventRisk, seedPlaceholderEventsIfEmpty } from "@/lib/brain/fundamentals";
 
 export interface ScanCycleResult {
   scanCycleId: string;
@@ -25,6 +26,8 @@ export interface ScanCycleResult {
   setupsPersisted: number;
   sentimentTone: string;
   sentimentScore: number;
+  eventRiskHigh: number;
+  upcomingEvents: number;
   errors: string[];
 }
 
@@ -96,6 +99,10 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
     const sentiment = computeSentiment(quotes, strengths);
     await persistSentiment(cycle.id, sentiment);
 
+    await seedPlaceholderEventsIfEmpty();
+    const eventRisk = await analyzeEventRisk(CANDLE_SYMBOLS);
+    const eventRiskHigh = eventRisk.results.filter((r) => r.riskLevel === "high").length;
+
     const durationMs = Date.now() - startedAt;
     await prisma.scanCycle.update({
       where: { id: cycle.id },
@@ -129,6 +136,8 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       setupsPersisted: strategyResult.totalPersisted,
       sentimentTone: sentiment.riskTone,
       sentimentScore: Math.round(sentiment.riskScore),
+      eventRiskHigh,
+      upcomingEvents: eventRisk.upcomingCount,
       errors,
     };
   } catch (err: any) {
@@ -164,6 +173,8 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       setupsPersisted: 0,
       sentimentTone: "unknown",
       sentimentScore: 0,
+      eventRiskHigh: 0,
+      upcomingEvents: 0,
       errors,
     };
   }

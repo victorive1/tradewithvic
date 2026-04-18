@@ -249,6 +249,44 @@ model LiquidityEvent {
   @@index([detectedAt])
 }
 
+// ==================== MARKET BRAIN — FUNDAMENTAL ENGINE ====================
+
+model FundamentalEvent {
+  id              String   @id @default(cuid())
+  eventTime       DateTime
+  country         String
+  eventName       String
+  impact          String   // high | medium | low
+  forecast        String?
+  previous        String?
+  actual          String?
+  affectedCurrenciesJson String @default("[]")
+  affectedSymbolsJson    String @default("[]")
+  source          String   @default("manual")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([eventTime, country, eventName])
+  @@index([eventTime])
+  @@index([impact])
+}
+
+model EventRiskSnapshot {
+  id              String   @id @default(cuid())
+  symbol          String
+  riskLevel       String   // none | low | medium | high
+  nearestEventId  String?
+  nearestEventName String?
+  nearestEventImpact String?
+  minutesToEvent  Int?
+  computedAt      DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([symbol])
+  @@index([riskLevel])
+  @@index([computedAt])
+}
+
 // ==================== MARKET BRAIN — SENTIMENT ENGINE ====================
 
 model SentimentSnapshot {

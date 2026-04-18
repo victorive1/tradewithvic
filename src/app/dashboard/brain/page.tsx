@@ -33,6 +33,8 @@ export default async function BrainStatusPage() {
     recentLiquidityEvents,
     activeSetups,
     latestSentiment,
+    upcomingEvents,
+    elevatedEventRisks,
   ] = await Promise.all([
     prisma.scanCycle.findFirst({ orderBy: { startedAt: "desc" } }),
     prisma.scanCycle.count(),
@@ -66,6 +68,15 @@ export default async function BrainStatusPage() {
       take: 12,
     }),
     prisma.sentimentSnapshot.findFirst({ orderBy: { computedAt: "desc" } }),
+    prisma.fundamentalEvent.findMany({
+      where: { eventTime: { gte: new Date() } },
+      orderBy: { eventTime: "asc" },
+      take: 6,
+    }),
+    prisma.eventRiskSnapshot.findMany({
+      where: { riskLevel: { in: ["medium", "high"] } },
+      orderBy: { minutesToEvent: "asc" },
+    }),
   ]);
 
   const health = latestCycle
@@ -222,6 +233,62 @@ export default async function BrainStatusPage() {
           </div>
         )}
       </section>
+
+      {(upcomingEvents.length > 0 || elevatedEventRisks.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <section className="lg:col-span-2 rounded-lg border border-border bg-card p-5">
+            <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">
+              Upcoming Economic Events
+            </h2>
+            {upcomingEvents.length === 0 ? (
+              <p className="text-sm text-muted">No events queued.</p>
+            ) : (
+              <div className="space-y-2">
+                {upcomingEvents.map((e) => {
+                  const minutesAway = Math.round((e.eventTime.getTime() - Date.now()) / 60000);
+                  const impactClass = e.impact === "high" ? "bg-red-500/15 text-red-400" : e.impact === "medium" ? "bg-yellow-500/10 text-yellow-500" : "bg-muted/10 text-muted";
+                  return (
+                    <div key={e.id} className="flex items-center justify-between text-sm py-1.5 border-b border-border/40 last:border-0">
+                      <div className="flex items-center gap-3">
+                        <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded ${impactClass}`}>{e.impact}</span>
+                        <span className="font-mono text-xs text-muted">{e.country}</span>
+                        <span>{e.eventName}</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-muted">
+                        <span className="font-mono">in {minutesAway < 60 ? `${minutesAway}m` : `${Math.floor(minutesAway / 60)}h ${minutesAway % 60}m`}</span>
+                        {e.forecast && <span className="font-mono">f {e.forecast}</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+          <section className="rounded-lg border border-border bg-card p-5">
+            <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">
+              Event Risk by Symbol
+            </h2>
+            {elevatedEventRisks.length === 0 ? (
+              <p className="text-sm text-muted">No elevated event risk.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {elevatedEventRisks.map((r) => {
+                  const riskClass = r.riskLevel === "high" ? "text-red-400 bg-red-500/10" : "text-yellow-400 bg-yellow-500/10";
+                  return (
+                    <div key={r.id} className={`flex items-center justify-between text-xs py-1.5 px-2 rounded ${riskClass}`}>
+                      <span className="font-mono font-semibold">{r.symbol}</span>
+                      <span className="uppercase">{r.riskLevel}</span>
+                      {r.minutesToEvent !== null && r.minutesToEvent !== undefined && (
+                        <span className="font-mono opacity-80">{r.minutesToEvent}m</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </div>
+      )}
 
       {latestSentiment && (() => {
         const toneClass = latestSentiment.riskTone === "risk_on" ? "from-green-500/15 to-transparent border-green-500/40 text-green-400"

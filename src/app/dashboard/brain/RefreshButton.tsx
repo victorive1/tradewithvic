@@ -53,7 +53,7 @@ export function RefreshButton() {
           setToken(null);
         }
       } else {
-        setMessage(`Scanned — ${data.setupsPersisted}setups · sentiment ${data.sentimentTone} (${data.sentimentScore}) · ${data.durationMs}ms`);
+        setMessage(`Scanned — ${data.setupsPersisted}setups · sentiment ${data.sentimentTone} · ${data.upcomingEvents} events · ${data.durationMs}ms`);
         startTransition(() => router.refresh());
       }
     } catch (err: any) {
