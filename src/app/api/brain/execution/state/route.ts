@@ -45,6 +45,58 @@ export async function GET(_req: NextRequest) {
     prisma.scanCycle.findFirst({ orderBy: { startedAt: "desc" } }),
   ]);
 
+  // Build signal log: every TradeSetup from the last 200 with its execution action.
+  const signalSetups = await prisma.tradeSetup.findMany({
+    orderBy: { createdAt: "desc" },
+    take: 200,
+  });
+  const orders = signalSetups.length > 0
+    ? await prisma.executionOrder.findMany({ where: { setupId: { in: signalSetups.map((s: any) => s.id) } } })
+    : [];
+  const orderMap = new Map<string, any>(orders.map((o: any) => [o.setupId, o]));
+
+  type Action = "EXECUTED" | "SKIPPED" | "QUEUED" | "DETECTED" | "EXPIRED" | "CLOSED";
+  const signals = signalSetups.map((s: any) => {
+    const order = orderMap.get(s.id) ?? null;
+    let action: Action = "DETECTED";
+    let actionReason: string | null = null;
+    if (order?.status === "filled") {
+      action = s.status === "closed" ? "CLOSED" : "EXECUTED";
+    } else if (order?.status === "rejected") {
+      action = "SKIPPED";
+      actionReason = order.rejectReason;
+    } else if (s.status === "expired") {
+      action = "EXPIRED";
+    } else if (s.status === "closed") {
+      action = "CLOSED";
+    } else if (s.status === "active" && (s.qualityGrade === "A+" || s.qualityGrade === "A")) {
+      action = "QUEUED";
+    } else {
+      action = "DETECTED";
+      actionReason = `Grade ${s.qualityGrade} not in execution whitelist`;
+    }
+    return {
+      id: s.id,
+      time: s.createdAt,
+      source: "ALGO",
+      strategy: s.setupType,
+      symbol: s.symbol,
+      timeframe: s.timeframe,
+      direction: s.direction,
+      entry: s.entry,
+      stopLoss: s.stopLoss,
+      takeProfit1: s.takeProfit1,
+      takeProfit2: s.takeProfit2,
+      takeProfit3: s.takeProfit3,
+      riskReward: s.riskReward,
+      confidenceScore: s.confidenceScore,
+      qualityGrade: s.qualityGrade,
+      action,
+      actionReason,
+      status: s.status,
+    };
+  });
+
   // Dedupe: keep only the latest snapshot per symbol.
   const seen = new Set<string>();
   const latestSnapshots: any[] = [];
@@ -64,6 +116,7 @@ export async function GET(_req: NextRequest) {
     portfolioDecisions,
     quotes: latestSnapshots,
     latestCycle,
+    signals,
     fetchedAt: Date.now(),
   });
 }

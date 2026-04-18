@@ -9,7 +9,7 @@ import { ShowcaseView } from "./ShowcaseView";
 type ViewMode = "operator" | "showcase";
 const VIEW_MODE_KEY = "tradewithvic.brain.viewMode";
 
-type SubTab = "live" | "config" | "positions" | "trades" | "events";
+type SubTab = "dashboard" | "signals" | "history" | "config";
 
 interface ConnectedMtAccount {
   id: string;
@@ -110,7 +110,7 @@ const EXECUTION_MODES = [
 ];
 
 export default function BrainExecutionPage() {
-  const [tab, setTab] = useState<SubTab>("live");
+  const [tab, setTab] = useState<SubTab>("dashboard");
   const [viewMode, setViewMode] = useState<ViewMode>("operator");
   const [state, setState] = useState<any>(null);
   const [loadingState, setLoadingState] = useState(true);
@@ -211,11 +211,10 @@ export default function BrainExecutionPage() {
   const running = account?.autoExecuteEnabled && !account?.killSwitchEngaged;
 
   const subtabs: { id: SubTab; label: string; count?: number }[] = [
-    { id: "live", label: "Live" },
-    { id: "config", label: "Config" },
-    { id: "positions", label: "Positions", count: state?.positions?.length },
-    { id: "trades", label: "Trades", count: state?.trades?.length },
-    { id: "events", label: "Events", count: state?.events?.length },
+    { id: "dashboard", label: "⚡ Dashboard", count: state?.positions?.length },
+    { id: "signals", label: "📡 Signal Log", count: state?.signals?.length },
+    { id: "history", label: "🗂 History", count: state?.trades?.length },
+    { id: "config", label: "⚙ Config" },
   ];
 
   return (
@@ -304,8 +303,14 @@ export default function BrainExecutionPage() {
       </div>
       )}
 
-      {viewMode === "operator" && tab === "live" && (
+      {viewMode === "operator" && tab === "dashboard" && (
         <LiveTab state={state} loading={loadingState} error={stateError} mtAccounts={mtAccounts} />
+      )}
+      {viewMode === "operator" && tab === "signals" && (
+        <SignalLogTab signals={state?.signals ?? []} loading={loadingState} />
+      )}
+      {viewMode === "operator" && tab === "history" && (
+        <HistoryTab trades={state?.trades ?? []} mtAccounts={mtAccounts} loading={loadingState} />
       )}
       {viewMode === "operator" && tab === "config" && (
         <ConfigTab
@@ -318,9 +323,229 @@ export default function BrainExecutionPage() {
           onSave={saveConfig}
         />
       )}
-      {viewMode === "operator" && tab === "positions" && <PositionsTab positions={state?.positions ?? []} />}
-      {viewMode === "operator" && tab === "trades" && <TradesTab trades={state?.trades ?? []} />}
-      {viewMode === "operator" && tab === "events" && <EventsTab events={state?.events ?? []} rejected={state?.rejectedOrders ?? []} portfolioDecisions={state?.portfolioDecisions ?? []} />}
+    </div>
+  );
+}
+
+type SignalFilter = "all" | "executed" | "skipped" | "queued" | "detected";
+
+function SignalLogTab({ signals, loading }: { signals: any[]; loading: boolean }) {
+  const [filter, setFilter] = useState<SignalFilter>("all");
+
+  const counts = useMemo(() => {
+    const c = { all: signals.length, executed: 0, skipped: 0, queued: 0, detected: 0 };
+    for (const s of signals) {
+      const a = (s.action || "").toLowerCase();
+      if (a === "executed" || a === "closed") c.executed++;
+      else if (a === "skipped" || a === "expired") c.skipped++;
+      else if (a === "queued") c.queued++;
+      else c.detected++;
+    }
+    return c;
+  }, [signals]);
+
+  const filtered = useMemo(() => {
+    if (filter === "all") return signals;
+    return signals.filter((s) => {
+      const a = (s.action || "").toLowerCase();
+      if (filter === "executed") return a === "executed" || a === "closed";
+      if (filter === "skipped") return a === "skipped" || a === "expired";
+      if (filter === "queued") return a === "queued";
+      return a === "detected";
+    });
+  }, [filter, signals]);
+
+  if (loading) return <div className="glass-card p-12 text-center text-muted">Loading signals…</div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="text-xs text-muted">
+          Total <span className="text-foreground font-semibold">{counts.all}</span>
+          <span className="mx-2">·</span>
+          Scanner <span className="text-accent-light">{signals.filter((s) => !s.action || s.action === "DETECTED").length}</span>
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {([
+            { id: "all", label: "All", count: counts.all },
+            { id: "executed", label: "Executed", count: counts.executed },
+            { id: "skipped", label: "Skipped", count: counts.skipped },
+            { id: "queued", label: "Queued", count: counts.queued },
+            { id: "detected", label: "Detected", count: counts.detected },
+          ] as const).map((f) => (
+            <button
+              key={f.id}
+              onClick={() => setFilter(f.id)}
+              className={cn(
+                "px-3 py-1.5 rounded-full text-xs font-medium transition-smooth border",
+                filter === f.id
+                  ? "bg-accent/15 text-accent-light border-accent/40"
+                  : "bg-surface-2 text-muted-light border-border/50 hover:border-border-light"
+              )}
+            >
+              {f.label}
+              <span className="ml-1.5 opacity-60">{f.count}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="glass-card overflow-x-auto p-0">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-muted border-b border-border/40 bg-surface-2/30">
+              <th className="text-left py-3 px-4">TIME</th>
+              <th className="text-left px-3">SOURCE</th>
+              <th className="text-left px-3">STRATEGY</th>
+              <th className="text-left px-3">SYMBOL</th>
+              <th className="text-left px-3">TF</th>
+              <th className="text-left px-3">DIR</th>
+              <th className="text-right px-3">ENTRY</th>
+              <th className="text-right px-3">SL</th>
+              <th className="text-right px-3">TP1</th>
+              <th className="text-right px-3">CONF</th>
+              <th className="text-left px-3">ACTION / STATUS</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr><td colSpan={11} className="text-center py-12 text-muted">No signals match this filter.</td></tr>
+            ) : filtered.map((s) => (
+              <tr key={s.id} className="border-b border-border/20 last:border-0 hover:bg-surface-2/30 transition-smooth">
+                <td className="py-3 px-4 font-mono text-muted-light">{new Date(s.time).toLocaleString()}</td>
+                <td className="px-3">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-warn/10 text-warn border border-warn/20">{s.source}</span>
+                </td>
+                <td className="px-3 font-semibold uppercase tracking-wide">{s.strategy?.replace(/_/g, "-")}</td>
+                <td className="px-3 font-semibold">{s.symbol}</td>
+                <td className="px-3 font-mono uppercase text-muted">{s.timeframe}</td>
+                <td className="px-3">
+                  <span className={cn("px-2 py-0.5 rounded text-[10px] font-bold uppercase border",
+                    s.direction === "bullish" ? "bg-bull/10 text-bull-light border-bull/20" : "bg-bear/10 text-bear-light border-bear/20"
+                  )}>
+                    {s.direction === "bullish" ? "BUY" : "SELL"}
+                  </span>
+                </td>
+                <td className="text-right px-3 font-mono">{s.entry ? s.entry.toFixed(s.entry > 100 ? 2 : 4) : "—"}</td>
+                <td className="text-right px-3 font-mono text-bear-light/80">{s.stopLoss?.toFixed(s.stopLoss > 100 ? 2 : 4)}</td>
+                <td className="text-right px-3 font-mono text-bull-light/80">{s.takeProfit1?.toFixed(s.takeProfit1 > 100 ? 2 : 4)}</td>
+                <td className="text-right px-3 font-mono">
+                  <span className={cn(
+                    "font-semibold",
+                    s.confidenceScore >= 89 ? "text-bull-light" : s.confidenceScore >= 65 ? "text-warn" : "text-muted"
+                  )}>
+                    {s.confidenceScore}
+                  </span>
+                </td>
+                <td className="px-3">
+                  <ActionBadge action={s.action} reason={s.actionReason} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ActionBadge({ action, reason }: { action: string; reason?: string | null }) {
+  const base = "text-[11px] font-bold uppercase tracking-wider";
+  const colorMap: Record<string, string> = {
+    EXECUTED: "text-bull-light",
+    CLOSED: "text-bull-light",
+    SKIPPED: "text-bear-light",
+    EXPIRED: "text-muted",
+    QUEUED: "text-accent-light",
+    DETECTED: "text-warn",
+  };
+  return (
+    <div>
+      <div className={cn(base, colorMap[action] ?? "text-muted")}>{action}</div>
+      {reason && <div className="text-[10px] text-muted mt-0.5 max-w-[260px] truncate" title={reason}>{reason}</div>}
+    </div>
+  );
+}
+
+function HistoryTab({ trades, mtAccounts, loading }: { trades: any[]; mtAccounts: ConnectedMtAccount[]; loading: boolean }) {
+  if (loading) return <div className="glass-card p-12 text-center text-muted">Loading history…</div>;
+  const hasMt = mtAccounts.length > 0;
+
+  const totalPnl = trades.reduce((s, t) => s + (t.realizedPnl ?? 0), 0);
+  const wins = trades.filter((t) => (t.realizedPnl ?? 0) > 0).length;
+  const losses = trades.filter((t) => (t.realizedPnl ?? 0) <= 0).length;
+  const winRate = trades.length > 0 ? (wins / trades.length) * 100 : 0;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <MiniStat label="Total Trades" value={`${trades.length}`} />
+        <MiniStat label="Wins / Losses" value={`${wins} / ${losses}`} valueClass={wins > losses ? "text-bull-light" : losses > wins ? "text-bear-light" : undefined} />
+        <MiniStat label="Win Rate" value={trades.length ? `${winRate.toFixed(0)}%` : "—"} valueClass={winRate >= 55 ? "text-bull-light" : winRate > 0 ? "text-warn" : undefined} />
+        <MiniStat label="Total P&L" value={`${totalPnl >= 0 ? "+" : ""}$${totalPnl.toFixed(2)}`} valueClass={totalPnl >= 0 ? "text-bull-light" : "text-bear-light"} />
+      </div>
+
+      {!hasMt && (
+        <div className="glass-card p-4 border border-accent/20 bg-accent/5 text-xs text-muted">
+          <span className="text-accent-light font-semibold mr-2">Note</span>
+          No MT account connected. P&L shown reflects the brain&#39;s internal algo tracking. Once an MT bridge is wired, real per-account P&L will appear here.
+        </div>
+      )}
+
+      <div className="glass-card overflow-x-auto p-0">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-muted border-b border-border/40 bg-surface-2/30">
+              <th className="text-left py-3 px-4">CLOSED AT</th>
+              <th className="text-left px-3">SYMBOL</th>
+              <th className="text-left px-3">TF</th>
+              <th className="text-left px-3">DIR · GRADE</th>
+              <th className="text-right px-3">ENTRY</th>
+              <th className="text-right px-3">EXIT</th>
+              <th className="text-right px-3">SIZE</th>
+              <th className="text-right px-3">RISK</th>
+              <th className="text-right px-3">P&L</th>
+              <th className="text-right px-3">R MULT</th>
+              <th className="text-left px-3">EXIT REASON</th>
+              <th className="text-right px-3">MFE / MAE</th>
+              <th className="text-right px-3 pr-4">DURATION</th>
+            </tr>
+          </thead>
+          <tbody>
+            {trades.length === 0 ? (
+              <tr><td colSpan={13} className="text-center py-12 text-muted">No closed trades yet. History will populate as the algo exits positions.</td></tr>
+            ) : trades.map((t) => {
+              const win = (t.realizedPnl ?? 0) > 0;
+              return (
+                <tr key={t.id} className="border-b border-border/20 last:border-0 hover:bg-surface-2/30 transition-smooth">
+                  <td className="py-3 px-4 font-mono text-muted-light">{new Date(t.closedAt).toLocaleString()}</td>
+                  <td className="px-3 font-semibold">{t.symbol}</td>
+                  <td className="px-3 font-mono text-muted">{t.timeframe}</td>
+                  <td className="px-3">
+                    <span className={cn("uppercase font-bold", t.direction === "bullish" ? "text-bull-light" : "text-bear-light")}>
+                      {t.direction === "bullish" ? "LONG" : "SHORT"}
+                    </span>
+                    <span className="ml-2 text-muted">{t.grade}</span>
+                  </td>
+                  <td className="text-right px-3 font-mono">{t.entry?.toFixed(t.entry > 100 ? 2 : 4)}</td>
+                  <td className="text-right px-3 font-mono">{t.exit?.toFixed(t.exit > 100 ? 2 : 4)}</td>
+                  <td className="text-right px-3 font-mono">{t.sizeUnits?.toFixed(2)}</td>
+                  <td className="text-right px-3 font-mono text-muted">${t.riskAmount?.toFixed(2)}</td>
+                  <td className={cn("text-right px-3 font-mono font-bold", win ? "text-bull-light" : "text-bear-light")}>
+                    {win ? "+" : ""}${t.realizedPnl?.toFixed(2)}
+                  </td>
+                  <td className={cn("text-right px-3 font-mono", (t.rMultiple ?? 0) >= 0 ? "text-bull-light" : "text-bear-light")}>
+                    {t.rMultiple?.toFixed(2)}R
+                  </td>
+                  <td className="px-3 uppercase text-muted text-[10px]">{t.exitReason?.replace(/_/g, " ")}</td>
+                  <td className="text-right px-3 font-mono text-muted text-[10px]">{t.mfe?.toFixed(4)} / {t.mae?.toFixed(4)}</td>
+                  <td className="text-right px-3 pr-4 font-mono text-muted">{t.durationMinutes}m</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
