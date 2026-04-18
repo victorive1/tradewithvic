@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { evaluatePortfolio, capturePortfolioSnapshot } from "@/lib/brain/portfolio";
+import { reassessAllOpenPositions } from "@/lib/brain/thesis";
 
 const DEFAULT_ACCOUNT_NAME = "paper-default";
 
@@ -281,6 +282,9 @@ async function manageOpenPositions(account: any): Promise<{ closed: number; real
 
 export async function runExecutionCycle(): Promise<ExecutionCycleResult> {
   let account = await ensureAccount();
+
+  // 0. Reassess thesis for all open positions (Layer 11)
+  await reassessAllOpenPositions();
 
   // 1. Manage existing open positions (check SL/TP hits)
   const management = await manageOpenPositions(account);
