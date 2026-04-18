@@ -6,7 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "preflight": "npx prisma generate && npx tsc --noEmit && npx next build"
+  },
+  "engines": {
+    "node": "22.x"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
