@@ -94,6 +94,7 @@ const navItems = [
       { label: "Algo Investors", href: "/dashboard/algo-investors", icon: "risk" },
       { label: "Day Evaluator", href: "/dashboard/evaluator", icon: "watchlist" },
       { label: "FX Commentary", href: "/dashboard/commentary", icon: "alerts" },
+      { label: "Replay Mode", href: "/dashboard/replay", icon: "screener" },
     ],
   },
   {
