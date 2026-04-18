@@ -98,6 +98,12 @@ const navItems = [
     ],
   },
   {
+    section: "Learn",
+    items: [
+      { label: "Free FX Course", href: "/dashboard/fx-course", icon: "watchlist" },
+    ],
+  },
+  {
     section: "Tools",
     items: [
       { label: "Risk Calculator", href: "/dashboard/risk", icon: "risk" },
