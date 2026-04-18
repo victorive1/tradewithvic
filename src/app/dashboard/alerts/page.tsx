@@ -1,131 +1,407 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
 
-const alertTypes = [
-  { id: "price_level", label: "Price Level", desc: "Alert when price reaches a specific level" },
-  { id: "setup", label: "Trade Setup", desc: "Alert when a new setup is detected" },
-  { id: "volatility", label: "Volatility Spike", desc: "Alert on unusual volatility" },
-  { id: "liquidity_sweep", label: "Liquidity Sweep", desc: "Alert when stop hunts occur" },
-  { id: "event_risk", label: "Event Risk", desc: "Alert before major economic events" },
-];
+type AlertView = "inbox" | "rules" | "history" | "settings";
+type AlertCategory = "price" | "signal" | "volatility" | "macro" | "sentiment" | "engine" | "custom";
+type AlertUrgency = "low" | "medium" | "high" | "critical";
+type DeliveryChannel = "in_app" | "push" | "email";
 
-const recentAlerts = [
-  { type: "Liquidity Sweep", symbol: "XAU/USD", message: "Buy-side liquidity swept above 3,292. Watch for reversal.", time: "2 min ago", color: "bull" },
-  { type: "Trade Setup", symbol: "NAS100", message: "Bullish breakout setup detected. Confidence: 82%.", time: "8 min ago", color: "accent" },
-  { type: "Volatility Spike", symbol: "GBP/JPY", message: "Volatility expanded +43% above 24h average.", time: "15 min ago", color: "warn" },
-  { type: "Event Risk", symbol: "USD pairs", message: "US CPI release in 45 minutes. HIGH impact expected.", time: "22 min ago", color: "bear" },
-  { type: "Price Level", symbol: "EUR/USD", message: "Approaching resistance at 1.0880.", time: "35 min ago", color: "accent" },
-];
+interface AlertRule {
+  id: string;
+  name: string;
+  category: AlertCategory;
+  conditions: { field: string; operator: string; value: string }[];
+  instruments: string[];
+  urgency: AlertUrgency;
+  channels: DeliveryChannel[];
+  isActive: boolean;
+  createdAt: string;
+  triggeredCount: number;
+}
+
+interface AlertNotification {
+  id: string;
+  ruleId?: string;
+  ruleName?: string;
+  category: AlertCategory;
+  urgency: AlertUrgency;
+  title: string;
+  message: string;
+  symbol?: string;
+  timestamp: string;
+  read: boolean;
+}
+
+interface AlertSettings {
+  quietHoursEnabled: boolean;
+  quietStart: string;
+  quietEnd: string;
+  channels: Record<DeliveryChannel, boolean>;
+  maxPerHour: number;
+  deduplicationMinutes: number;
+}
+
+const CATEGORY_CONFIG: Record<AlertCategory, { label: string; icon: string; color: string; desc: string }> = {
+  price: { label: "Price Level", icon: "💰", color: "text-accent-light", desc: "Triggered when price reaches a specific level" },
+  signal: { label: "Signal Alert", icon: "🎯", color: "text-bull-light", desc: "Triggered when a new trade setup is detected" },
+  volatility: { label: "Volatility", icon: "⚡", color: "text-warn", desc: "Triggered on unusual volatility expansion" },
+  macro: { label: "Macro / Calendar", icon: "📅", color: "text-bear-light", desc: "Triggered before major economic events" },
+  sentiment: { label: "Sentiment", icon: "📊", color: "text-accent-light", desc: "Triggered on extreme sentiment shifts" },
+  engine: { label: "Engine Alert", icon: "🔧", color: "text-muted-light", desc: "Triggered by platform intelligence engines" },
+  custom: { label: "Custom Rule", icon: "⚙️", color: "text-foreground", desc: "Your custom multi-condition alert rules" },
+};
+
+const URGENCY_CONFIG: Record<AlertUrgency, { label: string; badge: string }> = {
+  low: { label: "Low", badge: "bg-surface-3 text-muted border-border" },
+  medium: { label: "Medium", badge: "bg-accent/10 text-accent-light border-accent/20" },
+  high: { label: "High", badge: "bg-warn/10 text-warn border-warn/20" },
+  critical: { label: "Critical", badge: "bg-bear/10 text-bear-light border-bear/20" },
+};
+
+function loadRules(): AlertRule[] {
+  if (typeof window === "undefined") return [];
+  try { const s = localStorage.getItem("alert_rules"); return s ? JSON.parse(s) : []; } catch { return []; }
+}
+function saveRules(rules: AlertRule[]) { localStorage.setItem("alert_rules", JSON.stringify(rules)); }
+function loadSettings(): AlertSettings {
+  const def: AlertSettings = { quietHoursEnabled: false, quietStart: "22:00", quietEnd: "07:00", channels: { in_app: true, push: false, email: false }, maxPerHour: 20, deduplicationMinutes: 5 };
+  if (typeof window === "undefined") return def;
+  try { const s = localStorage.getItem("alert_settings"); return s ? { ...def, ...JSON.parse(s) } : def; } catch { return def; }
+}
+function saveSettings(settings: AlertSettings) { localStorage.setItem("alert_settings", JSON.stringify(settings)); }
+
+// Generate sample notifications from live data
+function generateNotifications(): AlertNotification[] {
+  const now = Date.now();
+  return [
+    { id: "n1", category: "signal", urgency: "high", title: "A+ Setup Detected", message: "XAU/USD bullish breakout setup — confidence 89%, R:R 1.9:1", symbol: "XAUUSD", timestamp: new Date(now - 120000).toISOString(), read: false },
+    { id: "n2", category: "volatility", urgency: "medium", title: "Volatility Expanding", message: "GBP/JPY volatility +38% above average. Breakout conditions forming.", symbol: "GBPJPY", timestamp: new Date(now - 480000).toISOString(), read: false },
+    { id: "n3", category: "macro", urgency: "critical", title: "High-Impact Event", message: "US CPI release in 45 minutes. Expect elevated volatility on USD pairs.", timestamp: new Date(now - 900000).toISOString(), read: true },
+    { id: "n4", category: "sentiment", urgency: "medium", title: "Extreme Sentiment", message: "EUR/USD retail positioning at 78% long. Contrarian fade risk elevated.", symbol: "EURUSD", timestamp: new Date(now - 1800000).toISOString(), read: true },
+    { id: "n5", category: "engine", urgency: "low", title: "Sharp Money Activity", message: "NAS100 sharp money score rose to 76 — elevated institutional interest.", symbol: "NAS100", timestamp: new Date(now - 3600000).toISOString(), read: true },
+  ];
+}
 
 export default function AlertsPage() {
-  const [showCreate, setShowCreate] = useState(false);
-  const [selectedType, setSelectedType] = useState("");
-  const [selectedSymbol, setSelectedSymbol] = useState("");
+  const [view, setView] = useState<AlertView>("inbox");
+  const [rules, setRules] = useState<AlertRule[]>([]);
+  const [notifications, setNotifications] = useState<AlertNotification[]>([]);
+  const [settings, setSettings] = useState<AlertSettings>(loadSettings());
+  const [showBuilder, setShowBuilder] = useState(false);
+
+  // Builder state
+  const [newName, setNewName] = useState("");
+  const [newCategory, setNewCategory] = useState<AlertCategory>("price");
+  const [newInstruments, setNewInstruments] = useState<string[]>([]);
+  const [newUrgency, setNewUrgency] = useState<AlertUrgency>("medium");
+  const [newChannels, setNewChannels] = useState<DeliveryChannel[]>(["in_app"]);
+  const [newConditions, setNewConditions] = useState<{ field: string; operator: string; value: string }[]>([{ field: "", operator: ">=", value: "" }]);
+
+  useEffect(() => {
+    setRules(loadRules());
+    setNotifications(generateNotifications());
+    setSettings(loadSettings());
+  }, []);
+
+  const unread = notifications.filter((n) => !n.read).length;
+
+  function markRead(id: string) { setNotifications(notifications.map((n) => n.id === id ? { ...n, read: true } : n)); }
+  function markAllRead() { setNotifications(notifications.map((n) => ({ ...n, read: true }))); }
+  function deleteNotification(id: string) { setNotifications(notifications.filter((n) => n.id !== id)); }
+
+  function createRule() {
+    if (!newName.trim()) return;
+    const rule: AlertRule = {
+      id: `rule_${Date.now()}`, name: newName, category: newCategory,
+      conditions: newConditions.filter((c) => c.field && c.value),
+      instruments: newInstruments, urgency: newUrgency, channels: newChannels,
+      isActive: true, createdAt: new Date().toISOString(), triggeredCount: 0,
+    };
+    const updated = [...rules, rule];
+    setRules(updated); saveRules(updated);
+    setShowBuilder(false);
+    setNewName(""); setNewConditions([{ field: "", operator: ">=", value: "" }]); setNewInstruments([]);
+  }
+
+  function toggleRule(id: string) {
+    const updated = rules.map((r) => r.id === id ? { ...r, isActive: !r.isActive } : r);
+    setRules(updated); saveRules(updated);
+  }
+
+  function deleteRule(id: string) {
+    const updated = rules.filter((r) => r.id !== id);
+    setRules(updated); saveRules(updated);
+  }
+
+  function updateSettings(partial: Partial<AlertSettings>) {
+    const updated = { ...settings, ...partial };
+    setSettings(updated); saveSettings(updated);
+  }
+
+  const conditionFields = [
+    { value: "price", label: "Price" }, { value: "change_pct", label: "Change %" }, { value: "confidence", label: "Confidence Score" },
+    { value: "grade", label: "Quality Grade" }, { value: "volatility", label: "Volatility Score" }, { value: "radar_score", label: "Sharp Money Score" },
+    { value: "strength_spread", label: "Currency Strength Spread" }, { value: "sentiment_bias", label: "Sentiment Bias" },
+  ];
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Smart Alerts</h1>
-          <p className="text-sm text-muted mt-1">Get notified when important market conditions occur</p>
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="text-2xl font-bold text-foreground">Smart Alerts</h1>
+            {unread > 0 && <span className="text-xs bg-bear text-white px-2 py-0.5 rounded-full font-bold">{unread} new</span>}
+          </div>
+          <p className="text-sm text-muted">Platform-wide alerts: price, signals, volatility, macro events, sentiment, and custom rules</p>
         </div>
-        <button onClick={() => setShowCreate(!showCreate)}
-          className="px-4 py-2 rounded-xl bg-accent hover:bg-accent-light text-white text-sm font-medium transition-smooth">
-          + Create Alert
-        </button>
+        <button onClick={() => setShowBuilder(!showBuilder)} className="px-4 py-2 rounded-xl bg-accent text-white text-xs font-medium">+ New Alert Rule</button>
       </div>
 
-      {/* Create alert panel */}
-      {showCreate && (
+      {/* Tabs */}
+      <div className="flex gap-2">
+        {[
+          { id: "inbox" as AlertView, l: `Inbox (${unread})` },
+          { id: "rules" as AlertView, l: `My Rules (${rules.length})` },
+          { id: "history" as AlertView, l: "History" },
+          { id: "settings" as AlertView, l: "Settings" },
+        ].map((v) => (
+          <button key={v.id} onClick={() => setView(v.id)} className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-smooth", view === v.id ? "bg-accent text-white" : "bg-surface-2 text-muted-light border border-border/50")}>{v.l}</button>
+        ))}
+      </div>
+
+      {/* ALERT RULE BUILDER */}
+      {showBuilder && (
         <div className="glass-card p-6 space-y-4">
-          <h3 className="text-sm font-semibold text-foreground">Create New Alert</h3>
-          <div>
-            <label className="text-xs text-muted-light mb-2 block">Alert Type</label>
-            <div className="grid sm:grid-cols-3 gap-2">
-              {alertTypes.map((t) => (
-                <button key={t.id} onClick={() => setSelectedType(t.id)}
-                  className={cn("p-3 rounded-xl text-left transition-smooth",
-                    selectedType === t.id ? "bg-accent/10 border border-accent/30" : "bg-surface-2 border border-border/50 hover:border-border-light")}>
-                  <div className="text-xs font-medium text-foreground">{t.label}</div>
-                  <div className="text-[10px] text-muted mt-0.5">{t.desc}</div>
-                </button>
-              ))}
-            </div>
+          <h3 className="text-sm font-semibold">Create Alert Rule</h3>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div><label className="text-xs text-muted-light mb-1 block">Alert Name</label>
+              <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. Gold A+ Alert" className="w-full px-4 py-2.5 rounded-xl bg-surface-2 border border-border focus:border-accent focus:outline-none text-sm text-foreground" /></div>
+            <div><label className="text-xs text-muted-light mb-1 block">Category</label>
+              <div className="flex flex-wrap gap-1.5">
+                {(Object.entries(CATEGORY_CONFIG) as [AlertCategory, typeof CATEGORY_CONFIG[AlertCategory]][]).map(([key, cfg]) => (
+                  <button key={key} onClick={() => setNewCategory(key)} className={cn("px-2.5 py-1.5 rounded-lg text-[10px] transition-smooth border", newCategory === key ? "bg-accent/10 border-accent/30 text-accent-light" : "bg-surface-2 border-border/50 text-muted")}>{cfg.icon} {cfg.label}</button>
+                ))}
+              </div></div>
           </div>
+
+          {/* Conditions */}
           <div>
-            <label className="text-xs text-muted-light mb-2 block">Instrument</label>
-            <div className="flex flex-wrap gap-1.5">
+            <label className="text-xs text-muted-light mb-1.5 block">Conditions</label>
+            {newConditions.map((cond, i) => (
+              <div key={i} className="flex gap-2 mb-2">
+                <select value={cond.field} onChange={(e) => { const c = [...newConditions]; c[i].field = e.target.value; setNewConditions(c); }}
+                  className="flex-1 px-3 py-2 rounded-lg bg-surface-2 border border-border text-xs text-foreground">
+                  <option value="">Select field...</option>
+                  {conditionFields.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+                </select>
+                <select value={cond.operator} onChange={(e) => { const c = [...newConditions]; c[i].operator = e.target.value; setNewConditions(c); }}
+                  className="w-20 px-2 py-2 rounded-lg bg-surface-2 border border-border text-xs text-foreground">
+                  {[">=", "<=", "==", ">", "<", "!="].map((op) => <option key={op}>{op}</option>)}
+                </select>
+                <input type="text" value={cond.value} onChange={(e) => { const c = [...newConditions]; c[i].value = e.target.value; setNewConditions(c); }}
+                  placeholder="Value" className="w-24 px-3 py-2 rounded-lg bg-surface-2 border border-border text-xs text-foreground font-mono" />
+                {newConditions.length > 1 && <button onClick={() => setNewConditions(newConditions.filter((_, j) => j !== i))} className="text-bear-light text-xs">✕</button>}
+              </div>
+            ))}
+            <button onClick={() => setNewConditions([...newConditions, { field: "", operator: ">=", value: "" }])} className="text-[10px] text-accent-light">+ Add condition</button>
+          </div>
+
+          {/* Instruments */}
+          <div>
+            <label className="text-xs text-muted-light mb-1.5 block">Instruments (leave empty for all)</label>
+            <div className="flex flex-wrap gap-1">
               {ALL_INSTRUMENTS.slice(0, 12).map((inst) => (
-                <button key={inst.symbol} onClick={() => setSelectedSymbol(inst.symbol)}
-                  className={cn("px-2.5 py-1 rounded-lg text-xs transition-smooth",
-                    selectedSymbol === inst.symbol ? "bg-accent text-white" : "bg-surface-2 text-muted-light border border-border/50")}>
-                  {inst.displayName}
-                </button>
+                <button key={inst.symbol} onClick={() => setNewInstruments(newInstruments.includes(inst.symbol) ? newInstruments.filter((s) => s !== inst.symbol) : [...newInstruments, inst.symbol])}
+                  className={cn("px-2 py-1 rounded text-[10px] transition-smooth", newInstruments.includes(inst.symbol) ? "bg-accent text-white" : "bg-surface-2 text-muted border border-border/50")}>{inst.displayName}</button>
               ))}
             </div>
           </div>
-          {selectedType === "price_level" && (
-            <div>
-              <label className="text-xs text-muted-light mb-1.5 block">Price Level</label>
-              <input type="number" step="0.0001" placeholder="Enter price level"
-                className="w-full px-4 py-3 rounded-xl bg-surface-2 border border-border focus:border-accent focus:outline-none text-sm text-foreground font-mono" />
-            </div>
-          )}
-          <button className="px-6 py-2.5 rounded-xl bg-accent hover:bg-accent-light text-white text-sm font-medium transition-smooth">
-            Create Alert
-          </button>
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div><label className="text-xs text-muted-light mb-1 block">Urgency</label>
+              <div className="flex gap-1.5">{(Object.entries(URGENCY_CONFIG) as [AlertUrgency, typeof URGENCY_CONFIG[AlertUrgency]][]).map(([key, cfg]) => (
+                <button key={key} onClick={() => setNewUrgency(key)} className={cn("flex-1 py-2 rounded-lg text-[10px] capitalize transition-smooth border", newUrgency === key ? cfg.badge : "bg-surface-2 border-border/50 text-muted")}>{cfg.label}</button>
+              ))}</div></div>
+            <div><label className="text-xs text-muted-light mb-1 block">Delivery</label>
+              <div className="flex gap-2">{([["in_app", "In-App"], ["push", "Push"], ["email", "Email"]] as [DeliveryChannel, string][]).map(([ch, label]) => (
+                <button key={ch} onClick={() => setNewChannels(newChannels.includes(ch) ? newChannels.filter((c) => c !== ch) : [...newChannels, ch])}
+                  className={cn("flex-1 py-2 rounded-lg text-[10px] transition-smooth border", newChannels.includes(ch) ? "bg-accent/10 border-accent/30 text-accent-light" : "bg-surface-2 border-border/50 text-muted")}>{label}</button>
+              ))}</div></div>
+          </div>
+
+          <div className="flex gap-3">
+            <button onClick={() => setShowBuilder(false)} className="px-5 py-2.5 rounded-xl bg-surface-2 text-muted-light border border-border/50 text-sm">Cancel</button>
+            <button onClick={createRule} disabled={!newName.trim()} className="px-5 py-2.5 rounded-xl bg-accent text-white text-sm font-medium disabled:opacity-40">Create Alert Rule</button>
+          </div>
         </div>
       )}
 
-      {/* Recent alerts */}
-      <div>
-        <h2 className="text-sm font-semibold text-foreground mb-4">Recent Alerts</h2>
+      {/* INBOX */}
+      {view === "inbox" && (
         <div className="space-y-3">
-          {recentAlerts.map((alert, i) => {
-            const borderColor = alert.color === "bull" ? "border-l-bull" : alert.color === "bear" ? "border-l-bear" : alert.color === "warn" ? "border-l-warn" : "border-l-accent";
+          {unread > 0 && <div className="flex justify-end"><button onClick={markAllRead} className="text-xs text-accent-light hover:text-accent">Mark all read</button></div>}
+          {notifications.length > 0 ? notifications.map((n) => {
+            const catCfg = CATEGORY_CONFIG[n.category];
+            const urgCfg = URGENCY_CONFIG[n.urgency];
             return (
-              <div key={i} className={cn("glass-card p-4 border-l-4", borderColor)}>
-                <div className="flex items-center justify-between mb-1">
+              <div key={n.id} className={cn("glass-card p-4 transition-smooth", !n.read ? "border-l-4 border-l-accent" : "")} onClick={() => markRead(n.id)}>
+                <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <span className={cn("text-xs font-medium",
-                      alert.color === "bull" ? "text-bull-light" : alert.color === "bear" ? "text-bear-light" : alert.color === "warn" ? "text-warn" : "text-accent-light")}>
-                      {alert.type}
-                    </span>
-                    <span className="text-xs text-muted">|</span>
-                    <span className="text-xs font-medium text-foreground">{alert.symbol}</span>
+                    <span className="text-sm">{catCfg.icon}</span>
+                    <span className={cn("text-[10px] font-medium px-2 py-0.5 rounded-full border", urgCfg.badge)}>{urgCfg.label}</span>
+                    <span className="text-xs font-bold text-foreground">{n.title}</span>
+                    {!n.read && <span className="w-2 h-2 rounded-full bg-accent" />}
                   </div>
-                  <span className="text-xs text-muted">{alert.time}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-muted">{new Date(n.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                    <button onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }} className="text-muted hover:text-bear-light text-xs">✕</button>
+                  </div>
                 </div>
-                <p className="text-sm text-muted-light">{alert.message}</p>
+                <p className="text-xs text-muted-light">{n.message}</p>
+                {n.symbol && <span className="text-[10px] text-accent-light mt-1 inline-block">{ALL_INSTRUMENTS.find((i) => i.symbol === n.symbol)?.displayName || n.symbol}</span>}
               </div>
             );
-          })}
+          }) : (
+            <div className="glass-card p-12 text-center"><p className="text-muted text-sm">No alerts. Create alert rules to start receiving notifications.</p></div>
+          )}
         </div>
-      </div>
+      )}
 
-      {/* Alert settings hint */}
-      <div className="glass-card p-5">
-        <h3 className="text-sm font-semibold mb-2">Alert Delivery</h3>
-        <div className="grid sm:grid-cols-3 gap-3">
-          {[
-            { label: "In-App Notifications", enabled: true },
-            { label: "Email Alerts", enabled: false },
-            { label: "Push Notifications", enabled: false },
-          ].map((method) => (
-            <div key={method.label} className="flex items-center justify-between bg-surface-2 rounded-xl p-3">
-              <span className="text-xs text-muted-light">{method.label}</span>
-              <div className={cn("w-8 h-4 rounded-full relative cursor-pointer transition-smooth",
-                method.enabled ? "bg-accent" : "bg-surface-3")}>
-                <div className={cn("absolute top-0.5 w-3 h-3 rounded-full bg-white transition-smooth",
-                  method.enabled ? "left-4" : "left-0.5")} />
+      {/* RULES */}
+      {view === "rules" && (
+        <div className="space-y-3">
+          {rules.length > 0 ? rules.map((rule) => {
+            const catCfg = CATEGORY_CONFIG[rule.category];
+            return (
+              <div key={rule.id} className="glass-card p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <span>{catCfg.icon}</span>
+                    <div><div className="text-sm font-bold">{rule.name}</div><div className="text-xs text-muted capitalize">{catCfg.label} • {rule.urgency} urgency</div></div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-muted">{rule.triggeredCount} triggered</span>
+                    <button onClick={() => toggleRule(rule.id)} className={cn("w-10 h-5 rounded-full relative transition-smooth", rule.isActive ? "bg-accent" : "bg-surface-3")}>
+                      <div className={cn("absolute top-0.5 w-4 h-4 rounded-full bg-white transition-smooth", rule.isActive ? "left-5" : "left-0.5")} /></button>
+                    <button onClick={() => deleteRule(rule.id)} className="text-xs text-bear-light hover:text-bear">Delete</button>
+                  </div>
+                </div>
+                {rule.conditions.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {rule.conditions.map((c, i) => (
+                      <span key={i} className="text-[10px] bg-surface-2 px-2 py-1 rounded font-mono">{c.field} {c.operator} {c.value}</span>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-3 text-[10px] text-muted">
+                  <span>Instruments: {rule.instruments.length > 0 ? rule.instruments.map((s) => ALL_INSTRUMENTS.find((i) => i.symbol === s)?.displayName || s).join(", ") : "All"}</span>
+                  <span>Channels: {rule.channels.join(", ")}</span>
+                </div>
               </div>
+            );
+          }) : (
+            <div className="glass-card p-12 text-center">
+              <p className="text-muted text-sm mb-3">No alert rules created yet.</p>
+              <button onClick={() => setShowBuilder(true)} className="px-4 py-2 rounded-xl bg-accent text-white text-xs font-medium">Create Your First Alert</button>
             </div>
-          ))}
+          )}
         </div>
-      </div>
+      )}
+
+      {/* HISTORY */}
+      {view === "history" && (
+        <div className="glass-card overflow-hidden">
+          <table className="w-full">
+            <thead><tr className="border-b border-border/50">
+              <th className="text-left text-[10px] text-muted font-medium px-4 py-3">Time</th>
+              <th className="text-left text-[10px] text-muted font-medium px-3 py-3">Type</th>
+              <th className="text-left text-[10px] text-muted font-medium px-3 py-3">Alert</th>
+              <th className="text-left text-[10px] text-muted font-medium px-3 py-3">Urgency</th>
+              <th className="text-left text-[10px] text-muted font-medium px-3 py-3">Status</th>
+            </tr></thead>
+            <tbody>
+              {notifications.map((n) => (
+                <tr key={n.id} className="border-b border-border/20">
+                  <td className="px-4 py-3 text-xs font-mono text-muted">{new Date(n.timestamp).toLocaleString()}</td>
+                  <td className="px-3 py-3 text-xs">{CATEGORY_CONFIG[n.category].icon} {CATEGORY_CONFIG[n.category].label}</td>
+                  <td className="px-3 py-3"><div className="text-xs font-medium">{n.title}</div><div className="text-[10px] text-muted">{n.message.slice(0, 60)}...</div></td>
+                  <td className="px-3 py-3"><span className={cn("text-[10px] px-2 py-0.5 rounded-full border", URGENCY_CONFIG[n.urgency].badge)}>{URGENCY_CONFIG[n.urgency].label}</span></td>
+                  <td className="px-3 py-3"><span className={cn("text-[10px]", n.read ? "text-muted" : "text-accent-light font-medium")}>{n.read ? "Read" : "Unread"}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* SETTINGS */}
+      {view === "settings" && (
+        <div className="max-w-2xl space-y-4">
+          <div className="glass-card p-5">
+            <h3 className="text-sm font-semibold mb-4">Delivery Channels</h3>
+            <div className="space-y-3">
+              {([["in_app", "In-App Notifications", "Alerts appear in the platform inbox"], ["push", "Push Notifications", "Browser or mobile push alerts"], ["email", "Email Alerts", "Receive alerts via email"]] as [DeliveryChannel, string, string][]).map(([ch, label, desc]) => (
+                <div key={ch} className="flex items-center justify-between bg-surface-2 rounded-xl p-4">
+                  <div><div className="text-xs font-medium text-foreground">{label}</div><div className="text-[10px] text-muted">{desc}</div></div>
+                  <button onClick={() => updateSettings({ channels: { ...settings.channels, [ch]: !settings.channels[ch] } })}
+                    className={cn("w-10 h-5 rounded-full relative transition-smooth", settings.channels[ch] ? "bg-accent" : "bg-surface-3")}>
+                    <div className={cn("absolute top-0.5 w-4 h-4 rounded-full bg-white transition-smooth", settings.channels[ch] ? "left-5" : "left-0.5")} /></button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="glass-card p-5">
+            <h3 className="text-sm font-semibold mb-4">Quiet Hours</h3>
+            <div className="flex items-center justify-between bg-surface-2 rounded-xl p-4 mb-3">
+              <div><div className="text-xs font-medium text-foreground">Enable Quiet Hours</div><div className="text-[10px] text-muted">Pause non-critical alerts during specified hours</div></div>
+              <button onClick={() => updateSettings({ quietHoursEnabled: !settings.quietHoursEnabled })}
+                className={cn("w-10 h-5 rounded-full relative transition-smooth", settings.quietHoursEnabled ? "bg-accent" : "bg-surface-3")}>
+                <div className={cn("absolute top-0.5 w-4 h-4 rounded-full bg-white transition-smooth", settings.quietHoursEnabled ? "left-5" : "left-0.5")} /></button>
+            </div>
+            {settings.quietHoursEnabled && (
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="text-[10px] text-muted mb-1 block">Start</label>
+                  <input type="time" value={settings.quietStart} onChange={(e) => updateSettings({ quietStart: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-surface-2 border border-border text-xs text-foreground" /></div>
+                <div><label className="text-[10px] text-muted mb-1 block">End</label>
+                  <input type="time" value={settings.quietEnd} onChange={(e) => updateSettings({ quietEnd: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-surface-2 border border-border text-xs text-foreground" /></div>
+              </div>
+            )}
+          </div>
+
+          <div className="glass-card p-5">
+            <h3 className="text-sm font-semibold mb-4">Throttling</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div><label className="text-xs text-muted-light mb-1 block">Max alerts per hour</label>
+                <input type="number" min={1} max={100} value={settings.maxPerHour} onChange={(e) => updateSettings({ maxPerHour: parseInt(e.target.value) || 20 })}
+                  className="w-full px-3 py-2.5 rounded-xl bg-surface-2 border border-border text-sm text-foreground font-mono" /></div>
+              <div><label className="text-xs text-muted-light mb-1 block">Deduplication (minutes)</label>
+                <input type="number" min={1} max={60} value={settings.deduplicationMinutes} onChange={(e) => updateSettings({ deduplicationMinutes: parseInt(e.target.value) || 5 })}
+                  className="w-full px-3 py-2.5 rounded-xl bg-surface-2 border border-border text-sm text-foreground font-mono" /></div>
+            </div>
+            <p className="text-[10px] text-muted mt-2">Same alert won&apos;t fire again within the deduplication window. Max per hour prevents notification spam.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Alert types overview */}
+      {!showBuilder && view === "inbox" && (
+        <div className="glass-card p-5">
+          <h3 className="text-sm font-semibold mb-3">Available Alert Types</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {(Object.entries(CATEGORY_CONFIG) as [AlertCategory, typeof CATEGORY_CONFIG[AlertCategory]][]).map(([, cfg]) => (
+              <div key={cfg.label} className="bg-surface-2 rounded-lg p-3 text-center">
+                <div className="text-xl mb-1">{cfg.icon}</div>
+                <div className="text-xs font-medium text-foreground">{cfg.label}</div>
+                <div className="text-[9px] text-muted mt-0.5">{cfg.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
