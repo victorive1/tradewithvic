@@ -1,19 +1,26 @@
-// Prisma 7 with SQLite uses the datasource from prisma.config.ts
-// We lazy-load to avoid build-time initialization issues
-let _prisma: any;
+import { PrismaClient } from "@/generated/prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 
-export function getPrisma() {
-  if (!_prisma) {
-    // Dynamic import at runtime
-    const { PrismaClient } = require("@/generated/prisma/client");
-    _prisma = new PrismaClient();
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined;
+};
+
+function createClient() {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error("DATABASE_URL is not set");
   }
-  return _prisma;
+  const adapter = new PrismaPg({ connectionString });
+  return new PrismaClient({ adapter });
 }
 
-// For convenience - creates on first access
-export const prisma = new Proxy({} as any, {
-  get(_target, prop) {
-    return getPrisma()[prop];
-  },
-});
+export const prisma: PrismaClient =
+  globalForPrisma.prisma ?? createClient();
+
+if (process.env.NODE_ENV !== "production") {
+  globalForPrisma.prisma = prisma;
+}
+
+export function getPrisma() {
+  return prisma;
+}

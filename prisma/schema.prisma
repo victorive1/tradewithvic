@@ -4,7 +4,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 // ==================== AUTH ====================
@@ -89,9 +89,79 @@ model Instrument {
   quoteCurrency String?
   decimalPlaces Int    @default(5)
   isActive    Boolean @default(true)
+  scanTier    Int     @default(1)
 
   setups      TradeSetup[]
   alerts      Alert[]
+  snapshots   MarketSnapshot[]
+  candles     Candle[]
+}
+
+// ==================== MARKET BRAIN — SCAN ENGINE ====================
+
+model ScanCycle {
+  id              String    @id @default(cuid())
+  startedAt       DateTime  @default(now())
+  completedAt     DateTime?
+  status          String    @default("running")
+  durationMs      Int?
+  instrumentsScanned Int    @default(0)
+  quotesFetched   Int       @default(0)
+  candlesFetched  Int       @default(0)
+  setupsGenerated Int       @default(0)
+  errorCount      Int       @default(0)
+  errorLogJson    String    @default("[]")
+  triggeredBy     String    @default("vercel-cron")
+
+  snapshots       MarketSnapshot[]
+
+  @@index([startedAt])
+  @@index([status])
+}
+
+model MarketSnapshot {
+  id             String   @id @default(cuid())
+  scanCycleId    String
+  instrumentId   String?
+  symbol         String
+  capturedAt     DateTime @default(now())
+  price          Float
+  change         Float
+  changePercent  Float
+  high           Float
+  low            Float
+  open           Float
+  previousClose  Float
+  sourceTimestamp Int?
+
+  scanCycle   ScanCycle   @relation(fields: [scanCycleId], references: [id], onDelete: Cascade)
+  instrument  Instrument? @relation(fields: [instrumentId], references: [id])
+
+  @@index([symbol, capturedAt])
+  @@index([scanCycleId])
+  @@index([capturedAt])
+}
+
+model Candle {
+  id            String   @id @default(cuid())
+  instrumentId  String?
+  symbol        String
+  timeframe     String
+  openTime      DateTime
+  closeTime     DateTime
+  open          Float
+  high          Float
+  low           Float
+  close         Float
+  volume        Float    @default(0)
+  isClosed      Boolean  @default(true)
+  fetchedAt     DateTime @default(now())
+
+  instrument Instrument? @relation(fields: [instrumentId], references: [id])
+
+  @@unique([symbol, timeframe, openTime])
+  @@index([symbol, timeframe, openTime])
+  @@index([fetchedAt])
 }
 
 // ==================== TRADE SETUPS ====================
