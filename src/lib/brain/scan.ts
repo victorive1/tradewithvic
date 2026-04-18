@@ -12,6 +12,7 @@ import { qualifyAllActiveSetups } from "@/lib/brain/confluence";
 import { trackAllSetups } from "@/lib/brain/tracking";
 import { runExecutionCycle } from "@/lib/brain/execution";
 import { classifyAllRegimes, captureMacroRegime } from "@/lib/brain/regime";
+import { runOversightCycle } from "@/lib/brain/oversight";
 
 export interface ScanCycleResult {
   scanCycleId: string;
@@ -132,6 +133,8 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
     const tracking = await trackAllSetups();
 
     const execution = await runExecutionCycle();
+
+    const oversight = await runOversightCycle();
 
     const durationMs = Date.now() - startedAt;
     await prisma.scanCycle.update({

@@ -34,6 +34,8 @@ export default async function BrainStatusPage() {
     latestMacroRegime,
     activeLiquidityLevels,
     recentLiquidityEvents,
+    openAlerts,
+    latestMonitoring,
     activeSetups,
     latestSentiment,
     upcomingEvents,
@@ -67,6 +69,12 @@ export default async function BrainStatusPage() {
       take: 40,
     }),
     prisma.liquidityEvent.findMany({ orderBy: { detectedAt: "desc" }, take: 10 }),
+    prisma.monitoringAlert.findMany({
+      where: { status: { in: ["open", "acknowledged"] } },
+      orderBy: { createdAt: "desc" },
+      take: 8,
+    }),
+    prisma.monitoringSnapshot.findFirst({ orderBy: { createdAt: "desc" } }),
     prisma.tradeSetup.findMany({
       where: { status: "active" },
       orderBy: { createdAt: "desc" },
@@ -280,6 +288,34 @@ export default async function BrainStatusPage() {
           </div>
         )}
       </section>
+
+      {openAlerts.length > 0 && (() => {
+        const criticalCount = openAlerts.filter((a) => a.level === "critical").length;
+        const severity = criticalCount > 0 ? "critical" : "warning";
+        const bannerClass = severity === "critical"
+          ? "border-red-500/40 bg-red-500/10 text-red-400"
+          : "border-yellow-500/40 bg-yellow-500/10 text-yellow-400";
+        return (
+          <section className={`rounded-lg border p-4 ${bannerClass}`}>
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <div className="text-xs uppercase tracking-wide opacity-80">Agent Oversight</div>
+                <div className="font-semibold">{openAlerts.length} active alert{openAlerts.length === 1 ? "" : "s"}{criticalCount > 0 ? ` · ${criticalCount} critical` : ""}</div>
+              </div>
+              <div className="text-xs space-y-0.5">
+                {openAlerts.slice(0, 3).map((a) => (
+                  <div key={a.id} className="font-mono">
+                    <span className="uppercase opacity-70">{a.level}</span>
+                    <span className="mx-1">·</span>
+                    <span>{a.message}</span>
+                  </div>
+                ))}
+                {openAlerts.length > 3 && <div className="opacity-60">+{openAlerts.length - 3} more</div>}
+              </div>
+            </div>
+          </section>
+        );
+      })()}
 
       {(upcomingEvents.length > 0 || elevatedEventRisks.length > 0) && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
