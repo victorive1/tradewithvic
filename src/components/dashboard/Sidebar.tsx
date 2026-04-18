@@ -21,6 +21,7 @@ const navItems = [
       { label: "Market Prediction", href: "/dashboard/screener", icon: "screener" },
       { label: "Currency Strength", href: "/dashboard/strength", icon: "strength" },
       { label: "Intelligence Chart", href: "/dashboard/intelligence-chart", icon: "radar" },
+      { label: "Market Structure", href: "/dashboard/market-structure", icon: "levels" },
     ],
   },
   {
