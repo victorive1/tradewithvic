@@ -111,6 +111,7 @@ const navItems = [
       { label: "Watchlist", href: "/dashboard/watchlist", icon: "watchlist" },
       { label: "Alerts", href: "/dashboard/alerts", icon: "alerts" },
       { label: "Settings", href: "/dashboard/settings", icon: "risk" },
+      { label: "Billing & Plans", href: "/dashboard/billing", icon: "watchlist" },
     ],
   },
 ];
