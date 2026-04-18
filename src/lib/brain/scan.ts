@@ -9,6 +9,7 @@ import { detectAllStrategies } from "@/lib/brain/strategies";
 import { computeSentiment, persistSentiment } from "@/lib/brain/sentiment";
 import { analyzeEventRisk, seedPlaceholderEventsIfEmpty } from "@/lib/brain/fundamentals";
 import { qualifyAllActiveSetups } from "@/lib/brain/confluence";
+import { trackAllSetups } from "@/lib/brain/tracking";
 
 export interface ScanCycleResult {
   scanCycleId: string;
@@ -34,6 +35,9 @@ export interface ScanCycleResult {
   aSetups: number;
   candidateSetups: number;
   droppedSetups: number;
+  setupsTracked: number;
+  setupsLabeled: number;
+  setupsClosed: number;
   errors: string[];
 }
 
@@ -111,6 +115,8 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
 
     const qualified = await qualifyAllActiveSetups();
 
+    const tracking = await trackAllSetups();
+
     const durationMs = Date.now() - startedAt;
     await prisma.scanCycle.update({
       where: { id: cycle.id },
@@ -151,6 +157,9 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       aSetups: qualified.a,
       candidateSetups: qualified.candidate,
       droppedSetups: qualified.dropped,
+      setupsTracked: tracking.tracked,
+      setupsLabeled: tracking.labeled,
+      setupsClosed: tracking.closed,
       errors,
     };
   } catch (err: any) {
@@ -193,6 +202,9 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       aSetups: 0,
       candidateSetups: 0,
       droppedSetups: 0,
+      setupsTracked: 0,
+      setupsLabeled: 0,
+      setupsClosed: 0,
       errors,
     };
   }

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { Suspense } from "react";
+import Link from "next/link";
 import { RefreshButton } from "./RefreshButton";
 
 export const dynamic = "force-dynamic";
@@ -109,6 +110,12 @@ export default async function BrainStatusPage() {
           </p>
         </div>
         <div className="flex items-center gap-4">
+          <Link
+            href="/dashboard/brain/performance"
+            className="text-sm text-muted hover:text-foreground underline underline-offset-4"
+          >
+            Performance →
+          </Link>
           <Suspense fallback={null}>
             <RefreshButton />
           </Suspense>
