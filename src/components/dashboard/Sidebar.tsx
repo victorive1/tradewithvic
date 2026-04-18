@@ -145,17 +145,24 @@ export function DashboardSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="hidden lg:flex w-64 flex-col bg-surface border-r border-border/50 h-screen sticky top-0">
-      <div className="p-5 border-b border-border/50">
-        <Link href="/">
+    <aside className="hidden lg:flex w-64 flex-col h-screen sticky top-0 relative isolate border-r border-border/60">
+      {/* Ambient sidebar glow — subtle, cinematic */}
+      <div className="absolute inset-0 -z-10 bg-surface" />
+      <div className="absolute inset-0 -z-10 pointer-events-none opacity-60">
+        <div className="orb w-[280px] h-[280px] bg-accent/20 -top-20 -left-20" />
+        <div className="orb w-[200px] h-[200px] bg-bull/10 bottom-10 -left-10" />
+      </div>
+
+      <div className="p-5 border-b border-border/40 relative">
+        <Link href="/" className="inline-block transition-smooth hover:opacity-85">
           <Logo size="sm" />
         </Link>
       </div>
 
-      <nav className="flex-1 overflow-y-auto p-4 space-y-6">
+      <nav className="flex-1 overflow-y-auto p-3 space-y-5 relative">
         {navItems.map((section) => (
           <div key={section.section}>
-            <p className="text-xs text-muted uppercase tracking-wider mb-2 px-3">
+            <p className="text-[10px] font-semibold text-muted/80 tracking-[0.18em] uppercase mb-2 px-3 pt-1">
               {section.section}
             </p>
             <div className="space-y-0.5">
@@ -166,14 +173,25 @@ export function DashboardSidebar() {
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-smooth",
+                      "group relative flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium transition-smooth",
                       isActive
-                        ? "bg-accent/10 text-accent-light border border-accent/20"
-                        : "text-muted-light hover:text-foreground hover:bg-surface-2"
+                        ? "text-foreground bg-gradient-to-r from-accent/15 via-accent/10 to-transparent border border-accent/25 shadow-[0_0_20px_var(--color-accent-glow)]"
+                        : "text-muted-light hover:text-foreground hover:bg-surface-2/70"
                     )}
                   >
-                    {iconMap[item.icon]}
-                    {item.label}
+                    {isActive && (
+                      <span
+                        aria-hidden
+                        className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r-full bg-gradient-to-b from-accent-light to-accent"
+                      />
+                    )}
+                    <span className={cn(
+                      "transition-smooth",
+                      isActive ? "text-accent-light" : "text-muted group-hover:text-foreground"
+                    )}>
+                      {iconMap[item.icon]}
+                    </span>
+                    <span className="truncate">{item.label}</span>
                   </Link>
                 );
               })}
@@ -182,14 +200,20 @@ export function DashboardSidebar() {
         ))}
       </nav>
 
-      <div className="p-4 border-t border-border/50">
-        <Link href="/dashboard/profile" className="flex items-center gap-3 hover:opacity-80 transition-smooth">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-accent to-accent-light flex items-center justify-center text-white text-xs font-bold">
-            V
+      <div className="p-3 border-t border-border/40 relative">
+        <Link
+          href="/dashboard/profile"
+          className="flex items-center gap-3 p-2 rounded-xl transition-smooth hover:bg-surface-2/70 border border-transparent hover:border-border/50"
+        >
+          <div className="relative">
+            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-accent via-accent-light to-accent flex items-center justify-center text-white text-xs font-bold shadow-[0_4px_16px_var(--color-accent-glow)]">
+              V
+            </div>
+            <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-bull border-2 border-surface" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">Victor</p>
-            <p className="text-xs text-muted truncate">Admin • Profile</p>
+            <p className="text-sm font-semibold truncate">Victor</p>
+            <p className="text-[10px] text-muted truncate tracking-wider uppercase">Admin · Profile</p>
           </div>
         </Link>
       </div>
