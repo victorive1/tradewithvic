@@ -8,7 +8,10 @@ import { cn } from "@/lib/utils";
 import type { ProbeStatus } from "@/lib/agent/types";
 
 // Sidebar href -> Agent engine id. Any nav item whose href isn't mapped
-// here simply won't show a health dot.
+// here simply won't show a health dot. Algo pages are client-only
+// consumers of /api/market/quotes, so they inherit Market Radar's status
+// — if you ever give an algo its own persistent state, split it into a
+// dedicated engine probe and remap here.
 const ENGINE_BY_HREF: Record<string, string> = {
   "/dashboard": "market-radar",
   "/dashboard/market-direction": "market-direction",
@@ -17,6 +20,18 @@ const ENGINE_BY_HREF: Record<string, string> = {
   "/dashboard/brain-execution": "brain-execution",
   "/dashboard/signal-channel": "signal-channel",
   "/dashboard/editors-pick": "editors-pick",
+  // Algo Bots — all fetch /api/market/quotes directly, so they reflect
+  // Market Radar health.
+  "/dashboard/algo-hub": "market-radar",
+  "/dashboard/fx-strength-algo": "market-radar",
+  "/dashboard/ob-algo": "market-radar",
+  "/dashboard/md-algo": "market-radar",
+  "/dashboard/breakout-algo": "market-radar",
+  "/dashboard/us30-algo": "market-radar",
+  "/dashboard/metals-algo": "market-radar",
+  "/dashboard/algo-vic": "market-radar",
+  "/dashboard/custom-bot": "market-radar",
+  "/dashboard/bot-agents": "market-radar",
 };
 
 function statusDotClass(status: ProbeStatus | undefined): string {
