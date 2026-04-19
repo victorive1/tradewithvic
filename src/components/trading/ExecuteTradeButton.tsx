@@ -127,9 +127,16 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
 
   const side = normalizeSide(setup.direction);
 
+  // Editable order fields — prefilled from the setup, user can override
+  const [orderType, setOrderType] = useState<"market" | "limit" | "stop">("market");
+  const [entry, setEntry] = useState<string>(setup.entry != null ? String(setup.entry) : "");
+  const [sl, setSl] = useState<string>(setup.stopLoss != null ? String(setup.stopLoss) : "");
+  const [tp, setTp] = useState<string>(setup.takeProfit != null ? String(setup.takeProfit) : "");
+
   const [sizingMode, setSizingMode] = useState<"fixed_lots" | "risk_percent">("fixed_lots");
   const [volume, setVolume] = useState("0.10");
   const [riskPct, setRiskPct] = useState("1.0");
+  const [slippage, setSlippage] = useState("10");
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -143,6 +150,21 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
   );
 
   useEffect(() => { setUserKey(getOrCreateUserKey()); }, []);
+
+  function resetLevelsToSetup() {
+    setEntry(setup.entry != null ? String(setup.entry) : "");
+    setSl(setup.stopLoss != null ? String(setup.stopLoss) : "");
+    setTp(setup.takeProfit != null ? String(setup.takeProfit) : "");
+    setOrderType("market");
+  }
+
+  const entryNum = Number(entry);
+  const slNum = Number(sl);
+  const tpNum = Number(tp);
+  const levelsEdited =
+    (setup.entry != null && entry !== String(setup.entry)) ||
+    (setup.stopLoss != null && sl !== String(setup.stopLoss)) ||
+    (setup.takeProfit != null && tp !== String(setup.takeProfit));
 
   // Lock body scroll + ESC to close
   useEffect(() => {
@@ -182,32 +204,48 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
 
   useEffect(() => { loadAccounts(); }, [loadAccounts]);
 
+  function buildOrderPayload() {
+    return {
+      accountId,
+      internalSymbol: setup.symbol,
+      side,
+      orderType,
+      requestedVolume: Number(volume),
+      sizingMode,
+      riskPercent: sizingMode === "risk_percent" ? Number(riskPct) : undefined,
+      entryPrice: orderType === "market" ? null : (Number.isFinite(entryNum) && entryNum > 0 ? entryNum : null),
+      stopLoss: Number.isFinite(slNum) && slNum > 0 ? slNum : null,
+      takeProfit: Number.isFinite(tpNum) && tpNum > 0 ? tpNum : null,
+      slippagePips: orderType === "market" ? Number(slippage) : null,
+      currentPrice: setup.entry ?? (Number.isFinite(entryNum) && entryNum > 0 ? entryNum : null),
+    };
+  }
+
   async function runValidateAndConfirm() {
     setError(null); setWarnings([]);
+    if (!accountId) { setError("Select a linked trading account first."); return; }
+    if (!Number.isFinite(Number(volume)) || Number(volume) <= 0) {
+      setError("Enter a lot size greater than zero."); return;
+    }
     setSubmitting(true);
     try {
       const res = await fetch("/api/trading/validate", {
         method: "POST", headers,
-        body: JSON.stringify({
-          accountId,
-          internalSymbol: setup.symbol,
-          side,
-          orderType: "market",
-          requestedVolume: Number(volume),
-          sizingMode,
-          riskPercent: sizingMode === "risk_percent" ? Number(riskPct) : undefined,
-          stopLoss: setup.stopLoss ?? null,
-          takeProfit: setup.takeProfit ?? null,
-          currentPrice: setup.entry ?? null,
-        }),
+        body: JSON.stringify(buildOrderPayload()),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data?.error ?? `validate_${res.status}`); return;
+      }
       if (!data.ok) {
         setError(data.error ?? "validation_failed");
+        setWarnings(data.warnings ?? []);
         return;
       }
       setWarnings(data.warnings ?? []);
       setResultStage("confirm");
+    } catch (e: any) {
+      setError(e?.message ?? "network_error");
     } finally { setSubmitting(false); }
   }
 
@@ -217,44 +255,40 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
       const res = await fetch("/api/trading/execute", {
         method: "POST", headers,
         body: JSON.stringify({
-          accountId,
-          internalSymbol: setup.symbol,
-          side,
-          orderType: "market",
-          requestedVolume: Number(volume),
-          sizingMode,
-          riskPercent: sizingMode === "risk_percent" ? Number(riskPct) : null,
-          stopLoss: setup.stopLoss ?? null,
-          takeProfit: setup.takeProfit ?? null,
-          currentPrice: setup.entry ?? null,
+          ...buildOrderPayload(),
           sourceType: setup.sourceType ?? "setup",
           sourceRef: setup.sourceRef ?? null,
           comment: setup.setupType ? `${setup.setupType}${setup.timeframe ? ` · ${setup.timeframe}` : ""}` : null,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.message ?? data.error ?? "execute_failed");
+        setError(data?.message ?? data?.error ?? `execute_${res.status}`);
         return;
       }
       setResult(data);
       setResultStage("done");
+    } catch (e: any) {
+      setError(e?.message ?? "network_error");
     } finally { setSubmitting(false); }
   }
 
   const selectedAccount = accounts.find((a) => a.id === accountId);
+  const entryRef = orderType === "market" ? (setup.entry ?? entryNum) : entryNum;
   const rr = (() => {
-    if (!setup.entry || !setup.stopLoss || !setup.takeProfit) return null;
-    const risk = Math.abs(setup.entry - setup.stopLoss);
-    const reward = Math.abs(setup.takeProfit - setup.entry);
+    if (!entryRef || !slNum || !tpNum) return null;
+    const risk = Math.abs(entryRef - slNum);
+    const reward = Math.abs(tpNum - entryRef);
     if (risk <= 0) return null;
     return reward / risk;
   })();
 
   return (
-    <div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4"
+      style={{ height: "100dvh" }}>
       <div className="absolute inset-0 bg-background/70 backdrop-blur-md" onClick={onClose} />
-      <div className="relative w-full sm:max-w-md bg-surface border border-border/60 sm:rounded-2xl rounded-t-3xl shadow-[0_30px_80px_rgba(0,0,0,0.5)] max-h-[92vh] flex flex-col">
+      <div className="relative w-full sm:max-w-md bg-surface border border-border/60 sm:rounded-2xl rounded-t-3xl shadow-[0_30px_80px_rgba(0,0,0,0.5)] flex flex-col"
+        style={{ maxHeight: "min(92dvh, 760px)" }}>
         {/* Header */}
         <div className={cn("p-4 sm:p-5 border-b border-border/60 relative overflow-hidden shrink-0")}>
           <div
@@ -308,20 +342,66 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
             <ResultPanel result={result} onDismiss={onClose} />
           ) : (
             <>
-              {/* Prefilled levels */}
-              <div className="rounded-xl bg-surface-2/60 border border-border/50 p-3 grid grid-cols-3 gap-3 text-xs">
-                <Level label="Entry" value={setup.entry ?? null} />
-                <Level label="Stop" value={setup.stopLoss ?? null} tone="bear" />
-                <Level label="Target" value={setup.takeProfit ?? null} tone="bull" />
-              </div>
-              {rr !== null && (
-                <div className="flex items-center justify-between text-[11px] text-muted">
-                  <span>Risk/Reward</span>
-                  <span className={cn("font-mono font-semibold", rr >= 2 ? "text-bull-light" : rr < 1 ? "text-bear-light" : "text-foreground")}>
-                    {rr.toFixed(2)}R
-                  </span>
+              {/* Order type */}
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted mb-2">Order type</div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {([
+                    ["market", "Market"],
+                    ["limit",  "Limit"],
+                    ["stop",   "Stop"],
+                  ] as const).map(([id, label]) => (
+                    <button
+                      key={id}
+                      onClick={() => setOrderType(id)}
+                      className={cn(
+                        "py-2.5 rounded-xl text-[12px] font-semibold border transition-smooth",
+                        orderType === id
+                          ? "bg-accent/15 border-accent/40 text-accent-light shadow-[0_0_14px_var(--color-accent-glow)]"
+                          : "bg-surface-2 border-border/50 text-muted-light hover:border-border-light",
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
-              )}
+                <p className="text-[10px] text-muted mt-1.5">
+                  {orderType === "market" && "Fills at the next available price."}
+                  {orderType === "limit" && "Pending order — waits for price to reach entry."}
+                  {orderType === "stop" && "Pending order — triggers when price breaks entry."}
+                </p>
+              </div>
+
+              {/* Editable levels */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">Levels</div>
+                  {levelsEdited && (
+                    <button onClick={resetLevelsToSetup} className="text-[10px] text-accent-light hover:text-accent transition-smooth">
+                      ↺ Reset to setup
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <LevelInput
+                    label="Entry"
+                    value={entry}
+                    onChange={setEntry}
+                    disabled={orderType === "market"}
+                    placeholder={orderType === "market" ? "Market" : "—"}
+                  />
+                  <LevelInput label="Stop" value={sl} onChange={setSl} tone="bear" placeholder="—" />
+                  <LevelInput label="Target" value={tp} onChange={setTp} tone="bull" placeholder="—" />
+                </div>
+                {rr !== null && (
+                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/40 text-[11px]">
+                    <span className="text-muted">Risk/Reward</span>
+                    <span className={cn("font-mono font-bold", rr >= 2 ? "text-bull-light" : rr < 1 ? "text-bear-light" : "text-foreground")}>
+                      {rr.toFixed(2)}R
+                    </span>
+                  </div>
+                )}
+              </div>
 
               {/* Account picker */}
               <div>
@@ -412,6 +492,24 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
                 )}
               </div>
 
+              {/* Slippage (market only) */}
+              {orderType === "market" && (
+                <div>
+                  <label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted block mb-1.5">
+                    Max slippage (pips)
+                  </label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    step="1"
+                    min="0"
+                    value={slippage}
+                    onChange={(e) => setSlippage(e.target.value)}
+                    className="input font-mono"
+                  />
+                </div>
+              )}
+
               {error && <div className="text-xs text-bear-light bg-bear/5 border border-bear/30 rounded-lg p-2.5">{error}</div>}
               {warnings.length > 0 && (
                 <div className="text-xs text-warn bg-warn/5 border border-warn/30 rounded-lg p-2.5 space-y-1">
@@ -420,11 +518,17 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
               )}
 
               {resultStage === "confirm" && (
-                <div className="rounded-xl border border-accent/30 bg-accent/5 p-3">
-                  <div className="text-[10px] font-bold tracking-[0.18em] text-accent-light uppercase mb-1">Confirm</div>
-                  <div className="text-sm font-mono">
-                    {side.toUpperCase()} {volume} lots {setup.symbol} @ market
-                    {selectedAccount && <span className="text-muted"> → #{selectedAccount.accountLogin}</span>}
+                <div className="rounded-xl border border-accent/30 bg-accent/5 p-3 space-y-1">
+                  <div className="text-[10px] font-bold tracking-[0.18em] text-accent-light uppercase">Confirm</div>
+                  <div className="text-sm font-mono font-semibold">
+                    {side.toUpperCase()} {volume} lots {setup.symbol}
+                    <span className="text-muted"> · {orderType.toUpperCase()}</span>
+                    {orderType !== "market" && entry && <span className="text-muted"> @ {entry}</span>}
+                    {orderType === "market" && <span className="text-muted"> @ market</span>}
+                  </div>
+                  <div className="text-[11px] text-muted font-mono">
+                    SL {sl || "—"} · TP {tp || "—"}
+                    {selectedAccount && <span> → #{selectedAccount.accountLogin}</span>}
                   </div>
                 </div>
               )}
@@ -523,16 +627,38 @@ function ResultPanel({ result, onDismiss }: { result: any; onDismiss: () => void
   );
 }
 
-function Level({ label, value, tone }: { label: string; value: number | null; tone?: "bull" | "bear" }) {
+function LevelInput({
+  label, value, onChange, tone, disabled, placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  tone?: "bull" | "bear";
+  disabled?: boolean;
+  placeholder?: string;
+}) {
   return (
-    <div className="text-center">
-      <div className={cn("text-[9px] uppercase tracking-wider mb-0.5",
+    <label className={cn(
+      "block rounded-xl border bg-surface-2/60 p-2.5 focus-within:border-accent/60 focus-within:shadow-[0_0_14px_var(--color-accent-glow)] transition-smooth",
+      disabled ? "opacity-60 border-border/40" : "border-border/50",
+    )}>
+      <span className={cn("text-[9px] font-semibold uppercase tracking-wider block mb-1",
         tone === "bull" ? "text-bull-light" : tone === "bear" ? "text-bear-light" : "text-muted",
-      )}>{label}</div>
-      <div className={cn("text-sm font-bold font-mono",
-        tone === "bull" ? "text-bull-light" : tone === "bear" ? "text-bear-light" : "text-foreground",
-      )}>{value != null ? value : "—"}</div>
-    </div>
+      )}>{label}</span>
+      <input
+        type="number"
+        inputMode="decimal"
+        step="any"
+        value={value}
+        disabled={disabled}
+        placeholder={placeholder ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        className={cn(
+          "w-full bg-transparent border-none outline-none font-mono font-bold text-sm tabular-nums placeholder:text-muted",
+          tone === "bull" ? "text-bull-light" : tone === "bear" ? "text-bear-light" : "text-foreground",
+        )}
+      />
+    </label>
   );
 }
 
