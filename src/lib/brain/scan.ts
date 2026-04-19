@@ -136,6 +136,16 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
 
     const oversight = await runOversightCycle();
 
+    // Institutional Flow Intelligence — runs on the same 2-min cadence so
+    // the live board stays fresh without a separate cron. Fire-and-forget
+    // safe: errors get swallowed into the cycle log, not a scan failure.
+    try {
+      const { runIFlowCycle } = await import("@/lib/iflow/engine");
+      await runIFlowCycle();
+    } catch (err: any) {
+      errors.push(`iflow: ${err?.message ?? String(err)}`);
+    }
+
     const durationMs = Date.now() - startedAt;
     await prisma.scanCycle.update({
       where: { id: cycle.id },

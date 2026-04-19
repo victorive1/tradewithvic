@@ -1425,3 +1425,103 @@ model SymbolMappingRule {
   @@index([internalSymbol])
   @@index([brokerName])
 }
+
+// ============================================================================
+// Institutional Flow Intelligence Engine — Phase 1 blueprint
+// Multi-layer inference of probable institutional capital entry / defense /
+// rotation / exit. Components: Flow Capture, Derivatives, Cross-Asset,
+// Venue, Positioning, Catalyst, Regime, Inference Scoring.
+// ============================================================================
+
+model FlowEvent {
+  id                 String   @id @default(cuid())
+  assetSymbol        String
+  timeframe          String   @default("5min")
+  capturedAt         DateTime @default(now())
+  session            String
+  side               String
+  aggressorRatio     Float    @default(0)
+  sweepCount         Int      @default(0)
+  spreadBps          Float?
+  orderBookImbalance Float?
+  vwapDistance       Float?
+  absorptionScore    Float    @default(0)
+  refillScore        Float    @default(0)
+  rawNotional        Float    @default(0)
+  sourceKind         String   @default("derived")
+  metadataJson       String?
+
+  @@index([assetSymbol, capturedAt])
+  @@index([capturedAt])
+}
+
+model DerivativesEvent {
+  id                String   @id @default(cuid())
+  assetSymbol       String
+  capturedAt        DateTime @default(now())
+  optionSide        String?
+  premium           Float?
+  relativeSize      Float?
+  strike            Float?
+  tenorDays         Int?
+  ivShift           Float?
+  skewShift         Float?
+  openInterestDelta Float?
+  gammaContext      String?
+  sourceKind        String   @default("placeholder")
+  metadataJson      String?
+
+  @@index([assetSymbol, capturedAt])
+}
+
+model CatalystEvent {
+  id                   String   @id @default(cuid())
+  assetSymbol          String
+  capturedAt           DateTime @default(now())
+  catalystType         String
+  surpriseScore        Float?
+  severity             String   @default("medium")
+  sentiment            String   @default("neutral")
+  relevanceWindowStart DateTime
+  relevanceWindowEnd   DateTime
+  headline             String?
+  sourceKind           String   @default("derived")
+  metadataJson         String?
+
+  @@index([assetSymbol, capturedAt])
+  @@index([relevanceWindowEnd])
+}
+
+model InstitutionalSignal {
+  id              String   @id @default(cuid())
+  assetSymbol     String
+  capturedAt      DateTime @default(now())
+  direction       String
+  classification  String
+  horizon         String   @default("intraday")
+  intentScore     Float
+  confidenceGrade String
+
+  flowQuality      Float @default(0)
+  derivativesScore Float @default(0)
+  crossAssetScore  Float @default(0)
+  venueScore       Float @default(0)
+  catalystScore    Float @default(0)
+  persistenceScore Float @default(0)
+  positioningScore Float @default(0)
+  regimeScore      Float @default(0)
+
+  defendedLevel     Float?
+  invalidationLevel Float?
+  persistenceProb   Float?
+  explanationJson   String @default("[]")
+  evidenceJson      String @default("{}")
+
+  active             Boolean   @default(true)
+  invalidatedAt      DateTime?
+  invalidationReason String?
+
+  @@index([assetSymbol, active, capturedAt])
+  @@index([intentScore])
+  @@index([capturedAt])
+}

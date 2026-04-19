@@ -42,6 +42,7 @@ const navItems = [
   {
     section: "Intelligence",
     items: [
+      { label: "Institutional Flow", href: "/dashboard/institutional-flow", icon: "radar" },
       { label: "Sharp Money", href: "/dashboard/sharp-money", icon: "liquidity" },
       { label: "MTF Analyzer", href: "/dashboard/mtf", icon: "radar" },
       { label: "Volume Profile", href: "/dashboard/volume-profile", icon: "strength" },
