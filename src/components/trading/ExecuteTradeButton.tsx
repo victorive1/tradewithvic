@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
@@ -150,7 +151,8 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
     [userKey],
   );
 
-  useEffect(() => { setUserKey(getOrCreateUserKey()); }, []);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); setUserKey(getOrCreateUserKey()); }, []);
 
   function resetLevelsToSetup() {
     setEntry(setup.entry != null ? String(setup.entry) : "");
@@ -288,7 +290,8 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
     return reward / risk;
   })();
 
-  return (
+  if (!mounted) return null;
+  return createPortal(
     <div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4"
       style={{ height: "100dvh" }}>
       <div className="absolute inset-0 bg-background/70 backdrop-blur-md" onClick={onClose} />
@@ -582,7 +585,8 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -596,7 +600,7 @@ function NoAccountState({ onClose }: { onClose: () => void }) {
       </p>
       <div className="flex gap-2 justify-center pt-2">
         <button onClick={onClose} className="btn-ghost text-xs">Not now</button>
-        <Link onClick={onClose} href="/dashboard/mt5-hub" className="btn-primary text-xs">Connect account →</Link>
+        <Link onClick={onClose} href="/dashboard/trading-hub" className="btn-primary text-xs">Connect account →</Link>
       </div>
     </div>
   );
