@@ -5,6 +5,26 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Logo } from "@/components/ui/Logo";
 import { cn } from "@/lib/utils";
+import type { ProbeStatus } from "@/lib/agent/types";
+
+// Sidebar href -> Agent engine id. Any nav item whose href isn't mapped
+// here simply won't show a health dot.
+const ENGINE_BY_HREF: Record<string, string> = {
+  "/dashboard": "market-radar",
+  "/dashboard/market-direction": "market-direction",
+  "/dashboard/screener": "market-prediction",
+  "/dashboard/brain": "market-core-brain",
+  "/dashboard/brain-execution": "brain-execution",
+  "/dashboard/signal-channel": "signal-channel",
+  "/dashboard/editors-pick": "editors-pick",
+};
+
+function statusDotClass(status: ProbeStatus | undefined): string {
+  return status === "healthy" ? "bg-bull shadow-[0_0_6px_rgba(16,185,129,0.5)]"
+    : status === "warning" ? "bg-warn shadow-[0_0_6px_rgba(234,179,8,0.5)]"
+    : status === "critical" ? "bg-bear shadow-[0_0_6px_rgba(244,63,94,0.6)] animate-pulse"
+    : "bg-muted/50";
+}
 
 const navItems = [
   {
@@ -148,8 +168,35 @@ const iconMap: Record<string, React.ReactNode> = {
   alerts: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" /></svg>,
 };
 
+function useEngineHealth() {
+  const [engines, setEngines] = useState<Record<string, { status: ProbeStatus; statusMessage: string }>>({});
+  const [overall, setOverall] = useState<ProbeStatus>("unknown");
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch("/api/agent/status", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        const next: Record<string, { status: ProbeStatus; statusMessage: string }> = {};
+        for (const e of data.engines ?? []) next[e.id] = { status: e.status, statusMessage: e.statusMessage };
+        setEngines(next);
+        setOverall(data.overall ?? "unknown");
+      } catch { /* silent — dots just won't show */ }
+    }
+    load();
+    const id = setInterval(load, 60_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  return { engines, overall };
+}
+
 function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const { engines: engineHealth, overall: overallHealth } = useEngineHealth();
 
   return (
     <>
@@ -162,6 +209,15 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
             <div className="space-y-0.5">
               {section.items.map((item) => {
                 const isActive = pathname === item.href;
+                const engineId = ENGINE_BY_HREF[item.href];
+                const health = engineId ? engineHealth[engineId] : undefined;
+                // The Agent tab itself shows the overall rollup dot.
+                const dotStatus: ProbeStatus | undefined = item.href === "/dashboard/agent"
+                  ? overallHealth
+                  : health?.status;
+                const dotTitle = item.href === "/dashboard/agent"
+                  ? `Overall system health: ${overallHealth}`
+                  : health?.statusMessage;
                 return (
                   <Link
                     key={item.href}
@@ -186,7 +242,14 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
                     )}>
                       {iconMap[item.icon]}
                     </span>
-                    <span className="truncate">{item.label}</span>
+                    <span className="truncate flex-1">{item.label}</span>
+                    {dotStatus && (
+                      <span
+                        aria-label={`health ${dotStatus}`}
+                        title={dotTitle}
+                        className={cn("w-1.5 h-1.5 rounded-full shrink-0", statusDotClass(dotStatus))}
+                      />
+                    )}
                   </Link>
                 );
               })}
