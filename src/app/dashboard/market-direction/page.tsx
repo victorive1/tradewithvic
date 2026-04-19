@@ -356,6 +356,25 @@ export default function MarketDirectionPage() {
   const scanSetups = useCallback(async () => {
     setSetupLoading(true);
     try {
+      // "ALL" scans every filtered instrument on the selected timeframe and
+      // concatenates the setups. Alignment is derived from the already-loaded
+      // matrix (rows) so we don't explode into N*3 candle fetches.
+      if (selectedInstrument === "ALL") {
+        const targets = category === "all" ? ALL_INSTRUMENTS : ALL_INSTRUMENTS.filter(i => i.category === category);
+        const results = await Promise.all(targets.map(async (inst) => {
+          const candles = await fetchCandles(inst.symbol, selectedTimeframe);
+          if (candles.length < 20) return [];
+          const { dir, confidence } = detectDirection(candles);
+          const row = rows.find(r => r.symbol === inst.symbol);
+          const aligned = row?.aligned ?? false;
+          return generateSetups(candles, inst, dir, confidence, aligned, selectedTimeframe);
+        }));
+        const flat = results.flat();
+        setSetupList(flat);
+        if (flat.length > 0) setSetupHistory(prev => [...flat, ...prev].slice(0, 50));
+        return;
+      }
+
       const candles = await fetchCandles(selectedInstrument, selectedTimeframe);
       if (candles.length < 20) { setSetupList([]); return; }
 
@@ -378,7 +397,7 @@ export default function MarketDirectionPage() {
         setSetupHistory(prev => [...newSetups, ...prev].slice(0, 50));
       }
     } catch {} finally { setSetupLoading(false); }
-  }, [selectedInstrument, selectedTimeframe, fetchCandles]);
+  }, [selectedInstrument, selectedTimeframe, fetchCandles, category, rows]);
 
   useEffect(() => {
     if (tab === "setups" || tab === "detail") scanSetups();
@@ -390,7 +409,10 @@ export default function MarketDirectionPage() {
     return () => clearInterval(id);
   }, [autoRefresh, loadMatrix, scanSetups, tab]);
 
-  const visibleSetups = setupList.filter(s => s.qualityScore >= minQuality);
+  const visibleSetups = setupList
+    .filter(s => s.qualityScore >= minQuality)
+    .slice()
+    .sort((a, b) => b.qualityScore - a.qualityScore);
   const filteredRows = category === "all" ? rows : rows.filter(r => r.category === category);
   const strongBias = rows.filter(r => r.confidence >= 60);
 
@@ -538,6 +560,12 @@ export default function MarketDirectionPage() {
           {/* Instrument selector */}
           <div className="bg-surface rounded-xl border border-border/50 p-4 space-y-3">
             <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setSelectedInstrument("ALL")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${selectedInstrument === "ALL" ? "bg-accent text-white" : "bg-surface-2 text-muted hover:text-foreground"}`}
+              >
+                All Instruments
+              </button>
               {filteredInstruments.map(inst => (
                 <button key={inst.symbol} onClick={() => setSelectedInstrument(inst.symbol)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${selectedInstrument === inst.symbol ? "bg-accent/20 text-accent-light border border-accent/40" : "bg-surface-2 text-muted hover:text-foreground"}`}>
                   {inst.displayName}
@@ -563,8 +591,19 @@ export default function MarketDirectionPage() {
 
           {!setupLoading && visibleSetups.length === 0 && (
             <div className="bg-surface rounded-xl border border-border/50 p-12 text-center">
-              <p className="text-muted text-sm">No direction-aligned setups for {ALL_INSTRUMENTS.find(i => i.symbol === selectedInstrument)?.displayName} on {selectedTimeframe.toUpperCase()}</p>
-              <p className="text-xs text-muted mt-2">Direction may be neutral, or quality is below threshold ({minQuality}). Try another instrument or lower threshold.</p>
+              <p className="text-muted text-sm">
+                No direction-aligned setups
+                {selectedInstrument === "ALL"
+                  ? ` across ${category === "all" ? "all markets" : category}`
+                  : ` for ${ALL_INSTRUMENTS.find(i => i.symbol === selectedInstrument)?.displayName}`}
+                {" "}on {selectedTimeframe.toUpperCase()}
+              </p>
+              <p className="text-xs text-muted mt-2">Direction may be neutral, or quality is below threshold ({minQuality}). Try another timeframe or lower threshold.</p>
+            </div>
+          )}
+          {!setupLoading && selectedInstrument === "ALL" && visibleSetups.length > 0 && (
+            <div className="text-xs text-muted px-1">
+              Showing {visibleSetups.length} setups across {category === "all" ? "all markets" : category} on {selectedTimeframe.toUpperCase()}
             </div>
           )}
 
