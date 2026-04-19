@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { evaluatePortfolio, capturePortfolioSnapshot } from "@/lib/brain/portfolio";
 import { reassessAllOpenPositions } from "@/lib/brain/thesis";
 import { applyAdaptiveProtection } from "@/lib/brain/protection";
+import { predictForQuote } from "@/lib/market-prediction";
 
 const DEFAULT_ACCOUNT_NAME = "paper-default";
 
@@ -53,6 +54,9 @@ interface GuardrailContext {
   account: any;
   openPositions: any[];
   eventRisk: Record<string, any>;
+  // Pre-computed Market Prediction bias/grade per symbol. Only consulted when
+  // account.requireMarketPredictionAlignment is true.
+  marketPrediction: Record<string, { bias: "bullish" | "bearish" | "neutral"; grade: string; score: number } | undefined>;
 }
 
 function parseJsonArray(s: string | null | undefined, fallback: string[] = []): string[] {
@@ -132,6 +136,26 @@ function evaluateGuardrails(setup: any, ctx: GuardrailContext): { passed: boolea
   }
   if (setup.riskReward < ctx.account.minRiskReward) {
     reasons.push(`rr_${setup.riskReward.toFixed(2)}_below_min_${ctx.account.minRiskReward}`);
+  }
+
+  // Market Prediction alignment (optional confluence gate). Only runs when the
+  // account has it toggled on. Veto if the engine says NO_TRADE, neutral, or
+  // a direction that conflicts with the setup.
+  if (ctx.account.requireMarketPredictionAlignment) {
+    const pred = ctx.marketPrediction[setup.symbol];
+    if (!pred) {
+      reasons.push("market_prediction_unavailable");
+    } else if (pred.grade === "NO_TRADE") {
+      reasons.push("market_prediction_no_trade");
+    } else if (pred.bias === "neutral") {
+      reasons.push("market_prediction_neutral");
+    } else {
+      const setupBullish = setup.direction === "long" || setup.direction === "bullish" || setup.direction === "buy";
+      const predBullish = pred.bias === "bullish";
+      if (setupBullish !== predBullish) {
+        reasons.push(`market_prediction_conflict_${pred.bias}`);
+      }
+    }
   }
 
   return { passed: reasons.length === 0, reasons };
@@ -630,13 +654,36 @@ export async function runExecutionCycle(): Promise<ExecutionCycleResult> {
   const eventRiskRows = await prisma.eventRiskSnapshot.findMany();
   const eventRiskMap = Object.fromEntries(eventRiskRows.map((r: any) => [r.symbol, r]));
 
+  // Market Prediction snapshot per symbol — only materialized if the account
+  // has the alignment gate enabled. We read the most recent MarketSnapshot
+  // per candidate symbol and run the shared predictor.
+  const marketPredictionMap: Record<string, { bias: "bullish" | "bearish" | "neutral"; grade: string; score: number } | undefined> = {};
+  if (account.requireMarketPredictionAlignment && candidateSetups.length > 0) {
+    const symbols = Array.from(new Set(candidateSetups.map((s: any) => s.symbol)));
+    const snaps = await Promise.all(symbols.map((sym) =>
+      prisma.marketSnapshot.findFirst({ where: { symbol: sym }, orderBy: { capturedAt: "desc" } }),
+    ));
+    for (let i = 0; i < symbols.length; i++) {
+      const snap = snaps[i];
+      if (!snap) continue;
+      const pred = predictForQuote({
+        price: snap.price,
+        previousClose: snap.previousClose,
+        high: snap.high,
+        low: snap.low,
+        changePercent: snap.changePercent,
+      });
+      marketPredictionMap[symbols[i]] = { bias: pred.bias, grade: pred.grade, score: pred.score };
+    }
+  }
+
   let ordersOpened = 0;
   let ordersRejected = 0;
 
   for (const setup of candidateSetups) {
     if (orderedSetupIds.has(setup.id)) continue;
 
-    const guard = evaluateGuardrails(setup, { account, openPositions, eventRisk: eventRiskMap });
+    const guard = evaluateGuardrails(setup, { account, openPositions, eventRisk: eventRiskMap, marketPrediction: marketPredictionMap });
     await prisma.executionGuardrailLog.create({
       data: {
         setupId: setup.id,

@@ -52,6 +52,7 @@ interface ExecutionAccount {
   killSwitchEngaged: boolean;
   newsFilterEnabled: boolean;
   fridayCloseProtection: boolean;
+  requireMarketPredictionAlignment: boolean;
   minConfidenceScore: number;
   minRiskReward: number;
   selectedSymbolsJson: string;
@@ -1140,6 +1141,7 @@ function ConfigTab({
       maxCurrencyExposurePct: draft.maxCurrencyExposurePct,
       newsFilterEnabled: draft.newsFilterEnabled,
       fridayCloseProtection: draft.fridayCloseProtection,
+      requireMarketPredictionAlignment: draft.requireMarketPredictionAlignment,
       allowedGrades,
       selectedSymbols,
       allowedTimeframes,
@@ -1326,6 +1328,12 @@ function ConfigTab({
           desc="Stop taking new FX/metals/indices trades after Friday 20:00 UTC"
           checked={draft.fridayCloseProtection}
           onChange={(v) => patchDraft("fridayCloseProtection", v)}
+        />
+        <ToggleRow
+          label="Require Market Prediction Alignment"
+          desc="Veto any setup whose direction conflicts with the Market Prediction engine (also skips setups it grades NO_TRADE or neutral)"
+          checked={draft.requireMarketPredictionAlignment}
+          onChange={(v) => patchDraft("requireMarketPredictionAlignment", v)}
         />
       </div>
 

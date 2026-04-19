@@ -57,6 +57,7 @@ export async function POST(req: NextRequest) {
   boolField("killSwitchEngaged");
   boolField("newsFilterEnabled");
   boolField("fridayCloseProtection");
+  boolField("requireMarketPredictionAlignment");
   strField("smartExitMode", ALLOWED_SMART_EXIT);
   strField("executionMode", ALLOWED_MODES);
   jsonArrayField("allowedGrades");

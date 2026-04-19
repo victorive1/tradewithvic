@@ -5,6 +5,14 @@ import { cn } from "@/lib/utils";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
 import { TradingViewWidget } from "@/components/charts/TradingViewWidget";
 import { useTheme } from "@/components/ui/ThemeProvider";
+import {
+  computeBreakdown,
+  computeScore,
+  getBias,
+  getGrade,
+  getSession,
+  type ScoreBreakdown as SharedScoreBreakdown,
+} from "@/lib/market-prediction";
 
 /* ---------- Types ---------- */
 interface QuoteData {
@@ -19,16 +27,7 @@ interface QuoteData {
   decimals?: number;
 }
 
-interface ScoreBreakdown {
-  structureQuality: number;
-  mtfAlignment: number;
-  confluenceDensity: number;
-  entryPrecision: number;
-  riskRewardQuality: number;
-  sessionTiming: number;
-  eventSafety: number;
-  freshness: number;
-}
+type ScoreBreakdown = SharedScoreBreakdown;
 
 interface ScanResult {
   symbol: string;
@@ -67,81 +66,6 @@ interface QuickScanRow {
 type SortKey = "score" | "change" | "symbol";
 
 /* ---------- Helpers ---------- */
-function getSession(): string {
-  const hour = new Date().getUTCHours();
-  if (hour >= 0 && hour < 7) return "Asian";
-  if (hour >= 7 && hour < 12) return "London";
-  if (hour >= 12 && hour < 17) return "New York";
-  if (hour >= 17 && hour < 21) return "Late NY";
-  return "Off-Hours";
-}
-
-function getBias(changePercent: number): "bullish" | "bearish" | "neutral" {
-  if (changePercent > 0.15) return "bullish";
-  if (changePercent < -0.15) return "bearish";
-  return "neutral";
-}
-
-function getGrade(score: number): string {
-  if (score >= 90) return "A+";
-  if (score >= 80) return "A";
-  if (score >= 70) return "B";
-  if (score >= 60) return "C";
-  return "NO_TRADE";
-}
-
-function computeBreakdown(q: QuoteData): ScoreBreakdown {
-  const absPct = Math.abs(q.changePercent);
-  const range = q.high - q.low;
-  const pricePos = range > 0 ? (q.price - q.low) / range : 0.5;
-  const isTrending = absPct > 0.2;
-  const isDirectional = (q.changePercent > 0 && pricePos > 0.5) || (q.changePercent < 0 && pricePos < 0.5);
-
-  // structureQuality (max 25): clean directional = high, messy = low
-  const structureQuality = Math.min(25, Math.round(
-    (isTrending ? 12 : 5) + (isDirectional ? 10 : 3) + Math.min(3, absPct * 2)
-  ));
-
-  // mtfAlignment (max 15): simulated — directional + trending = aligned
-  const mtfAlignment = Math.min(15, Math.round(
-    (isDirectional ? 8 : 3) + (isTrending ? 5 : 2) + (absPct > 0.5 ? 2 : 0)
-  ));
-
-  // confluenceDensity (max 15): how close is price to key levels (high/low extremes = more confluence)
-  const confluenceDensity = Math.min(15, Math.round(
-    (pricePos > 0.8 || pricePos < 0.2 ? 10 : 5) + Math.min(5, absPct * 3)
-  ));
-
-  // entryPrecision (max 10): price near edge of range = better entry
-  const entryPrecision = Math.min(10, Math.round(
-    pricePos > 0.7 || pricePos < 0.3 ? 7 + Math.min(3, absPct) : 3 + Math.min(3, absPct)
-  ));
-
-  // riskRewardQuality (max 10): depends on range vs price
-  const riskRewardQuality = Math.min(10, Math.round(
-    range > 0 ? 4 + Math.min(6, (range / q.price) * 5000) : 3
-  ));
-
-  // sessionTiming (max 10)
-  const session = getSession();
-  const sessionTiming = session === "London" ? 10 : session === "New York" ? 9 : session === "Asian" ? 6 : 4;
-
-  // eventSafety (max 10): less risky outside major hours
-  const hour = new Date().getUTCHours();
-  const eventSafety = (hour >= 13 && hour <= 14) ? 4 : (hour >= 8 && hour <= 9) ? 5 : 8;
-
-  // freshness (max 5): recent movement = fresh
-  const freshness = Math.min(5, Math.round(absPct > 0.3 ? 4 : absPct > 0.1 ? 3 : 1));
-
-  return { structureQuality, mtfAlignment, confluenceDensity, entryPrecision, riskRewardQuality, sessionTiming, eventSafety, freshness };
-}
-
-function computeScore(breakdown: ScoreBreakdown): number {
-  return breakdown.structureQuality + breakdown.mtfAlignment + breakdown.confluenceDensity +
-    breakdown.entryPrecision + breakdown.riskRewardQuality + breakdown.sessionTiming +
-    breakdown.eventSafety + breakdown.freshness;
-}
-
 function buildScanResult(q: QuoteData): ScanResult {
   const bias = getBias(q.changePercent);
   const breakdown = computeBreakdown(q);

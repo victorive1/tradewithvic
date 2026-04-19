@@ -280,6 +280,7 @@ model ExecutionAccount {
   weeklyPnl                  Float     @default(0)
   weeklyPnlResetAt           DateTime?
   smartExitMode              String    @default("balanced") // off | conservative | balanced | aggressive
+  requireMarketPredictionAlignment Boolean @default(false) // if true, veto setups whose direction doesn't match the Market Prediction engine's bias
   minConfidenceScore         Int       @default(65)
   minRiskReward              Float     @default(1.2)
   selectedSymbolsJson        String    @default("[]") // empty = all CANDLE_SYMBOLS
