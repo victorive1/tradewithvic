@@ -85,7 +85,10 @@ export default function InstitutionalFlowPage() {
             Multi-layer inference from microstructure, cross-asset, catalyst, and regime evidence.
           </p>
         </div>
-        <button onClick={load} className="btn-ghost text-xs">↻ Refresh</button>
+        <div className="flex items-center gap-2">
+          <Link href="/dashboard/institutional-flow/health" className="btn-ghost text-xs">⚕ Health</Link>
+          <button onClick={load} className="btn-ghost text-xs">↻ Refresh</button>
+        </div>
       </header>
 
       <div className="flex items-center gap-2 flex-wrap">
