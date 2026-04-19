@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
+import { getOrCreateUserKey } from "@/lib/trading/user-key-client";
 
 type Tab = "connect" | "account" | "execute" | "positions" | "orders" | "history";
 
@@ -435,6 +436,26 @@ export default function TradingHubPage() {
     setActiveId(activeId);
     setTab(accounts.length > 0 ? "account" : "connect");
     setHydrated(true);
+
+    // Backfill any local-only accounts to the backend so other devices and
+    // the multi-MT hub can see them. Upsert on server handles duplicates.
+    const userKey = getOrCreateUserKey();
+    if (userKey && accounts.length > 0) {
+      for (const a of accounts) {
+        fetch("/api/trading/accounts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-trading-user-key": userKey },
+          body: JSON.stringify({
+            platformType: a.platform,
+            brokerName: a.broker,
+            serverName: a.server,
+            accountLogin: a.login,
+            accountLabel: a.label ?? null,
+            adapterKind: "mock",
+          }),
+        }).catch(() => {});
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -451,6 +472,22 @@ export default function TradingHubPage() {
     setAccounts((prev) => [...prev, account]);
     setActiveId(account.id);
     setTab("account");
+    // Persist to the backend so other devices / the multi-MT hub can see it.
+    const userKey = getOrCreateUserKey();
+    if (userKey) {
+      fetch("/api/trading/accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-trading-user-key": userKey },
+        body: JSON.stringify({
+          platformType: account.platform,
+          brokerName: account.broker,
+          serverName: account.server,
+          accountLogin: account.login,
+          accountLabel: account.label ?? null,
+          adapterKind: "mock",
+        }),
+      }).catch(() => {});
+    }
   }
 
   function handleSetActive(id: string) {

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Mt5HubShowcase } from "./ShowcaseView";
+import { getOrCreateUserKey } from "@/lib/trading/user-key-client";
 
 interface Mt5Account {
   id: string;
@@ -27,6 +28,7 @@ interface AccountMeta {
   groupId: string | null;
   favorite: boolean;
   hubLabel?: string;
+  hiddenInHub?: boolean;
 }
 
 type ViewMode = "operator" | "showcase";
@@ -115,7 +117,8 @@ export default function Mt5HubPage() {
   const [newGroupName, setNewGroupName] = useState("");
 
   useEffect(() => {
-    setAccounts(loadAccounts());
+    const local = loadAccounts();
+    setAccounts(local);
     setGroups(loadGroups());
     setMeta(loadMeta());
     try {
@@ -123,7 +126,63 @@ export default function Mt5HubPage() {
       if (m === "operator" || m === "showcase") setViewMode(m);
     } catch {}
     setHydrated(true);
+
+    // Merge backend-synced accounts on top of local ones so the hub picks up
+    // accounts connected in Trading Hub (including from other devices when
+    // the user is signed in).
+    const userKey = getOrCreateUserKey();
+    if (!userKey) return;
+    fetch("/api/trading/accounts", {
+      headers: { "x-trading-user-key": userKey },
+      cache: "no-store",
+    }).then(async (r) => {
+      if (!r.ok) return;
+      const data = (await r.json()) as {
+        accounts?: Array<{
+          id: string;
+          platformType: "MT4" | "MT5";
+          brokerName: string;
+          serverName: string;
+          accountLogin: string;
+          accountLabel: string | null;
+          connectionStatus: string;
+          createdAt?: string;
+        }>;
+      };
+      const backend = data.accounts ?? [];
+      if (backend.length === 0) return;
+      setAccounts((prev) => {
+        const byKey = new Map<string, Mt5Account>();
+        for (const a of prev) byKey.set(`${a.login}:${a.server}`, a);
+        for (const b of backend) {
+          const k = `${b.accountLogin}:${b.serverName}`;
+          if (!byKey.has(k)) {
+            byKey.set(k, {
+              id: b.id,
+              platform: b.platformType,
+              login: b.accountLogin,
+              server: b.serverName,
+              broker: b.brokerName,
+              label: b.accountLabel ?? undefined,
+              connected: b.connectionStatus === "linked",
+              connectedAt: b.createdAt ?? new Date().toISOString(),
+            });
+          }
+        }
+        const merged = Array.from(byKey.values());
+        try { window.localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(merged)); } catch {}
+        return merged;
+      });
+    }).catch(() => {});
   }, []);
+
+  const [showHidden, setShowHidden] = useState(false);
+
+  function toggleHidden(a: Mt5Account) {
+    const k = accountKey(a);
+    const current = meta[k]?.hiddenInHub ?? false;
+    setAccountMeta(a, { hiddenInHub: !current });
+  }
 
   useEffect(() => {
     if (!hydrated) return;
@@ -212,15 +271,22 @@ export default function Mt5HubPage() {
   const filteredAccounts = useMemo(() => {
     const q = search.trim().toLowerCase();
     return accounts.filter((a) => {
+      const m = meta[accountKey(a)];
+      if (!showHidden && m?.hiddenInHub) return false;
       if (platformFilter !== "all" && a.platform !== platformFilter) return false;
       if (typeFilter !== "all" && classifyServer(a.server) !== typeFilter) return false;
-      if (onlyFavorites && !meta[accountKey(a)]?.favorite) return false;
+      if (onlyFavorites && !m?.favorite) return false;
       if (!q) return true;
-      const hubLabel = meta[accountKey(a)]?.hubLabel ?? "";
+      const hubLabel = m?.hubLabel ?? "";
       return [a.login, a.server, a.broker, a.label ?? "", hubLabel]
         .some((v) => v.toLowerCase().includes(q));
     });
-  }, [accounts, meta, search, typeFilter, platformFilter, onlyFavorites]);
+  }, [accounts, meta, search, typeFilter, platformFilter, onlyFavorites, showHidden]);
+
+  const hiddenCount = useMemo(
+    () => accounts.filter((a) => meta[accountKey(a)]?.hiddenInHub).length,
+    [accounts, meta],
+  );
 
   // Group accounts
   const grouped = useMemo(() => {
@@ -311,6 +377,13 @@ export default function Mt5HubPage() {
                   onlyFavorites ? "bg-warn/15 text-warn border-warn/40" : "bg-surface-2 text-muted-light border-border/50")}>
                 ★ Favorites
               </button>
+              {hiddenCount > 0 && (
+                <button onClick={() => setShowHidden((v) => !v)}
+                  className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-smooth border",
+                    showHidden ? "bg-muted/15 text-foreground border-border-light" : "bg-surface-2 text-muted-light border-border/50")}>
+                  {showHidden ? "◉" : "○"} Hidden ({hiddenCount})
+                </button>
+              )}
             </div>
             <button onClick={() => setShowNewGroupForm((v) => !v)}
               className="text-xs px-3 py-1.5 rounded-lg bg-accent text-white font-semibold transition-smooth">
@@ -356,6 +429,7 @@ export default function Mt5HubPage() {
                 grouped={grouped}
                 meta={meta}
                 onToggleFavorite={toggleFavorite}
+                onToggleHidden={toggleHidden}
                 onMoveAccount={moveAccountToGroup}
                 onRenameGroup={renameGroup}
                 onSetGroupColor={setGroupColor}
@@ -401,12 +475,13 @@ function Stat({ label, value, sub, valueClass }: { label: string; value: any; su
 
 function GroupedAccountsBoard({
   groups, grouped, meta,
-  onToggleFavorite, onMoveAccount, onRenameGroup, onSetGroupColor, onDeleteGroup, onSetHubLabel,
+  onToggleFavorite, onToggleHidden, onMoveAccount, onRenameGroup, onSetGroupColor, onDeleteGroup, onSetHubLabel,
 }: {
   groups: HubGroup[];
   grouped: Record<string, Mt5Account[]>;
   meta: Record<string, AccountMeta>;
   onToggleFavorite: (a: Mt5Account) => void;
+  onToggleHidden: (a: Mt5Account) => void;
   onMoveAccount: (a: Mt5Account, groupId: string | null) => void;
   onRenameGroup: (id: string, name: string) => void;
   onSetGroupColor: (id: string, c: HubGroup["colorKey"]) => void;
@@ -423,6 +498,7 @@ function GroupedAccountsBoard({
           allGroups={groups}
           meta={meta}
           onToggleFavorite={onToggleFavorite}
+          onToggleHidden={onToggleHidden}
           onMoveAccount={onMoveAccount}
           onRenameGroup={onRenameGroup}
           onSetGroupColor={onSetGroupColor}
@@ -436,7 +512,7 @@ function GroupedAccountsBoard({
 
 function HubGroupCard({
   group, accounts, allGroups, meta,
-  onToggleFavorite, onMoveAccount, onRenameGroup, onSetGroupColor, onDeleteGroup, onSetHubLabel,
+  onToggleFavorite, onToggleHidden, onMoveAccount, onRenameGroup, onSetGroupColor, onDeleteGroup, onSetHubLabel,
 }: any) {
   const [editName, setEditName] = useState(false);
   const [nameDraft, setNameDraft] = useState(group.name);
@@ -493,32 +569,49 @@ function HubGroupCard({
             const key = `${a.login}:${a.server}`;
             const m = meta[key] ?? { favorite: false, groupId: null };
             return (
-              <div key={a.id} className="rounded-lg bg-surface/60 p-3 backdrop-blur-sm">
-                <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => onToggleFavorite(a)} className={cn("text-sm", m.favorite ? "text-warn" : "text-muted opacity-60 hover:opacity-100")}>
+              <div key={a.id} className={cn(
+                "rounded-lg bg-surface/60 p-3 backdrop-blur-sm transition-smooth",
+                m.hiddenInHub && "opacity-50",
+              )}>
+                <div className="flex items-center justify-between mb-1 gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <button onClick={() => onToggleFavorite(a)} className={cn("text-sm shrink-0", m.favorite ? "text-warn" : "text-muted opacity-60 hover:opacity-100")} title={m.favorite ? "Remove from favorites" : "Add to favorites"}>
                       ★
                     </button>
-                    <span className="text-sm font-semibold">
+                    <span className="text-sm font-semibold truncate">
                       {m.hubLabel || a.label || `${a.broker} · ${a.login}`}
                     </span>
-                    <span className="px-1.5 py-0.5 text-[9px] rounded bg-surface-2 text-muted uppercase">{a.platform}</span>
-                    <span className={cn("px-1.5 py-0.5 text-[9px] rounded",
+                    <span className="px-1.5 py-0.5 text-[9px] rounded bg-surface-2 text-muted uppercase shrink-0">{a.platform}</span>
+                    <span className={cn("px-1.5 py-0.5 text-[9px] rounded shrink-0",
                       classifyServer(a.server) === "live" ? "bg-accent/10 text-accent-light" :
                       classifyServer(a.server) === "demo" ? "bg-bull/10 text-bull-light" :
                       "bg-surface-2 text-muted")}>
                       {classifyServer(a.server)}
                     </span>
                   </div>
-                  <select
-                    value={m.groupId ?? "ungrouped"}
-                    onChange={(e) => onMoveAccount(a, e.target.value === "ungrouped" ? null : e.target.value)}
-                    className="text-[10px] bg-surface-2 border border-border rounded px-1.5 py-0.5 text-muted-light"
-                  >
-                    {allGroups.map((g: HubGroup) => (
-                      <option key={g.id} value={g.id === "ungrouped" ? "ungrouped" : g.id}>{g.name}</option>
-                    ))}
-                  </select>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => onToggleHidden(a)}
+                      title={m.hiddenInHub ? "Show in hub" : "Hide from hub"}
+                      className={cn(
+                        "text-sm px-1.5 py-0.5 rounded border transition-smooth",
+                        m.hiddenInHub
+                          ? "border-border/50 text-muted bg-surface-2"
+                          : "border-border/40 text-muted-light hover:text-foreground hover:border-border-light",
+                      )}
+                    >
+                      {m.hiddenInHub ? "🙈" : "👁"}
+                    </button>
+                    <select
+                      value={m.groupId ?? "ungrouped"}
+                      onChange={(e) => onMoveAccount(a, e.target.value === "ungrouped" ? null : e.target.value)}
+                      className="text-[10px] bg-surface-2 border border-border rounded px-1.5 py-0.5 text-muted-light"
+                    >
+                      {allGroups.map((g: HubGroup) => (
+                        <option key={g.id} value={g.id === "ungrouped" ? "ungrouped" : g.id}>{g.name}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-[10px] mt-1">
                   <div>
