@@ -6,6 +6,7 @@ import { TradingViewWidget } from "@/components/charts/TradingViewWidget";
 import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
 import { useTheme } from "@/components/ui/ThemeProvider";
 import type { TradeSetup } from "@/lib/setup-engine";
+import { TimeframeFilter, type TimeframeValue, matchesTimeframe, buildTimeframeCounts } from "@/components/dashboard/TimeframeFilter";
 
 type PickStatus = "fresh" | "active" | "aging" | "expired";
 
@@ -72,6 +73,7 @@ export default function EditorsPickPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [chartSymbol, setChartSymbol] = useState<string | null>(null);
   const [filterCategory, setFilterCategory] = useState("all");
+  const [timeframe, setTimeframe] = useState<TimeframeValue>("all");
   const { theme } = useTheme();
 
   useEffect(() => {
@@ -97,6 +99,8 @@ export default function EditorsPickPage() {
 
   let filtered = picks;
   if (filterCategory !== "all") filtered = filtered.filter((p) => p.setup.category === filterCategory);
+  const timeframeCounts = buildTimeframeCounts(filtered, (p) => p.setup.timeframe);
+  filtered = filtered.filter((p) => matchesTimeframe(p.setup.timeframe, timeframe));
   const activePicks = filtered.filter((p) => p.status !== "expired");
 
   if (loading) {
@@ -139,11 +143,13 @@ export default function EditorsPickPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         {["all", "forex", "metals", "crypto", "indices", "energy"].map((cat) => (
           <button key={cat} onClick={() => setFilterCategory(cat)} className={cn("px-3 py-1.5 rounded-lg text-xs capitalize transition-smooth", filterCategory === cat ? "bg-accent text-white" : "bg-surface-2 text-muted-light border border-border/50")}>{cat === "all" ? "All Markets" : cat}</button>
         ))}
       </div>
+
+      <TimeframeFilter value={timeframe} onChange={setTimeframe} counts={timeframeCounts} />
 
       {/* Picks */}
       {activePicks.length > 0 ? (

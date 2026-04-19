@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import type { TradeSetup } from "@/lib/setup-engine";
+import { TimeframeFilter, type TimeframeValue, matchesTimeframe, buildTimeframeCounts } from "@/components/dashboard/TimeframeFilter";
 
 // ==================== 13 STRATEGY FRAMEWORK ====================
 const STRATEGIES = [
@@ -68,6 +69,7 @@ export default function SignalChannelPage() {
   const [loading, setLoading] = useState(true);
   const [strategyFilter, setStrategyFilter] = useState<string | null>(null);
   const [instrumentFilter, setInstrumentFilter] = useState<string | null>(null);
+  const [timeframe, setTimeframe] = useState<TimeframeValue>("all");
 
   useEffect(() => {
     async function load() {
@@ -106,6 +108,8 @@ export default function SignalChannelPage() {
   if (tab === "editors") filtered = filtered.filter((s) => s.strategyId === "editors_pick" || s.confidenceScore >= 85);
   if (tab === "strategy" && strategyFilter) filtered = filtered.filter((s) => s.strategyId === strategyFilter);
   if (instrumentFilter) filtered = filtered.filter((s) => s.symbol === instrumentFilter);
+  const timeframeCounts = buildTimeframeCounts(filtered, (s) => s.timeframe);
+  filtered = filtered.filter((s) => matchesTimeframe(s.timeframe, timeframe));
 
   // Stats
   const totalWins = signals.filter((s) => s.signalStatus === "won").length;
@@ -161,6 +165,8 @@ export default function SignalChannelPage() {
           </button>
         ))}
       </div>
+
+      <TimeframeFilter value={timeframe} onChange={setTimeframe} counts={timeframeCounts} />
 
       {/* Strategy filter chips (when By Strategy tab) */}
       {tab === "strategy" && (

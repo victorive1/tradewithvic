@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
+import { TimeframeFilter, type TimeframeValue, matchesTimeframe, buildTimeframeCounts } from "@/components/dashboard/TimeframeFilter";
 
 const breakoutTypes = ["All", "Structure", "Momentum", "Range", "Retest", "Trendline", "FVG", "Session", "Order Block", "S/R"];
 
@@ -21,8 +22,11 @@ const breakouts = [
 
 export default function BreakoutsPage() {
   const [filter, setFilter] = useState("All");
+  const [timeframe, setTimeframe] = useState<TimeframeValue>("all");
   const [expanded, setExpanded] = useState<string | null>(null);
-  const filtered = filter === "All" ? breakouts : breakouts.filter((b) => b.type === filter);
+  const byType = filter === "All" ? breakouts : breakouts.filter((b) => b.type === filter);
+  const timeframeCounts = buildTimeframeCounts(byType, (b) => b.timeframe);
+  const filtered = byType.filter((b) => matchesTimeframe(b.timeframe, timeframe));
 
   return (
     <div className="space-y-6">
@@ -41,6 +45,8 @@ export default function BreakoutsPage() {
           </button>
         ))}
       </div>
+
+      <TimeframeFilter value={timeframe} onChange={setTimeframe} counts={timeframeCounts} />
 
       <div className="space-y-4">
         {filtered.map((b) => {

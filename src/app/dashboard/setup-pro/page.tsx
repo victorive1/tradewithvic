@@ -6,6 +6,7 @@ import { TradingViewWidget } from "@/components/charts/TradingViewWidget";
 import { useTheme } from "@/components/ui/ThemeProvider";
 import type { TradeSetup } from "@/lib/setup-engine";
 import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
+import { TimeframeFilter, type TimeframeValue, matchesTimeframe, buildTimeframeCounts } from "@/components/dashboard/TimeframeFilter";
 
 function ProSetupCard({ setup, onViewChart }: { setup: TradeSetup; onViewChart: (symbol: string) => void }) {
   const [expanded, setExpanded] = useState(false);
@@ -142,6 +143,7 @@ export default function SetupProPage() {
   const [setups, setSetups] = useState<TradeSetup[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
+  const [timeframe, setTimeframe] = useState<TimeframeValue>("all");
   const [chartSymbol, setChartSymbol] = useState<string | null>(null);
 
   useEffect(() => {
@@ -162,7 +164,9 @@ export default function SetupProPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const filtered = filter === "all" ? setups : setups.filter((s) => s.direction === filter);
+  const filteredByDirection = filter === "all" ? setups : setups.filter((s) => s.direction === filter);
+  const timeframeCounts = buildTimeframeCounts(filteredByDirection, (s) => s.timeframe);
+  const filtered = filteredByDirection.filter((s) => matchesTimeframe(s.timeframe, timeframe));
   const avgConf = filtered.length > 0 ? Math.round(filtered.reduce((a, b) => a + b.confidenceScore, 0) / filtered.length) : 0;
   const avgRR = filtered.length > 0 ? (filtered.reduce((a, b) => a + b.riskReward, 0) / filtered.length).toFixed(1) : "0";
 
@@ -195,7 +199,7 @@ export default function SetupProPage() {
         <div className="glass-card p-4 text-center"><div className="text-xs text-muted mb-1">Avg R:R</div><div className="text-2xl font-bold text-warn">{avgRR}</div></div>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         {["all", "buy", "sell"].map((f) => (
           <button key={f} onClick={() => setFilter(f)}
             className={cn("px-4 py-2 rounded-xl text-xs font-medium transition-smooth capitalize",
@@ -204,6 +208,8 @@ export default function SetupProPage() {
           </button>
         ))}
       </div>
+
+      <TimeframeFilter value={timeframe} onChange={setTimeframe} counts={timeframeCounts} />
 
       {filtered.length > 0 ? (
         <div className="space-y-6">

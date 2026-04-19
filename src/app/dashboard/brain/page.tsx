@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { RefreshButton } from "./RefreshButton";
 import { ManualTickets } from "./ManualTickets";
+import { ActiveSetupsFilter } from "./ActiveSetupsFilter";
 import { LiveRefresh } from "@/components/dashboard/LiveRefresh";
 
 export const dynamic = "force-dynamic";
@@ -523,46 +524,21 @@ export default async function BrainStatusPage() {
         <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">
           Active Trade Setups
         </h2>
-        {activeSetups.length === 0 ? (
-          <p className="text-sm text-muted">No active setups. Engine detects when conditions align — typically during market hours.</p>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {activeSetups.map((s) => {
-              const isBull = s.direction === "bullish";
-              const gradeColor = s.qualityGrade === "A+" ? "bg-purple-500/15 text-purple-300 border-purple-500/40"
-                : s.qualityGrade === "A" ? "bg-green-500/15 text-green-400 border-green-500/40"
-                  : s.qualityGrade === "B" ? "bg-blue-500/15 text-blue-400 border-blue-500/40"
-                    : "bg-muted/10 text-muted border-border";
-              return (
-                <Link
-                  key={s.id}
-                  href={`/dashboard/brain/decision/${s.id}`}
-                  className={`rounded-lg border p-3 block hover:opacity-90 transition-opacity ${gradeColor}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-sm font-semibold">{s.symbol} · {s.timeframe}</span>
-                    <span className="px-2 py-0.5 text-xs font-bold rounded border border-current bg-background/40">
-                      {s.qualityGrade}
-                    </span>
-                  </div>
-                  <div className="mt-1.5 flex items-center gap-2 text-xs">
-                    <span className={`uppercase font-bold ${isBull ? "text-green-400" : "text-red-400"}`}>
-                      {isBull ? "LONG" : "SHORT"}
-                    </span>
-                    <span className="text-muted">·</span>
-                    <span className="uppercase">{s.setupType.replace(/_/g, " ")}</span>
-                  </div>
-                  <div className="mt-2 space-y-0.5 text-[11px] font-mono">
-                    <div className="flex justify-between"><span className="text-muted">Entry</span><span>{s.entry.toFixed(5)}</span></div>
-                    <div className="flex justify-between"><span className="text-muted">SL</span><span className="text-red-400">{s.stopLoss.toFixed(5)}</span></div>
-                    <div className="flex justify-between"><span className="text-muted">TP1</span><span className="text-green-400">{s.takeProfit1.toFixed(5)}</span></div>
-                    <div className="flex justify-between"><span className="text-muted">RR</span><span>{s.riskReward.toFixed(2)}x · {s.confidenceScore}/100</span></div>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        )}
+        <ActiveSetupsFilter
+          setups={activeSetups.map((s) => ({
+            id: s.id,
+            symbol: s.symbol,
+            timeframe: s.timeframe,
+            direction: s.direction,
+            setupType: s.setupType,
+            qualityGrade: s.qualityGrade,
+            entry: s.entry,
+            stopLoss: s.stopLoss,
+            takeProfit1: s.takeProfit1,
+            riskReward: s.riskReward,
+            confidenceScore: s.confidenceScore,
+          }))}
+        />
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

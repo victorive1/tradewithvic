@@ -4,6 +4,7 @@ import { useState } from "react";
 import { MarketCard } from "./MarketCard";
 import { CurrencyStrengthPanel } from "./CurrencyStrengthPanel";
 import { SetupCard } from "./SetupCard";
+import { TimeframeFilter, type TimeframeValue, matchesTimeframe, buildTimeframeCounts } from "./TimeframeFilter";
 import type { MarketQuote, CurrencyStrength } from "@/lib/market-data";
 import type { TradeSetup } from "@/lib/setup-engine";
 import { MARKET_CATEGORIES } from "@/lib/constants";
@@ -16,6 +17,7 @@ interface Props {
 
 export function MarketRadarClient({ initialQuotes, initialStrength, initialSetups = [] }: Props) {
   const [activeCategory, setActiveCategory] = useState("all");
+  const [setupsTimeframe, setSetupsTimeframe] = useState<TimeframeValue>("all");
   const quotes = initialQuotes;
   const strength = initialStrength;
   const setups = initialSetups;
@@ -27,7 +29,7 @@ export function MarketRadarClient({ initialQuotes, initialStrength, initialSetup
 
   // Trade Setups panel: only A and A+ grade setups, respecting the same
   // category filter as the market cards above.
-  const highGradeSetups = setups
+  const highGradeSetupsAllTf = setups
     .filter((s) => s.qualityGrade === "A" || s.qualityGrade === "A+")
     .filter((s) => activeCategory === "all" ? true : s.category === activeCategory)
     .sort((a, b) => {
@@ -35,6 +37,8 @@ export function MarketRadarClient({ initialQuotes, initialStrength, initialSetup
       if (a.qualityGrade !== b.qualityGrade) return a.qualityGrade === "A+" ? -1 : 1;
       return b.confidenceScore - a.confidenceScore;
     });
+  const timeframeCounts = buildTimeframeCounts(highGradeSetupsAllTf, (s) => s.timeframe);
+  const highGradeSetups = highGradeSetupsAllTf.filter((s) => matchesTimeframe(s.timeframe, setupsTimeframe));
   const aPlusCount = highGradeSetups.filter((s) => s.qualityGrade === "A+").length;
   const aCount = highGradeSetups.length - aPlusCount;
 
@@ -139,10 +143,19 @@ export function MarketRadarClient({ initialQuotes, initialStrength, initialSetup
                 </div>
               )}
             </div>
+            <TimeframeFilter
+              value={setupsTimeframe}
+              onChange={setSetupsTimeframe}
+              counts={timeframeCounts}
+              className="mb-3"
+            />
             {highGradeSetups.length === 0 ? (
               <div className="glass-card p-8 text-center">
                 <p className="text-sm text-muted">
-                  No A or A+ setups {activeCategory !== "all" ? `in ${activeCategory}` : "right now"}.
+                  No A or A+ setups
+                  {activeCategory !== "all" && ` in ${activeCategory}`}
+                  {setupsTimeframe !== "all" && ` on ${setupsTimeframe}`}
+                  {activeCategory === "all" && setupsTimeframe === "all" && " right now"}.
                   The engine flags a setup only when trend, structure, liquidity, and momentum line up.
                 </p>
               </div>

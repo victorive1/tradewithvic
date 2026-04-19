@@ -4,6 +4,7 @@ import { useState } from "react";
 import { SetupCard } from "@/components/dashboard/SetupCard";
 import type { TradeSetup } from "@/lib/setup-engine";
 import { MARKET_CATEGORIES } from "@/lib/constants";
+import { TimeframeFilter, type TimeframeValue, matchesTimeframe, buildTimeframeCounts } from "@/components/dashboard/TimeframeFilter";
 
 const setupFilters = [
   { id: "all", label: "All Setups" },
@@ -18,6 +19,7 @@ export function SetupsClient({ initialSetups }: { initialSetups: TradeSetup[] })
   const [category, setCategory] = useState("all");
   const [filter, setFilter] = useState("all");
   const [direction, setDirection] = useState<"all" | "buy" | "sell">("all");
+  const [timeframe, setTimeframe] = useState<TimeframeValue>("all");
 
   let filtered = initialSetups;
 
@@ -34,6 +36,11 @@ export function SetupsClient({ initialSetups }: { initialSetups: TradeSetup[] })
   else if (filter === "swing") filtered = filtered.filter((s) => s.timeframe === "4h");
   else if (filter === "highest") filtered = [...filtered].sort((a, b) => b.confidenceScore - a.confidenceScore);
   else if (filter === "bestrr") filtered = [...filtered].sort((a, b) => b.riskReward - a.riskReward);
+
+  // Explicit timeframe chip filter — applied after the semantic "Scalping/
+  // Intraday/Swing" quick-filter above so the two can stack.
+  const timeframeCounts = buildTimeframeCounts(filtered, (s) => s.timeframe);
+  filtered = filtered.filter((s) => matchesTimeframe(s.timeframe, timeframe));
 
   const highQuality = filtered.filter((s) => s.confidenceScore >= 75);
   const moderate = filtered.filter((s) => s.confidenceScore >= 55 && s.confidenceScore < 75);
@@ -96,6 +103,8 @@ export function SetupsClient({ initialSetups }: { initialSetups: TradeSetup[] })
           </button>
         ))}
       </div>
+
+      <TimeframeFilter value={timeframe} onChange={setTimeframe} counts={timeframeCounts} />
 
       {/* High quality section */}
       {highQuality.length > 0 && (
