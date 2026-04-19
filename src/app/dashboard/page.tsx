@@ -3,19 +3,26 @@
 import { useState, useEffect } from "react";
 import { MarketRadarClient } from "@/components/dashboard/MarketRadarClient";
 import type { MarketQuote, CurrencyStrength } from "@/lib/market-data";
+import type { TradeSetup } from "@/lib/setup-engine";
 
 export default function DashboardPage() {
   const [quotes, setQuotes] = useState<MarketQuote[]>([]);
   const [strength, setStrength] = useState<CurrencyStrength[]>([]);
+  const [setups, setSetups] = useState<TradeSetup[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch("/api/market/quotes");
-        const data = await res.json();
-        if (data.quotes) setQuotes(data.quotes);
-        if (data.currencyStrength) setStrength(data.currencyStrength);
+        const [quotesRes, setupsRes] = await Promise.all([
+          fetch("/api/market/quotes"),
+          fetch("/api/market/setups"),
+        ]);
+        const quotesData = await quotesRes.json();
+        const setupsData = await setupsRes.json().catch(() => ({ setups: [] }));
+        if (quotesData.quotes) setQuotes(quotesData.quotes);
+        if (quotesData.currencyStrength) setStrength(quotesData.currencyStrength);
+        if (setupsData.setups) setSetups(setupsData.setups);
       } catch (e) {
         console.error("Failed to load market data:", e);
       }
@@ -39,5 +46,5 @@ export default function DashboardPage() {
     );
   }
 
-  return <MarketRadarClient initialQuotes={quotes} initialStrength={strength} />;
+  return <MarketRadarClient initialQuotes={quotes} initialStrength={strength} initialSetups={setups} />;
 }

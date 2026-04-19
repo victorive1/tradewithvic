@@ -3,23 +3,40 @@
 import { useState } from "react";
 import { MarketCard } from "./MarketCard";
 import { CurrencyStrengthPanel } from "./CurrencyStrengthPanel";
+import { SetupCard } from "./SetupCard";
 import type { MarketQuote, CurrencyStrength } from "@/lib/market-data";
+import type { TradeSetup } from "@/lib/setup-engine";
 import { MARKET_CATEGORIES } from "@/lib/constants";
 
 interface Props {
   initialQuotes: MarketQuote[];
   initialStrength: CurrencyStrength[];
+  initialSetups?: TradeSetup[];
 }
 
-export function MarketRadarClient({ initialQuotes, initialStrength }: Props) {
+export function MarketRadarClient({ initialQuotes, initialStrength, initialSetups = [] }: Props) {
   const [activeCategory, setActiveCategory] = useState("all");
   const quotes = initialQuotes;
   const strength = initialStrength;
+  const setups = initialSetups;
 
   const filteredQuotes =
     activeCategory === "all"
       ? quotes
       : quotes.filter((q) => q.category === activeCategory);
+
+  // Trade Setups panel: only A and A+ grade setups, respecting the same
+  // category filter as the market cards above.
+  const highGradeSetups = setups
+    .filter((s) => s.qualityGrade === "A" || s.qualityGrade === "A+")
+    .filter((s) => activeCategory === "all" ? true : s.category === activeCategory)
+    .sort((a, b) => {
+      // A+ before A, then by confidence descending
+      if (a.qualityGrade !== b.qualityGrade) return a.qualityGrade === "A+" ? -1 : 1;
+      return b.confidenceScore - a.confidenceScore;
+    });
+  const aPlusCount = highGradeSetups.filter((s) => s.qualityGrade === "A+").length;
+  const aCount = highGradeSetups.length - aPlusCount;
 
   const topMovers = [...quotes]
     .sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent))
@@ -96,6 +113,47 @@ export function MarketRadarClient({ initialQuotes, initialStrength }: Props) {
               </p>
             </div>
           )}
+
+          {/* High-grade trade setups, built from the same market data */}
+          <div className="pt-2">
+            <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
+              <div>
+                <h2 className="text-lg font-bold text-foreground">A / A+ Trade Setups</h2>
+                <p className="text-xs text-muted mt-0.5">
+                  High-conviction setups derived from the Market Radar feed
+                  {activeCategory !== "all" && ` · ${activeCategory} only`}
+                </p>
+              </div>
+              {highGradeSetups.length > 0 && (
+                <div className="flex items-center gap-2 text-xs">
+                  {aPlusCount > 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/40 font-bold">
+                      {aPlusCount} A+
+                    </span>
+                  )}
+                  {aCount > 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-green-500/15 text-green-400 border border-green-500/40 font-bold">
+                      {aCount} A
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+            {highGradeSetups.length === 0 ? (
+              <div className="glass-card p-8 text-center">
+                <p className="text-sm text-muted">
+                  No A or A+ setups {activeCategory !== "all" ? `in ${activeCategory}` : "right now"}.
+                  The engine flags a setup only when trend, structure, liquidity, and momentum line up.
+                </p>
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {highGradeSetups.map((setup) => (
+                  <SetupCard key={setup.id} setup={setup} />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Right column - Panels */}
