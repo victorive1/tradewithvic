@@ -155,15 +155,37 @@ export async function fetchAndPersistCandles(
       .filter((r) => Number.isFinite(r.open) && r.isClosed);
 
     if (rows.length === 0) {
+      // Provider returned nothing (market closed, unsupported symbol, etc.).
+      // Still bump fetchedAt on the newest existing candle so the Agent
+      // freshness probe knows we DID check — the pair isn't "stale" just
+      // because the provider had no new data.
+      await bumpNewestFetchedAt(symbol, timeframe);
       return { symbol, timeframe, written: 0, fetched: raw.length };
     }
     const result = await prisma.candle.createMany({
       data: rows,
       skipDuplicates: true,
     });
+    // Even when all returned candles are duplicates (no new rows written),
+    // bump fetchedAt on candles we touched so the probe sees the refresh.
+    await prisma.candle.updateMany({
+      where: { symbol, timeframe, openTime: { in: rows.map((r) => r.openTime) } },
+      data: { fetchedAt: new Date() },
+    });
     return { symbol, timeframe, written: result.count, fetched: raw.length };
   } catch (err: any) {
     return { symbol, timeframe, written: 0, fetched: 0, error: err?.message || String(err) };
+  }
+}
+
+async function bumpNewestFetchedAt(symbol: string, timeframe: CandleTimeframe): Promise<void> {
+  const newest = await prisma.candle.findFirst({
+    where: { symbol, timeframe },
+    orderBy: { openTime: "desc" },
+    select: { id: true },
+  });
+  if (newest) {
+    await prisma.candle.update({ where: { id: newest.id }, data: { fetchedAt: new Date() } });
   }
 }
 

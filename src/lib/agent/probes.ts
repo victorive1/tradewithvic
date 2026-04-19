@@ -259,7 +259,10 @@ async function sourceCandle(): Promise<DataSourceSnapshot> {
     label: "Candles",
     tableName: "Candle",
     count: () => prisma.candle.count(),
-    lastUpdated: async () => (await prisma.candle.findFirst({ orderBy: { openTime: "desc" }, select: { openTime: true } }))?.openTime ?? null,
+    // fetchedAt tracks when we last asked the provider for this row, which
+    // is what matters for freshness. openTime is the bar's time and can be
+    // hours/days old on longer timeframes without meaning anything is wrong.
+    lastUpdated: async () => (await prisma.candle.findFirst({ orderBy: { fetchedAt: "desc" }, select: { fetchedAt: true } }))?.fetchedAt ?? null,
     warnSecs: 900,
     critSecs: 3600,
   });
