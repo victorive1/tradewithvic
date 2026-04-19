@@ -82,6 +82,7 @@ export function SetupCard({ setup }: { setup: TradeSetup }) {
               entry: setup.entry,
               stopLoss: setup.stopLoss,
               takeProfit: setup.takeProfit1,
+              takeProfit2: (setup as { takeProfit2?: number | null }).takeProfit2 ?? null,
               timeframe: setup.timeframe,
               setupType: setup.setupType,
               qualityGrade: setup.qualityGrade,

@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-
-const USERKEY_STORAGE = "tradewithvic_billing_user_key";
+import { getOrCreateUserKey } from "@/lib/trading/user-key-client";
 
 interface RequestRow {
   id: string;
@@ -44,12 +43,7 @@ export default function ExecutionHistoryPage() {
 
   const headers = useMemo(() => ({ "x-trading-user-key": userKey }), [userKey]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    let k = window.localStorage.getItem(USERKEY_STORAGE);
-    if (!k) { k = crypto.randomUUID(); window.localStorage.setItem(USERKEY_STORAGE, k); }
-    setUserKey(k);
-  }, []);
+  useEffect(() => { setUserKey(getOrCreateUserKey()); }, []);
 
   const load = useCallback(async () => {
     if (!userKey) return;

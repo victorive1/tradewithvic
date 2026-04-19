@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { getOrCreateUserKey } from "@/lib/trading/user-key-client";
 
-const USERKEY_STORAGE = "tradewithvic_billing_user_key";
 const MT_ACCOUNTS_KEY = "mt_accounts";
 
 interface LinkedAccount {
@@ -53,16 +53,6 @@ const SYMBOL_CHOICES = [
   "US30", "NAS100", "SPX500",
   "BTCUSD", "ETHUSD",
 ];
-
-function getOrCreateUserKey(): string {
-  if (typeof window === "undefined") return "";
-  let k = window.localStorage.getItem(USERKEY_STORAGE);
-  if (!k) {
-    k = (typeof crypto !== "undefined" && "randomUUID" in crypto) ? crypto.randomUUID() : `uk_${Date.now()}`;
-    window.localStorage.setItem(USERKEY_STORAGE, k);
-  }
-  return k;
-}
 
 function readLocalMtAccounts() {
   try {

@@ -4,19 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { getOrCreateUserKey } from "@/lib/trading/user-key-client";
 
-const USERKEY_STORAGE = "tradewithvic_billing_user_key";
 const MT_ACCOUNTS_KEY = "mt_accounts";
-
-function getOrCreateUserKey(): string {
-  if (typeof window === "undefined") return "";
-  let k = window.localStorage.getItem(USERKEY_STORAGE);
-  if (!k) {
-    k = (typeof crypto !== "undefined" && "randomUUID" in crypto) ? crypto.randomUUID() : `uk_${Date.now()}`;
-    window.localStorage.setItem(USERKEY_STORAGE, k);
-  }
-  return k;
-}
 
 function readLocalMtAccounts() {
   try {
@@ -38,6 +28,7 @@ export interface SetupForExecution {
   entry?: number | null;
   stopLoss?: number | null;
   takeProfit?: number | null;
+  takeProfit2?: number | null;
   timeframe?: string | null;
   setupType?: string | null;      // e.g. "breakout", "liquidity_sweep"
   qualityGrade?: string | null;
@@ -54,6 +45,30 @@ interface LinkedAccount {
   accountLabel: string | null;
   connectionStatus: string;
   adapterKind: string;
+  baseCurrency?: string | null;
+  balance?: number | null;
+}
+
+// Pip size for common asset classes. Approximate but fine for UI preview.
+function pipSize(symbol: string): number {
+  const s = symbol.toUpperCase();
+  if (s.includes("JPY")) return 0.01;
+  if (s.startsWith("XAU")) return 0.1;
+  if (s.startsWith("XAG")) return 0.01;
+  if (/(BTC|ETH|SOL|XRP|ADA|DOGE|BNB|LTC)/.test(s)) return 1;
+  if (/(US30|DJI|US500|SPX|NAS100|NDX|GER40|UK100|JP225|AUS200|HK50)/.test(s)) return 1;
+  return 0.0001;
+}
+
+// Approximate USD pip value per 1.0 standard lot.
+function pipValuePerLotUSD(symbol: string): number {
+  const s = symbol.toUpperCase();
+  if (s.startsWith("XAU")) return 10;
+  if (s.startsWith("XAG")) return 50;
+  if (s.includes("JPY")) return 9;
+  if (/(BTC|ETH|SOL|XRP|ADA|DOGE|BNB|LTC)/.test(s)) return 1;
+  if (/(US30|DJI|US500|SPX|NAS100|NDX|GER40|UK100|JP225|AUS200|HK50)/.test(s)) return 1;
+  return 10;
 }
 
 function normalizeSide(d: string): "buy" | "sell" {
@@ -282,23 +297,42 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
 
   const selectedAccount = accounts.find((a) => a.id === accountId);
   const entryRef = orderType === "market" ? (setup.entry ?? entryNum) : entryNum;
-  const rr = (() => {
-    if (!entryRef || !slNum || !tpNum) return null;
+
+  const psize = pipSize(setup.symbol);
+  const pipDist = (() => {
+    if (!entryRef || !slNum || psize <= 0) return null;
+    return Math.abs(entryRef - slNum) / psize;
+  })();
+  const lotsNum = Number(volume);
+  const riskUsd = (() => {
+    if (pipDist == null || !Number.isFinite(lotsNum) || lotsNum <= 0) return null;
+    return pipDist * pipValuePerLotUSD(setup.symbol) * lotsNum;
+  })();
+  const riskPctOfBalance = (() => {
+    if (riskUsd == null || !selectedAccount?.balance || selectedAccount.balance <= 0) return null;
+    return (riskUsd / selectedAccount.balance) * 100;
+  })();
+  const rr1 = (() => {
+    if (!entryRef || !slNum || !setup.takeProfit) return null;
     const risk = Math.abs(entryRef - slNum);
-    const reward = Math.abs(tpNum - entryRef);
     if (risk <= 0) return null;
-    return reward / risk;
+    return Math.abs(setup.takeProfit - entryRef) / risk;
+  })();
+  const rr2 = (() => {
+    if (!entryRef || !slNum || setup.takeProfit2 == null) return null;
+    const risk = Math.abs(entryRef - slNum);
+    if (risk <= 0) return null;
+    return Math.abs(setup.takeProfit2 - entryRef) / risk;
   })();
 
   if (!mounted) return null;
   return createPortal(
-    <div role="dialog" aria-modal="true" className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4"
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-[60]"
       style={{ height: "100dvh" }}>
       <div className="absolute inset-0 bg-background/70 backdrop-blur-md" onClick={onClose} />
-      <div className="relative w-full sm:max-w-md bg-surface border border-border/60 sm:rounded-2xl rounded-t-3xl shadow-[0_30px_80px_rgba(0,0,0,0.5)] flex flex-col"
-        style={{ maxHeight: "min(92dvh, 760px)" }}>
+      <div className="absolute inset-y-0 right-0 w-full sm:w-[460px] bg-surface border-l border-border/60 shadow-[0_0_60px_rgba(0,0,0,0.5)] flex flex-col">
         {/* Header */}
-        <div className={cn("p-4 sm:p-5 border-b border-border/60 relative overflow-hidden shrink-0")}>
+        <div className={cn("p-4 border-b border-border/60 relative overflow-hidden shrink-0")}>
           <div
             aria-hidden
             className="absolute inset-0 opacity-60 pointer-events-none"
@@ -308,29 +342,42 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
                 : "radial-gradient(circle at 50% 0%, rgba(244,63,94,0.22), transparent 60%)",
             }}
           />
-          <div className="relative flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">Execute Trade</span>
-                {setup.timeframe && <span className="text-[10px] text-muted">· {setup.timeframe}</span>}
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className={cn("px-2 py-0.5 rounded-md font-bold text-[11px] border",
-                  side === "buy"
-                    ? "border-bull/40 text-bull-light bg-bull/10"
-                    : "border-bear/40 text-bear-light bg-bear/10"
-                )}>
-                  {side === "buy" ? "▲ BUY" : "▼ SELL"}
+          <div className="relative flex items-start gap-3">
+            <div
+              className={cn(
+                "w-11 h-11 rounded-xl flex items-center justify-center text-lg font-bold border shrink-0",
+                side === "buy"
+                  ? "bg-bull/15 border-bull/30 text-bull-light"
+                  : "bg-bear/15 border-bear/30 text-bear-light",
+              )}
+            >
+              {side === "buy" ? "▲" : "▼"}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap mb-1">
+                <span className="font-mono font-bold text-lg text-foreground truncate">{setup.symbol}</span>
+                <span
+                  className={cn(
+                    "px-2 py-0.5 rounded-md font-bold text-[10px] uppercase tracking-wider border",
+                    side === "buy"
+                      ? "bg-bull/10 text-bull-light border-bull/40"
+                      : "bg-bear/10 text-bear-light border-bear/40",
+                  )}
+                >
+                  {side}
                 </span>
-                <span className="font-mono font-bold text-base sm:text-lg">{setup.symbol}</span>
-                {setup.qualityGrade && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded border border-accent/40 text-accent-light bg-accent/10 font-bold">
-                    {setup.qualityGrade}
+                {setup.timeframe && (
+                  <span className="px-2 py-0.5 rounded-md font-mono text-[10px] bg-surface-2 border border-border/60 text-muted-light">
+                    {setup.timeframe}
                   </span>
                 )}
-                {setup.confidenceScore != null && (
-                  <span className="text-[11px] font-mono text-accent-light">{setup.confidenceScore}</span>
-                )}
+              </div>
+              <div className="text-[11px] text-muted-light flex items-center gap-1.5 min-w-0">
+                <span aria-hidden>📈</span>
+                <span className="truncate">
+                  {setup.setupType ?? "Trade"}
+                  {setup.confidenceScore != null && ` · ${setup.confidenceScore}% confidence`}
+                </span>
               </div>
             </div>
             <button onClick={onClose} aria-label="Close"
@@ -350,187 +397,150 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
             <ResultPanel result={result} onDismiss={onClose} />
           ) : (
             <>
-              {/* Order type */}
-              <div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted mb-2">Order type</div>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {([
-                    ["market", "Market"],
-                    ["limit",  "Limit"],
-                    ["stop",   "Stop"],
-                  ] as const).map(([id, label]) => (
-                    <button
-                      key={id}
-                      onClick={() => setOrderType(id)}
-                      className={cn(
-                        "py-2.5 rounded-xl text-[12px] font-semibold border transition-smooth",
-                        orderType === id
-                          ? "bg-accent/15 border-accent/40 text-accent-light shadow-[0_0_14px_var(--color-accent-glow)]"
-                          : "bg-surface-2 border-border/50 text-muted-light hover:border-border-light",
-                      )}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-[10px] text-muted mt-1.5">
-                  {orderType === "market" && "Fills at the next available price."}
-                  {orderType === "limit" && "Pending order — waits for price to reach entry."}
-                  {orderType === "stop" && "Pending order — triggers when price breaks entry."}
-                </p>
-              </div>
-
-              {/* Editable levels */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">Levels</div>
-                  {levelsEdited && (
-                    <button onClick={resetLevelsToSetup} className="text-[10px] text-accent-light hover:text-accent transition-smooth">
-                      ↺ Reset to setup
-                    </button>
+              {/* Signal Levels */}
+              <section>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted mb-2">Signal Levels</div>
+                <div className="grid grid-cols-3 gap-2">
+                  <LevelTile label="Entry" value={setup.entry} tone="entry" />
+                  <LevelTile label="SL" value={setup.stopLoss} tone="bear" />
+                  <LevelTile label="TP1" value={setup.takeProfit} tone="bull" />
+                  {setup.takeProfit2 != null && (
+                    <LevelTile label="TP2" value={setup.takeProfit2} tone="bull" />
                   )}
                 </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <LevelInput
-                    label="Entry"
-                    value={entry}
-                    onChange={setEntry}
-                    disabled={orderType === "market"}
-                    placeholder={orderType === "market" ? "Market" : "—"}
-                  />
-                  <LevelInput label="Stop" value={sl} onChange={setSl} tone="bear" placeholder="—" />
-                  <LevelInput label="Target" value={tp} onChange={setTp} tone="bull" placeholder="—" />
-                </div>
-                {rr !== null && (
-                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/40 text-[11px]">
-                    <span className="text-muted">Risk/Reward</span>
-                    <span className={cn("font-mono font-bold", rr >= 2 ? "text-bull-light" : rr < 1 ? "text-bear-light" : "text-foreground")}>
-                      {rr.toFixed(2)}R
-                    </span>
-                  </div>
-                )}
-              </div>
+              </section>
 
-              {/* Account picker */}
-              <div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted mb-2">Send to account</div>
-                <div className="grid gap-2">
+              {/* MT Account */}
+              <section>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted mb-2">MT Account</div>
+                <div className="space-y-2">
                   {accounts.map((a) => {
                     const active = a.id === accountId;
+                    const isLinked = a.connectionStatus === "linked";
                     return (
                       <button
                         key={a.id}
                         onClick={() => setAccountId(a.id)}
                         className={cn(
-                          "text-left p-3 rounded-xl border transition-smooth",
+                          "w-full text-left p-3 rounded-xl border transition-smooth",
                           active
-                            ? "border-accent/40 bg-accent/10 shadow-[0_0_20px_var(--color-accent-glow)]"
+                            ? "border-bull/50 bg-bull/5 shadow-[0_0_20px_rgba(16,185,129,0.15)]"
                             : "border-border bg-surface-2/50 hover:border-border-light",
                         )}
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className={cn("text-[10px] font-bold tracking-wider", active ? "text-accent-light" : "text-muted")}>
-                              {a.platformType}
-                            </span>
-                            <span className="font-mono text-sm font-semibold truncate">#{a.accountLogin}</span>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className={cn(
+                                "w-1.5 h-1.5 rounded-full shrink-0",
+                                isLinked ? "bg-bull" : "bg-bear",
+                              )} />
+                              <span className="font-semibold text-sm truncate">
+                                {a.brokerName} · {a.accountLogin}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-muted-light tracking-wide uppercase">
+                              {a.platformType} · {a.connectionStatus}
+                              {typeof a.balance === "number" && (
+                                <span> · ${a.balance.toLocaleString()}</span>
+                              )}
+                            </div>
                           </div>
-                          <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full border shrink-0",
-                            a.connectionStatus === "linked"
-                              ? "border-bull/40 text-bull-light bg-bull/10"
-                              : "border-bear/40 text-bear-light bg-bear/10",
-                          )}>
-                            {a.connectionStatus.toUpperCase()}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between mt-0.5">
-                          <div className="text-[11px] text-muted-light truncate">{a.brokerName}{a.accountLabel ? ` · ${a.accountLabel}` : ""}</div>
-                          <span className={cn("text-[9px] px-1.5 py-0.5 rounded font-bold tracking-wider uppercase shrink-0 ml-2",
-                            a.adapterKind === "mock" ? "bg-warn/10 text-warn border border-warn/30"
-                            : a.adapterKind === "pending_queue" ? "bg-accent/10 text-accent-light border border-accent/30"
-                            : a.adapterKind === "metaapi" || a.adapterKind === "ea_webhook" ? "bg-bull/10 text-bull-light border border-bull/30"
-                            : "bg-bear/10 text-bear-light border border-bear/30"
-                          )}>
-                            {a.adapterKind === "mock" ? "DEMO"
-                             : a.adapterKind === "pending_queue" ? "QUEUE"
-                             : a.adapterKind === "metaapi" ? "LIVE"
-                             : a.adapterKind === "ea_webhook" ? "LIVE"
-                             : "OFF"}
-                          </span>
+                          {active && (
+                            <div className="w-5 h-5 rounded-full bg-bull flex items-center justify-center shrink-0">
+                              <svg className="w-3 h-3 text-white" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M16.7 5.3a1 1 0 010 1.4l-8 8a1 1 0 01-1.4 0l-4-4a1 1 0 011.4-1.4L8 12.6l7.3-7.3a1 1 0 011.4 0z"/>
+                              </svg>
+                            </div>
+                          )}
                         </div>
                       </button>
                     );
                   })}
                 </div>
-              </div>
+              </section>
 
-              {/* Sizing */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">Position size</div>
-                  <div className="flex bg-surface-2 rounded-lg p-0.5 border border-border text-[11px]">
-                    <button onClick={() => setSizingMode("fixed_lots")}
-                      className={cn("px-2.5 py-1 rounded-md font-semibold transition-smooth",
-                        sizingMode === "fixed_lots" ? "bg-accent/20 text-accent-light" : "text-muted")}>
-                      Lots
-                    </button>
-                    <button onClick={() => setSizingMode("risk_percent")}
-                      className={cn("px-2.5 py-1 rounded-md font-semibold transition-smooth",
-                        sizingMode === "risk_percent" ? "bg-accent/20 text-accent-light" : "text-muted")}>
-                      Risk %
-                    </button>
-                  </div>
-                </div>
-                {sizingMode === "fixed_lots" ? (
-                  <div className="flex gap-1.5">
+              {/* Lot Size + Order Type */}
+              <section>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted mb-2">Lot Size</div>
                     <input
-                      type="number" step="0.01" min="0.01"
+                      type="number"
+                      step="0.01"
+                      min="0.01"
                       value={volume}
                       onChange={(e) => setVolume(e.target.value)}
-                      className="input font-mono text-base flex-1"
+                      className="w-full px-3 py-2.5 rounded-xl bg-surface-2 border border-border/60 focus:border-accent focus:outline-none font-mono text-base"
                     />
-                    <div className="flex gap-1">
-                      {["0.05", "0.10", "0.25", "0.50", "1.00"].map((q) => (
-                        <button key={q} onClick={() => setVolume(q)}
-                          className={cn("px-2 text-[11px] rounded-lg border transition-smooth",
-                            volume === q ? "bg-accent/15 border-accent/40 text-accent-light" : "bg-surface-2 border-border text-muted-light hover:border-border-light")}>
-                          {q}
-                        </button>
-                      ))}
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted mb-2">Order Type</div>
+                    <select
+                      value={orderType}
+                      onChange={(e) => setOrderType(e.target.value as "market" | "limit" | "stop")}
+                      className="w-full px-3 py-2.5 rounded-xl bg-surface-2 border border-border/60 focus:border-accent focus:outline-none text-sm"
+                    >
+                      <option value="market">Market</option>
+                      <option value="limit">Limit</option>
+                      <option value="stop">Stop</option>
+                    </select>
+                    <div className="text-[10px] text-muted mt-1.5">
+                      {orderType === "market" && "Fill at current market price"}
+                      {orderType === "limit" && "Waits for price to reach entry"}
+                      {orderType === "stop" && "Triggers when entry breaks"}
                     </div>
                   </div>
-                ) : (
-                  <>
-                    <input
-                      type="number" step="0.1" min="0.1" max="10"
-                      value={riskPct}
-                      onChange={(e) => setRiskPct(e.target.value)}
-                      className="input font-mono text-base"
-                    />
-                    <div className="text-[10px] text-muted mt-1">
-                      Server derives lots from stop distance and your account balance.
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {/* Slippage (market only) */}
-              {orderType === "market" && (
-                <div>
-                  <label className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted block mb-1.5">
-                    Max slippage (pips)
-                  </label>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    step="1"
-                    min="0"
-                    value={slippage}
-                    onChange={(e) => setSlippage(e.target.value)}
-                    className="input font-mono"
-                  />
                 </div>
-              )}
+                <div className="flex gap-1.5 mt-2 flex-wrap">
+                  {["0.01", "0.05", "0.10", "0.25", "0.50", "1.00"].map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setVolume(p)}
+                      className={cn(
+                        "px-3 py-1.5 text-xs font-mono rounded-lg border transition-smooth",
+                        volume === p
+                          ? "bg-accent/20 border-accent/50 text-accent-light"
+                          : "bg-surface-2 border-border/60 text-muted-light hover:border-border-light",
+                      )}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              {/* Risk Preview */}
+              <section>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted mb-2">Risk Preview</div>
+                <div className="rounded-xl border border-border/60 bg-surface-2/30 p-3 space-y-2">
+                  <RiskRow
+                    label="Pip Distance"
+                    value={pipDist != null ? `${pipDist.toLocaleString(undefined, { maximumFractionDigits: 0 })} pips` : "—"}
+                  />
+                  <RiskRow
+                    label="$ Risk"
+                    value={riskUsd != null ? `$${riskUsd.toFixed(2)}` : "—"}
+                    tone="bear"
+                  />
+                  <RiskRow
+                    label="Risk %"
+                    value={riskPctOfBalance != null ? `${riskPctOfBalance.toFixed(2)}%` : "—"}
+                  />
+                  <RiskRow
+                    label="R:R to TP1"
+                    value={rr1 != null ? `1 : ${rr1.toFixed(2)}` : "—"}
+                    tone={rr1 != null && rr1 >= 2 ? "bull" : undefined}
+                  />
+                  {setup.takeProfit2 != null && (
+                    <RiskRow
+                      label="R:R to TP2"
+                      value={rr2 != null ? `1 : ${rr2.toFixed(2)}` : "—"}
+                      tone={rr2 != null && rr2 >= 2 ? "bull" : undefined}
+                    />
+                  )}
+                </div>
+              </section>
 
               {error && <div className="text-xs text-bear-light bg-bear/5 border border-bear/30 rounded-lg p-2.5">{error}</div>}
               {warnings.length > 0 && (
@@ -545,11 +555,11 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
                   <div className="text-sm font-mono font-semibold">
                     {side.toUpperCase()} {volume} lots {setup.symbol}
                     <span className="text-muted"> · {orderType.toUpperCase()}</span>
-                    {orderType !== "market" && entry && <span className="text-muted"> @ {entry}</span>}
                     {orderType === "market" && <span className="text-muted"> @ market</span>}
+                    {orderType !== "market" && setup.entry != null && <span className="text-muted"> @ {setup.entry}</span>}
                   </div>
                   <div className="text-[11px] text-muted font-mono">
-                    SL {sl || "—"} · TP {tp || "—"}
+                    SL {setup.stopLoss ?? "—"} · TP {setup.takeProfit ?? "—"}
                     {selectedAccount && <span> → #{selectedAccount.accountLogin}</span>}
                   </div>
                 </div>
@@ -658,6 +668,42 @@ function ResultPanel({ result, onDismiss }: { result: any; onDismiss: () => void
         <Link href={`/dashboard/trading/executions/${result.request.id}`} className="btn-secondary flex-1 justify-center text-xs">Details</Link>
         <button onClick={onDismiss} className="btn-primary flex-1 text-xs">Done</button>
       </div>
+    </div>
+  );
+}
+
+function LevelTile({ label, value, tone }: {
+  label: string;
+  value: number | null | undefined;
+  tone: "entry" | "bull" | "bear";
+}) {
+  const toneColor =
+    tone === "bull" ? "text-bull-light" :
+    tone === "bear" ? "text-bear-light" :
+    "text-accent-light";
+  return (
+    <div className="rounded-xl border border-border/60 bg-surface-2/50 p-3 text-center">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-1">{label}</div>
+      <div className={cn("font-mono font-bold text-sm tabular-nums", toneColor)}>
+        {value != null ? String(value) : "—"}
+      </div>
+    </div>
+  );
+}
+
+function RiskRow({ label, value, tone }: {
+  label: string;
+  value: string;
+  tone?: "bull" | "bear";
+}) {
+  const toneColor =
+    tone === "bull" ? "text-bull-light" :
+    tone === "bear" ? "text-bear-light" :
+    "text-foreground";
+  return (
+    <div className="flex items-center justify-between text-sm">
+      <span className="text-muted-light">{label}</span>
+      <span className={cn("font-mono font-semibold tabular-nums", toneColor)}>{value}</span>
     </div>
   );
 }
