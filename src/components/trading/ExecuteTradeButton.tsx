@@ -140,7 +140,7 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
   const [userKey, setUserKey] = useState("");
   const [accounts, setAccounts] = useState<LinkedAccount[]>([]);
   const [loading, setLoading] = useState(true);
-  const [accountId, setAccountId] = useState("");
+  const [accountIds, setAccountIds] = useState<Set<string>>(new Set());
 
   const side = normalizeSide(setup.direction);
 
@@ -219,14 +219,18 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
       if (res.ok) {
         const data = await res.json();
         setAccounts(data.accounts ?? []);
-        if (data.accounts?.[0]?.id) setAccountId(data.accounts[0].id);
+        // Default to the first account selected so the flow still works as a
+        // one-tap execute. User can multi-select or de-select as needed.
+        if (data.accounts?.[0]?.id) {
+          setAccountIds((prev) => (prev.size === 0 ? new Set([data.accounts[0].id]) : prev));
+        }
       }
     } finally { setLoading(false); }
   }, [userKey, headers]);
 
   useEffect(() => { loadAccounts(); }, [loadAccounts]);
 
-  function buildOrderPayload() {
+  function buildOrderPayload(accountId: string) {
     return {
       accountId,
       internalSymbol: setup.symbol,
@@ -245,26 +249,31 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
 
   async function runValidateAndConfirm() {
     setError(null); setWarnings([]);
-    if (!accountId) { setError("Select a linked trading account first."); return; }
+    const ids = Array.from(accountIds);
+    if (ids.length === 0) { setError("Select at least one linked trading account."); return; }
     if (!Number.isFinite(Number(volume)) || Number(volume) <= 0) {
       setError("Enter a lot size greater than zero."); return;
     }
     setSubmitting(true);
     try {
-      const res = await fetch("/api/trading/validate", {
-        method: "POST", headers,
-        body: JSON.stringify(buildOrderPayload()),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(data?.error ?? `validate_${res.status}`); return;
-      }
-      if (!data.ok) {
-        setError(data.error ?? "validation_failed");
-        setWarnings(data.warnings ?? []);
+      const results = await Promise.all(ids.map(async (id) => {
+        const res = await fetch("/api/trading/validate", {
+          method: "POST", headers,
+          body: JSON.stringify(buildOrderPayload(id)),
+        });
+        const data = await res.json().catch(() => ({}));
+        return { id, httpOk: res.ok, status: res.status, data };
+      }));
+      const failed = results.find((r) => !r.httpOk || !r.data?.ok);
+      if (failed) {
+        const label = accounts.find((a) => a.id === failed.id);
+        const where = label ? ` (${label.brokerName} · ${label.accountLogin})` : "";
+        setError(`${failed.data?.error ?? `validate_${failed.status}`}${where}`);
+        setWarnings(failed.data?.warnings ?? []);
         return;
       }
-      setWarnings(data.warnings ?? []);
+      const combinedWarnings = Array.from(new Set(results.flatMap((r) => r.data?.warnings ?? [])));
+      setWarnings(combinedWarnings);
       setResultStage("confirm");
     } catch (e: any) {
       setError(e?.message ?? "network_error");
@@ -273,29 +282,33 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
 
   async function submitOrder() {
     setSubmitting(true); setError(null);
+    const ids = Array.from(accountIds);
     try {
-      const res = await fetch("/api/trading/execute", {
-        method: "POST", headers,
-        body: JSON.stringify({
-          ...buildOrderPayload(),
-          sourceType: setup.sourceType ?? "setup",
-          sourceRef: setup.sourceRef ?? null,
-          comment: setup.setupType ? `${setup.setupType}${setup.timeframe ? ` · ${setup.timeframe}` : ""}` : null,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(data?.message ?? data?.error ?? `execute_${res.status}`);
-        return;
-      }
-      setResult(data);
+      const settled = await Promise.all(ids.map(async (id) => {
+        try {
+          const res = await fetch("/api/trading/execute", {
+            method: "POST", headers,
+            body: JSON.stringify({
+              ...buildOrderPayload(id),
+              sourceType: setup.sourceType ?? "setup",
+              sourceRef: setup.sourceRef ?? null,
+              comment: setup.setupType ? `${setup.setupType}${setup.timeframe ? ` · ${setup.timeframe}` : ""}` : null,
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          return { accountId: id, ok: res.ok, status: res.status, data };
+        } catch (e: any) {
+          return { accountId: id, ok: false, status: 0, data: { error: e?.message ?? "network_error" } };
+        }
+      }));
+      setResult({ perAccount: settled });
       setResultStage("done");
-    } catch (e: any) {
-      setError(e?.message ?? "network_error");
     } finally { setSubmitting(false); }
   }
 
-  const selectedAccount = accounts.find((a) => a.id === accountId);
+  const selectedAccounts = accounts.filter((a) => accountIds.has(a.id));
+  // First selected is used for per-account risk % preview (balance-scoped).
+  const selectedAccount = selectedAccounts[0];
   const entryRef = orderType === "market" ? (setup.entry ?? entryNum) : entryNum;
 
   const psize = pipSize(setup.symbol);
@@ -394,7 +407,7 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
           ) : accounts.length === 0 ? (
             <NoAccountState onClose={onClose} />
           ) : resultStage === "done" ? (
-            <ResultPanel result={result} onDismiss={onClose} />
+            <ResultPanel result={result} accounts={accounts} onDismiss={onClose} />
           ) : (
             <>
               {/* Signal Levels */}
@@ -412,15 +425,37 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
 
               {/* MT Account */}
               <section>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted mb-2">MT Account</div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+                    MT Account{accountIds.size > 1 ? ` · ${accountIds.size} selected` : ""}
+                  </div>
+                  {accounts.length > 1 && (
+                    <button
+                      onClick={() => {
+                        if (accountIds.size === accounts.length) setAccountIds(new Set());
+                        else setAccountIds(new Set(accounts.map((a) => a.id)));
+                      }}
+                      className="text-[10px] text-accent-light hover:text-accent transition-smooth"
+                    >
+                      {accountIds.size === accounts.length ? "Clear all" : "Select all"}
+                    </button>
+                  )}
+                </div>
                 <div className="space-y-2">
                   {accounts.map((a) => {
-                    const active = a.id === accountId;
+                    const active = accountIds.has(a.id);
                     const isLinked = a.connectionStatus === "linked";
                     return (
                       <button
                         key={a.id}
-                        onClick={() => setAccountId(a.id)}
+                        onClick={() => {
+                          setAccountIds((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(a.id)) next.delete(a.id);
+                            else next.add(a.id);
+                            return next;
+                          });
+                        }}
                         className={cn(
                           "w-full text-left p-3 rounded-xl border transition-smooth",
                           active
@@ -551,7 +586,9 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
 
               {resultStage === "confirm" && (
                 <div className="rounded-xl border border-accent/30 bg-accent/5 p-3 space-y-1">
-                  <div className="text-[10px] font-bold tracking-[0.18em] text-accent-light uppercase">Confirm</div>
+                  <div className="text-[10px] font-bold tracking-[0.18em] text-accent-light uppercase">
+                    Confirm{selectedAccounts.length > 1 ? ` · ${selectedAccounts.length} accounts` : ""}
+                  </div>
                   <div className="text-sm font-mono font-semibold">
                     {side.toUpperCase()} {volume} lots {setup.symbol}
                     <span className="text-muted"> · {orderType.toUpperCase()}</span>
@@ -560,8 +597,14 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
                   </div>
                   <div className="text-[11px] text-muted font-mono">
                     SL {setup.stopLoss ?? "—"} · TP {setup.takeProfit ?? "—"}
-                    {selectedAccount && <span> → #{selectedAccount.accountLogin}</span>}
                   </div>
+                  {selectedAccounts.length > 0 && (
+                    <div className="text-[11px] text-muted-light space-y-0.5 pt-1">
+                      {selectedAccounts.map((a) => (
+                        <div key={a.id} className="font-mono">→ {a.brokerName} · #{a.accountLogin}</div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </>
@@ -574,7 +617,7 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
             {resultStage === "form" ? (
               <button
                 onClick={runValidateAndConfirm}
-                disabled={submitting || !accountId}
+                disabled={submitting || accountIds.size === 0}
                 className={cn(
                   "w-full py-3 rounded-xl font-bold text-sm transition-smooth disabled:opacity-50",
                   side === "buy"
@@ -582,7 +625,9 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
                     : "bg-bear/20 text-bear-light border border-bear/40 hover:bg-bear/30",
                 )}
               >
-                {submitting ? "Validating…" : `Review ${side.toUpperCase()} order`}
+                {submitting
+                  ? "Validating…"
+                  : `Review ${side.toUpperCase()} order${accountIds.size > 1 ? ` · ${accountIds.size} accounts` : ""}`}
               </button>
             ) : (
               <div className="grid grid-cols-2 gap-2">
@@ -616,58 +661,98 @@ function NoAccountState({ onClose }: { onClose: () => void }) {
   );
 }
 
-function ResultPanel({ result, onDismiss }: { result: any; onDismiss: () => void }) {
-  const r = result?.result;
-  if (!r) return null;
+function ResultPanel({ result, accounts, onDismiss }: {
+  result: any;
+  accounts: LinkedAccount[];
+  onDismiss: () => void;
+}) {
+  // Multi-account shape: { perAccount: [{ accountId, ok, data }] }
+  const perAccount: Array<{ accountId: string; ok: boolean; status: number; data: any }> =
+    result?.perAccount ?? (result?.request ? [{ accountId: result.request.accountId, ok: true, status: 200, data: result }] : []);
+  if (perAccount.length === 0) return null;
+
+  const resolved = perAccount.map((entry) => {
+    const acct = accounts.find((a) => a.id === entry.accountId);
+    return { ...entry, acct };
+  });
+
+  return (
+    <div className="space-y-3">
+      {resolved.map((entry) => (
+        <AccountResultTile key={entry.accountId} entry={entry} />
+      ))}
+      <button onClick={onDismiss} className="btn-primary w-full text-xs">Done</button>
+    </div>
+  );
+}
+
+function AccountResultTile({ entry }: {
+  entry: {
+    accountId: string;
+    ok: boolean;
+    status: number;
+    data: any;
+    acct: LinkedAccount | undefined;
+  };
+}) {
+  const r = entry.ok ? entry.data?.result : null;
+  const httpError = !entry.ok ? (entry.data?.message ?? entry.data?.error ?? `error_${entry.status}`) : null;
   const adapterKind: string | undefined = (() => {
-    try { return JSON.parse(r.adapterResponse ?? "{}").kind; } catch { return undefined; }
+    try { return JSON.parse(r?.adapterResponse ?? "{}").kind; } catch { return undefined; }
   })();
-  const ok = r.executionStatus === "accepted" || r.executionStatus === "partial";
-  const pending = r.executionStatus === "pending";
-  const rejected = r.executionStatus === "rejected" || r.executionStatus === "error";
+  const ok = r?.executionStatus === "accepted" || r?.executionStatus === "partial";
+  const pending = r?.executionStatus === "pending";
   const isDemo = adapterKind === "mock";
+  const acctLabel = entry.acct ? `${entry.acct.brokerName} · ${entry.acct.accountLogin}` : entry.accountId;
 
   return (
     <div className={cn(
-      "rounded-xl p-4 space-y-3 border-2",
-      ok ? "border-bull/40 bg-bull/5" : pending ? "border-warn/40 bg-warn/5" : "border-bear/40 bg-bear/5",
+      "rounded-xl p-4 space-y-2 border-2",
+      httpError ? "border-bear/40 bg-bear/5" :
+      ok ? "border-bull/40 bg-bull/5" :
+      pending ? "border-warn/40 bg-warn/5" :
+      "border-bear/40 bg-bear/5",
     )}>
       <div className="flex items-start gap-3">
         <div className={cn(
-          "w-10 h-10 rounded-xl flex items-center justify-center text-lg font-bold shrink-0",
-          ok ? "bg-bull/15 text-bull-light" : pending ? "bg-warn/15 text-warn" : "bg-bear/15 text-bear-light",
+          "w-9 h-9 rounded-xl flex items-center justify-center text-base font-bold shrink-0",
+          httpError ? "bg-bear/15 text-bear-light" :
+          ok ? "bg-bull/15 text-bull-light" :
+          pending ? "bg-warn/15 text-warn" :
+          "bg-bear/15 text-bear-light",
         )}>
-          {ok ? "✓" : pending ? "⧗" : "✕"}
+          {httpError || !ok && !pending ? "✕" : ok ? "✓" : "⧗"}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h4 className="text-sm font-semibold">
-              {ok ? (isDemo ? "Demo fill accepted" : "Order accepted") : pending ? "Order queued" : "Order rejected"}
-            </h4>
+            <h4 className="text-sm font-semibold truncate">{acctLabel}</h4>
             {isDemo && (
-              <span className="text-[9px] px-1.5 py-0.5 rounded bg-warn/15 text-warn border border-warn/30 font-bold tracking-wider uppercase">
-                Demo
-              </span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-warn/15 text-warn border border-warn/30 font-bold tracking-wider uppercase">Demo</span>
             )}
           </div>
           <p className="text-xs text-muted-light mt-1">
-            {ok && isDemo && "Simulated fill — account is in Demo mode. Ticket, price, and commission are synthetic so you can validate the flow. Switch the account to Live to route to a real MT bridge."}
-            {ok && !isDemo && "Fill confirmed. Position is now active on your MT terminal."}
-            {pending && "Order is saved as pending. Your MT bridge (EA or MetaAPI) picks it up next and reports the real fill."}
-            {rejected && (r.rejectionReason ?? "The broker adapter rejected the order.")}
+            {httpError ? httpError :
+              ok && isDemo ? "Simulated fill — account is in Demo mode." :
+              ok ? "Fill confirmed. Position is active on your MT terminal." :
+              pending ? "Order queued. Your MT bridge picks it up next." :
+              (r?.rejectionReason ?? "The broker adapter rejected the order.")}
           </p>
         </div>
       </div>
-      {r.brokerTicketRef && (
+      {r?.brokerTicketRef && (
         <div className="grid grid-cols-2 gap-3 text-xs pt-2 border-t border-border/40">
           <KV label="Ticket" value={r.brokerTicketRef} mono />
           <KV label="Fill" value={r.fillPrice != null ? String(r.fillPrice) : "—"} mono />
         </div>
       )}
-      <div className="flex gap-2">
-        <Link href={`/dashboard/trading/executions/${result.request.id}`} className="btn-secondary flex-1 justify-center text-xs">Details</Link>
-        <button onClick={onDismiss} className="btn-primary flex-1 text-xs">Done</button>
-      </div>
+      {entry.ok && entry.data?.request?.id && (
+        <Link
+          href={`/dashboard/trading/executions/${entry.data.request.id}`}
+          className="text-[11px] text-accent-light hover:text-accent transition-smooth inline-block"
+        >
+          View details →
+        </Link>
+      )}
     </div>
   );
 }
