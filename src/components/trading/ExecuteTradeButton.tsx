@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -138,9 +138,27 @@ export function ExecuteTradeButton({
 
 function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClose: () => void }) {
   const [userKey, setUserKey] = useState("");
-  const [accounts, setAccounts] = useState<LinkedAccount[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [accountIds, setAccountIds] = useState<Set<string>>(new Set());
+  // Seed accounts synchronously from localStorage so the form renders
+  // instantly — no "Checking your linked accounts…" spinner when the user
+  // already has accounts cached locally. Backend sync runs in the background
+  // and swaps in real account ids when it resolves.
+  const initialLocalAccounts: LinkedAccount[] = typeof window === "undefined"
+    ? []
+    : readLocalMtAccounts().map((a) => ({
+        id: `local:${a.login}:${a.server}`,
+        platformType: a.platform === "MT4" ? "MT4" : "MT5",
+        brokerName: a.broker,
+        accountLogin: a.login,
+        accountLabel: a.label ?? null,
+        connectionStatus: "linked",
+        adapterKind: "mock",
+      }));
+  const [accounts, setAccounts] = useState<LinkedAccount[]>(initialLocalAccounts);
+  // Only show the loading spinner when we have nothing to render up-front.
+  const [loading, setLoading] = useState(initialLocalAccounts.length === 0);
+  const [accountIds, setAccountIds] = useState<Set<string>>(
+    initialLocalAccounts[0] ? new Set([initialLocalAccounts[0].id]) : new Set(),
+  );
 
   const side = normalizeSide(setup.direction);
 
@@ -196,39 +214,60 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
     };
   }, [onClose]);
 
-  // Load accounts (and auto-migrate localStorage MT accounts into backend)
+  // Background-sync local accounts into the backend and swap in real ids.
+  // Migration POSTs fire in parallel (not awaited) so the UI never blocks.
   const loadAccounts = useCallback(async () => {
     if (!userKey) return;
-    setLoading(true);
+    const local = readLocalMtAccounts();
+    // Fire-and-forget migration; the GET below returns what's already synced
+    // plus anything newly created.
+    for (const a of local) {
+      fetch("/api/trading/accounts", {
+        method: "POST", headers,
+        body: JSON.stringify({
+          platformType: a.platform, brokerName: a.broker,
+          serverName: a.server, accountLogin: a.login, accountLabel: a.label ?? null,
+          adapterKind: "mock",
+        }),
+      }).catch(() => {});
+    }
     try {
-      const local = readLocalMtAccounts();
-      for (const a of local) {
-        await fetch("/api/trading/accounts", {
-          method: "POST", headers,
-          body: JSON.stringify({
-            platformType: a.platform, brokerName: a.broker,
-            serverName: a.server, accountLogin: a.login, accountLabel: a.label ?? null,
-            // Default new accounts to mock adapter so the execute flow completes
-            // end-to-end with simulated fills. Users upgrade to metaapi /
-            // ea_webhook per-account once they install a real bridge.
-            adapterKind: "mock",
-          }),
-        }).catch(() => {});
-      }
       const res = await fetch("/api/trading/accounts", { headers, cache: "no-store" });
-      if (res.ok) {
-        const data = await res.json();
-        setAccounts(data.accounts ?? []);
-        // Default to the first account selected so the flow still works as a
-        // one-tap execute. User can multi-select or de-select as needed.
-        if (data.accounts?.[0]?.id) {
-          setAccountIds((prev) => (prev.size === 0 ? new Set([data.accounts[0].id]) : prev));
+      if (!res.ok) return;
+      const data = await res.json();
+      const fetched: LinkedAccount[] = data.accounts ?? [];
+      if (fetched.length === 0) return;
+      // Swap in real backend accounts. Re-map any synthetic `local:login:server`
+      // selections to the matching real account id so the user's selection
+      // survives the handoff.
+      setAccountIds((prev) => {
+        if (prev.size === 0) return new Set([fetched[0].id]);
+        const next = new Set<string>();
+        for (const id of prev) {
+          if (fetched.some((f) => f.id === id)) { next.add(id); continue; }
+          if (id.startsWith("local:")) {
+            const [, login] = id.split(":");
+            const match = fetched.find((f) => f.accountLogin === login);
+            if (match) next.add(match.id);
+          }
         }
-      }
+        if (next.size === 0) next.add(fetched[0].id);
+        return next;
+      });
+      setAccounts(fetched);
     } finally { setLoading(false); }
   }, [userKey, headers]);
 
-  useEffect(() => { loadAccounts(); }, [loadAccounts]);
+  // Track the in-flight sync so submit handlers can await it if the user
+  // clicks Review before synthetic `local:` ids have been swapped for real ones.
+  const loadPromiseRef = useRef<Promise<void> | null>(null);
+  useEffect(() => { loadPromiseRef.current = loadAccounts(); }, [loadAccounts]);
+
+  async function ensureRealAccountIds() {
+    const hasSynthetic = Array.from(accountIds).some((id) => id.startsWith("local:"));
+    if (!hasSynthetic) return;
+    try { await loadPromiseRef.current; } catch {}
+  }
 
   function buildOrderPayload(accountId: string) {
     return {
@@ -249,13 +288,14 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
 
   async function runValidateAndConfirm() {
     setError(null); setWarnings([]);
-    const ids = Array.from(accountIds);
-    if (ids.length === 0) { setError("Select at least one linked trading account."); return; }
+    if (accountIds.size === 0) { setError("Select at least one linked trading account."); return; }
     if (!Number.isFinite(Number(volume)) || Number(volume) <= 0) {
       setError("Enter a lot size greater than zero."); return;
     }
     setSubmitting(true);
     try {
+      await ensureRealAccountIds();
+      const ids = Array.from(accountIds);
       const results = await Promise.all(ids.map(async (id) => {
         const res = await fetch("/api/trading/validate", {
           method: "POST", headers,
@@ -282,8 +322,9 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
 
   async function submitOrder() {
     setSubmitting(true); setError(null);
-    const ids = Array.from(accountIds);
     try {
+      await ensureRealAccountIds();
+      const ids = Array.from(accountIds);
       const settled = await Promise.all(ids.map(async (id) => {
         try {
           const res = await fetch("/api/trading/execute", {
