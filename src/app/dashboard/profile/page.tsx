@@ -1,49 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
-
-const MAX_AVATAR_SIDE = 256;
-const AVATAR_JPEG_QUALITY = 0.85;
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const fr = new FileReader();
-    fr.onload = () => resolve(String(fr.result));
-    fr.onerror = () => reject(fr.error);
-    fr.readAsDataURL(file);
-  });
-}
-
-// Resize a user-uploaded image down to MAX_AVATAR_SIDE² via a canvas so we
-// don't blow past localStorage's ~5MB budget with a 4K phone photo. Returns
-// a JPEG data URL sized for an avatar.
-async function fileToAvatarDataUrl(file: File): Promise<string> {
-  const dataUrl = await readFileAsDataUrl(file);
-  const img = new Image();
-  await new Promise<void>((resolve, reject) => {
-    img.onload = () => resolve();
-    img.onerror = () => reject(new Error("image_load_failed"));
-    img.src = dataUrl;
-  });
-  const side = Math.min(MAX_AVATAR_SIDE, Math.max(img.width, img.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = side;
-  canvas.height = side;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("canvas_unavailable");
-  // Center-crop to square, then draw to the square canvas.
-  const src = Math.min(img.width, img.height);
-  const sx = (img.width - src) / 2;
-  const sy = (img.height - src) / 2;
-  ctx.drawImage(img, sx, sy, src, src, 0, 0, side, side);
-  return canvas.toDataURL("image/jpeg", AVATAR_JPEG_QUALITY);
-}
-
-function isImageUrl(v: string | undefined | null): boolean {
-  if (!v) return false;
-  return v.startsWith("data:image") || v.startsWith("http://") || v.startsWith("https://") || v.startsWith("/");
-}
 
 type ProfileTab = "overview" | "stats" | "saved" | "signals" | "community" | "settings";
 
@@ -139,37 +97,6 @@ export default function ProfilePage() {
     setEditing(false);
   }
 
-  const fileRef = useRef<HTMLInputElement | null>(null);
-  const [avatarError, setAvatarError] = useState<string | null>(null);
-  const [avatarBusy, setAvatarBusy] = useState(false);
-
-  async function handleAvatarFile(file: File) {
-    setAvatarError(null);
-    if (!file.type.startsWith("image/")) {
-      setAvatarError("Pick an image file (PNG, JPG, or WEBP).");
-      return;
-    }
-    // 10MB pre-compression cap — otherwise the browser decode can hang.
-    if (file.size > 10 * 1024 * 1024) {
-      setAvatarError("Image too large. Pick something under 10 MB.");
-      return;
-    }
-    setAvatarBusy(true);
-    try {
-      const dataUrl = await fileToAvatarDataUrl(file);
-      update({ avatar: dataUrl });
-    } catch {
-      setAvatarError("Couldn't process that image. Try a different one.");
-    } finally {
-      setAvatarBusy(false);
-    }
-  }
-
-  function handleRemoveAvatar() {
-    setAvatarError(null);
-    update({ avatar: (profile.displayName || "U").charAt(0).toUpperCase() });
-  }
-
   const tabs: { id: ProfileTab; label: string }[] = [
     { id: "overview", label: "Overview" },
     { id: "stats", label: "Stats" },
@@ -190,45 +117,8 @@ export default function ProfilePage() {
       <div className="glass-card p-6">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-5">
-            <div className="flex flex-col items-center gap-2">
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                disabled={avatarBusy}
-                className="group relative w-20 h-20 rounded-2xl overflow-hidden bg-gradient-to-br from-accent to-accent-light flex items-center justify-center text-white text-3xl font-black focus:outline-none focus:ring-2 focus:ring-accent/60 disabled:opacity-60"
-                aria-label="Change profile photo"
-              >
-                {isImageUrl(profile.avatar) ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={profile.avatar} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <span>{profile.avatar || profile.displayName.charAt(0)}</span>
-                )}
-                <span className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-[10px] font-semibold uppercase tracking-wider">
-                  {avatarBusy ? "…" : "Change"}
-                </span>
-              </button>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleAvatarFile(f);
-                  // Reset so picking the same file again still fires change.
-                  e.currentTarget.value = "";
-                }}
-              />
-              {isImageUrl(profile.avatar) && (
-                <button
-                  type="button"
-                  onClick={handleRemoveAvatar}
-                  className="text-[10px] text-muted hover:text-bear-light transition-smooth"
-                >
-                  Remove photo
-                </button>
-              )}
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-accent to-accent-light flex items-center justify-center text-white text-3xl font-black">
+              {profile.avatar || profile.displayName.charAt(0)}
             </div>
             <div>
               <div className="flex items-center gap-3 mb-1">
@@ -250,11 +140,6 @@ export default function ProfilePage() {
             Edit Profile
           </button>
         </div>
-        {avatarError && (
-          <div className="mt-3 text-xs text-bear-light bg-bear/5 border border-bear/30 rounded-lg p-2.5">
-            {avatarError}
-          </div>
-        )}
 
         {/* Quick stats bar */}
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mt-5 pt-5 border-t border-border/30">
