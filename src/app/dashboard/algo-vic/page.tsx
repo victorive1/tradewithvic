@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { AlgoConfigPanel, useAlgoConfig } from "@/components/algo/AlgoConfig";
+import { AlgoConfigPanel, useAlgoConfig, AlgoRoutingBadge } from "@/components/algo/AlgoConfig";
 
 /* ───────── types ───────── */
 const SYMBOLS = ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "BTCUSD", "XAGUSD", "US30", "USOIL", "NAS100", "USDCHF", "GBPJPY"];
@@ -145,7 +145,7 @@ export default function AlgoVicPage() {
   const { settings: algoSettings, updateSettings: updateAlgoSettings } = useAlgoConfig("algo_vic");
   const [showConfig, setShowConfig] = useState(true);
   const [symbolStates, setSymbolStates] = useState<SymbolState[]>([]);
-  const [botMode, setBotMode] = useState<"signal" | "paper" | "live">("paper");
+  const [botMode, setBotMode] = useState<"signal" | "live">("signal");
   const [scanning, setScanning] = useState(false);
   const [countdown, setCountdown] = useState(300);
   const [loading, setLoading] = useState(true);
@@ -239,6 +239,7 @@ export default function AlgoVicPage() {
           <div className="flex items-center gap-3 mb-1">
             <h1 className="text-2xl font-bold text-foreground">Algo Trading Vic</h1>
             <span className="text-xs bg-accent/10 text-accent-light px-2 py-0.5 rounded-full border border-accent/20">Admin Only</span>
+            <AlgoRoutingBadge selectedAccounts={algoSettings.selectedAccounts} />
             {scanning && (
               <span className="flex items-center gap-1.5 text-xs bg-bull/10 text-bull-light px-2.5 py-1 rounded-full border border-bull/20 font-medium">
                 <span className="w-2 h-2 rounded-full bg-bull animate-pulse" />
@@ -261,7 +262,7 @@ export default function AlgoVicPage() {
             {scanning ? "Stop Scanning" : "Start Scanning"}
           </button>
           <div className="flex gap-1">
-            {(["signal", "paper", "live"] as const).map((m) => (
+            {(["signal", "live"] as const).map((m) => (
               <button
                 key={m}
                 onClick={() => setBotMode(m)}
@@ -327,7 +328,7 @@ export default function AlgoVicPage() {
             </div>
             <div className="glass-card p-3 text-center">
               <div className="text-[10px] text-muted mb-1">Today P&L</div>
-              <div className="text-sm font-bold text-muted">$0.00 (Paper)</div>
+              <div className="text-sm font-bold text-muted">$0.00</div>
             </div>
           </div>
 

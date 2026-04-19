@@ -1,10 +1,131 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
 import { getOrCreateUserKey } from "@/lib/trading/user-key-client";
+
+export interface ConnectedAccount {
+  id?: string;
+  platform: string;
+  login: string;
+  server: string;
+  broker: string;
+  label?: string;
+  connectionStatus?: string;
+}
+
+/**
+ * Merge locally-cached and backend-synced MT accounts into a single list.
+ * Same pattern used by MT5 Hub + Execute Trade modal — accounts added on
+ * any signed-in device surface here.
+ */
+export function useConnectedAccounts(): ConnectedAccount[] {
+  const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
+
+  useEffect(() => {
+    // Local first — paints immediately.
+    try {
+      const raw = localStorage.getItem("mt_accounts");
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) setAccounts(arr);
+      } else {
+        const legacy = localStorage.getItem("mt_account");
+        if (legacy) {
+          try { setAccounts([JSON.parse(legacy)]); } catch { /* ignore */ }
+        }
+      }
+    } catch { /* ignore */ }
+
+    // Backend merge.
+    const userKey = getOrCreateUserKey();
+    if (!userKey) return;
+    fetch("/api/trading/accounts", {
+      headers: { "x-trading-user-key": userKey },
+      cache: "no-store",
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data?.accounts?.length) return;
+        setAccounts((prev) => {
+          const byKey = new Map<string, ConnectedAccount>();
+          for (const a of prev) byKey.set(`${a.login}:${a.server}`, a);
+          for (const b of data.accounts) {
+            const k = `${b.accountLogin}:${b.serverName}`;
+            if (!byKey.has(k)) {
+              byKey.set(k, {
+                id: b.id,
+                platform: b.platformType,
+                login: b.accountLogin,
+                server: b.serverName,
+                broker: b.brokerName,
+                label: b.accountLabel ?? undefined,
+                connectionStatus: b.connectionStatus ?? undefined,
+              });
+            }
+          }
+          return Array.from(byKey.values());
+        });
+      })
+      .catch(() => { /* silent */ });
+  }, []);
+
+  return accounts;
+}
+
+/**
+ * Infer whether a server name / platform points at a demo or live account.
+ * Heuristic-only — broker server strings almost always encode it.
+ */
+function classifyAccount(server: string): "live" | "demo" | "unknown" {
+  const s = server.toLowerCase();
+  if (s.includes("demo") || s.includes("trial") || s.includes("practice") || s.includes("paper")) return "demo";
+  if (s.includes("live") || s.includes("real") || s.includes("ecn") || s.includes("pro")) return "live";
+  return "unknown";
+}
+
+/**
+ * Small badge that lives in an algo page header. Shows routing state
+ * (disconnected / partial / routed) and never says "paper" — this app
+ * only routes live or demo MT accounts.
+ */
+export function AlgoRoutingBadge({ selectedAccounts }: { selectedAccounts: string[] }) {
+  const accounts = useConnectedAccounts();
+  const selected = accounts.filter((a) => selectedAccounts.includes(a.login));
+  const liveCount = selected.filter((a) => classifyAccount(a.server) === "live").length;
+  const demoCount = selected.filter((a) => classifyAccount(a.server) === "demo").length;
+  const otherCount = selected.length - liveCount - demoCount;
+
+  if (accounts.length === 0) {
+    return (
+      <Link
+        href="/dashboard/trading-hub"
+        className="text-xs bg-bear/10 text-bear-light px-2.5 py-1 rounded-full border border-bear/30 font-medium hover:bg-bear/15 transition-smooth"
+      >
+        🔗 Link MT account
+      </Link>
+    );
+  }
+  if (selected.length === 0) {
+    return (
+      <span className="text-xs bg-warn/10 text-warn px-2.5 py-1 rounded-full border border-warn/30 font-medium">
+        No account routed · {accounts.length} available
+      </span>
+    );
+  }
+  const parts: string[] = [];
+  if (liveCount > 0) parts.push(`${liveCount} live`);
+  if (demoCount > 0) parts.push(`${demoCount} demo`);
+  if (otherCount > 0) parts.push(`${otherCount} other`);
+  return (
+    <span className="text-xs bg-bull/10 text-bull-light px-2.5 py-1 rounded-full border border-bull/30 font-medium flex items-center gap-1.5">
+      <span className="w-1.5 h-1.5 rounded-full bg-bull pulse-live" />
+      Routing to {parts.join(" + ")}
+    </span>
+  );
+}
 
 export interface AlgoSettings {
   // Pair selection
@@ -115,65 +236,21 @@ export function AlgoConfigPanel({
   const [showPairSelector, setShowPairSelector] = useState(false);
   const [showPerPair, setShowPerPair] = useState(settings.usePerPairLots);
 
-  // Load saved MT accounts. Read the multi-account localStorage array
-  // and merge backend-synced accounts keyed by the signed-in user's email
-  // so cross-device setups just work.
-  const [savedAccounts, setSavedAccounts] = useState<Array<{
-    id?: string;
-    platform: string;
-    login: string;
-    server: string;
-    broker: string;
-    label?: string;
-  }>>([]);
-  useEffect(() => {
-    // Local first — paints immediately.
-    try {
-      const raw = localStorage.getItem("mt_accounts");
-      if (raw) {
-        const arr = JSON.parse(raw);
-        if (Array.isArray(arr)) setSavedAccounts(arr);
-      } else {
-        // Legacy single-account fallback for accounts added before the
-        // multi-account migration.
-        const legacy = localStorage.getItem("mt_account");
-        if (legacy) {
-          try { setSavedAccounts([JSON.parse(legacy)]); } catch { /* ignore */ }
-        }
-      }
-    } catch { /* ignore */ }
+  // Merged list of MT accounts (local + backend, deduped).
+  const savedAccounts = useConnectedAccounts();
 
-    // Backend merge — picks up accounts added on another device.
-    const userKey = getOrCreateUserKey();
-    if (!userKey) return;
-    fetch("/api/trading/accounts", {
-      headers: { "x-trading-user-key": userKey },
-      cache: "no-store",
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (!data?.accounts?.length) return;
-        setSavedAccounts((prev) => {
-          const byKey = new Map<string, typeof prev[number]>();
-          for (const a of prev) byKey.set(`${a.login}:${a.server}`, a);
-          for (const b of data.accounts) {
-            const k = `${b.accountLogin}:${b.serverName}`;
-            if (!byKey.has(k)) {
-              byKey.set(k, {
-                id: b.id,
-                platform: b.platformType,
-                login: b.accountLogin,
-                server: b.serverName,
-                broker: b.brokerName,
-                label: b.accountLabel ?? undefined,
-              });
-            }
-          }
-          return Array.from(byKey.values());
-        });
-      })
-      .catch(() => { /* silent */ });
-  }, []);
+  // First-time convenience: if the user hasn't picked any accounts yet AND
+  // they have accounts available, route to all of them by default. Mirrors
+  // the "all pairs enabled" default we flipped earlier — you shouldn't
+  // have to hunt for a toggle to activate routing.
+  const autoSelectedRef = useMemo(() => ({ done: false }), []);
+  useEffect(() => {
+    if (autoSelectedRef.done) return;
+    if (savedAccounts.length === 0) return;
+    if (settings.selectedAccounts.length > 0) { autoSelectedRef.done = true; return; }
+    autoSelectedRef.done = true;
+    updateSettings({ selectedAccounts: savedAccounts.map((a) => a.login) });
+  }, [savedAccounts, settings.selectedAccounts.length, updateSettings, autoSelectedRef]);
 
   function togglePair(symbol: string) {
     const pairs = settings.selectedPairs.includes(symbol)
@@ -394,33 +471,84 @@ export function AlgoConfigPanel({
 
       {/* Accounts */}
       <div className="glass-card p-5">
-        <h4 className="text-sm font-semibold text-foreground mb-3">Trading Accounts</h4>
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-sm font-semibold text-foreground">
+            Trading Accounts
+            {savedAccounts.length > 0 && (
+              <span className="ml-2 text-[10px] font-normal text-muted">
+                · {settings.selectedAccounts.length} of {savedAccounts.length} routed
+              </span>
+            )}
+          </h4>
+          {savedAccounts.length > 0 && (
+            <div className="flex items-center gap-2 text-[10px]">
+              <button
+                onClick={() => updateSettings({ selectedAccounts: savedAccounts.map((a) => a.login) })}
+                className="text-accent-light hover:text-accent transition-smooth"
+              >
+                Select All
+              </button>
+              <span className="text-muted">·</span>
+              <button
+                onClick={() => updateSettings({ selectedAccounts: [] })}
+                className="text-muted hover:text-muted-light transition-smooth"
+              >
+                Clear All
+              </button>
+              <span className="text-muted">·</span>
+              <Link href="/dashboard/trading-hub" className="text-accent-light hover:text-accent transition-smooth">
+                + Add Account
+              </Link>
+            </div>
+          )}
+        </div>
+        <p className="text-[11px] text-muted mb-3">
+          Trades route directly to the MT4/MT5 accounts you've linked in Trading Hub. Live or demo only — this algo never runs in paper mode.
+        </p>
         {savedAccounts.length > 0 ? (
           <div className="space-y-2">
-            {savedAccounts.map((acct, i) => (
-              <div key={i} className="flex items-center justify-between bg-surface-2 rounded-xl p-3">
-                <div>
-                  <div className="text-xs font-medium text-foreground">{acct.broker} — {acct.server}</div>
-                  <div className="text-[10px] text-muted">{acct.platform} • {acct.login}</div>
+            {savedAccounts.map((acct, i) => {
+              const kind = classifyAccount(acct.server);
+              const isSelected = settings.selectedAccounts.includes(acct.login);
+              return (
+                <div key={i} className="flex items-center justify-between bg-surface-2 rounded-xl p-3 gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-xs font-semibold text-foreground truncate">{acct.broker} · #{acct.login}</span>
+                      <span className={cn(
+                        "px-1.5 py-0.5 text-[9px] rounded uppercase tracking-wider font-bold border shrink-0",
+                        kind === "live" ? "bg-bull/10 text-bull-light border-bull/30"
+                          : kind === "demo" ? "bg-accent/10 text-accent-light border-accent/30"
+                          : "bg-surface-3 text-muted border-border",
+                      )}>
+                        {kind === "unknown" ? "UNKNOWN" : kind}
+                      </span>
+                      <span className="px-1.5 py-0.5 text-[9px] rounded bg-surface-3 text-muted uppercase tracking-wider shrink-0">{acct.platform}</span>
+                    </div>
+                    <div className="text-[10px] text-muted truncate">{acct.server}{acct.label ? ` · ${acct.label}` : ""}</div>
+                  </div>
+                  <button
+                    onClick={() => toggleAccount(acct.login)}
+                    className={cn("w-10 h-5 rounded-full relative transition-smooth shrink-0", isSelected ? "bg-accent" : "bg-surface-3")}
+                    aria-label={isSelected ? "Route trades to this account" : "Stop routing to this account"}
+                  >
+                    <div className={cn("absolute top-0.5 w-4 h-4 rounded-full bg-white transition-smooth", isSelected ? "left-5" : "left-0.5")} />
+                  </button>
                 </div>
-                <button onClick={() => toggleAccount(acct.login)}
-                  className={cn("w-10 h-5 rounded-full relative transition-smooth", settings.selectedAccounts.includes(acct.login) ? "bg-accent" : "bg-surface-3")}>
-                  <div className={cn("absolute top-0.5 w-4 h-4 rounded-full bg-white transition-smooth", settings.selectedAccounts.includes(acct.login) ? "left-5" : "left-0.5")} />
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
-          <div className="rounded-xl border border-dashed border-border/50 p-4 text-center space-y-2">
+          <div className="rounded-xl border border-dashed border-border/50 p-5 text-center space-y-2">
             <div className="text-2xl">🔗</div>
             <p className="text-xs text-muted-light">
-              No trading accounts connected yet. Link your MT4/MT5 account to route signals from this algo.
+              No MT4/MT5 accounts linked yet. This algo won't place trades until you connect at least one live or demo account.
             </p>
             <Link
               href="/dashboard/trading-hub"
               className="inline-block mt-1 px-4 py-2 rounded-lg bg-accent text-white text-xs font-semibold hover:bg-accent/90 transition-smooth"
             >
-              Connect MT4/MT5 account →
+              Open Trading Hub →
             </Link>
           </div>
         )}

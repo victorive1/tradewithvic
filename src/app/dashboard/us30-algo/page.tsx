@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { AlgoConfigPanel, useAlgoConfig } from "@/components/algo/AlgoConfig";
+import { AlgoConfigPanel, useAlgoConfig, AlgoRoutingBadge } from "@/components/algo/AlgoConfig";
 
 interface MarketQuote {
   symbol: string;
@@ -158,7 +158,7 @@ export default function US30AlgoPage() {
         <div>
           <div className="flex items-center gap-3 mb-1">
             <h1 className="text-2xl font-bold text-foreground">US30 Algo</h1>
-            <span className="text-xs bg-warn/10 text-warn px-2.5 py-1 rounded-full border border-warn/20 font-medium">Paper Mode</span>
+            <AlgoRoutingBadge selectedAccounts={algoSettings.selectedAccounts} />
             <span className="text-xs bg-accent/10 text-accent-light px-2 py-0.5 rounded-full border border-accent/20">Dow Jones</span>
           </div>
           <p className="text-sm text-muted">US30-specific framework for high volatility, deep pullbacks, ATR-normalized rules, and continuation/breakout-retest logic</p>
@@ -179,7 +179,7 @@ export default function US30AlgoPage() {
         </div>
         <div className="glass-card p-4 text-center">
           <div className="text-xs text-muted mb-1">Today P&L</div>
-          <div className="text-lg font-bold text-muted">Paper: $0.00</div>
+          <div className="text-lg font-bold text-muted">$0.00</div>
         </div>
         <div className="glass-card p-4 text-center">
           <div className="text-xs text-muted mb-1">Trades Today</div>
