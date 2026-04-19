@@ -35,8 +35,16 @@ export interface AlgoSettings {
   allowedSessions: string[];
 }
 
+// Full instrument universe: every forex pair, metal, energy, index, and
+// crypto tracked by the app. New algos start with all of them enabled.
+const ALL_PAIR_SYMBOLS = ALL_INSTRUMENTS.map((i) => i.symbol);
+
+// The prior default that shipped to users. Used only for one-time migration
+// so users sitting on the stale 5-pair default get upgraded automatically.
+const LEGACY_DEFAULT_PAIRS = ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "BTCUSD"];
+
 const defaultSettings: AlgoSettings = {
-  selectedPairs: ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "BTCUSD"],
+  selectedPairs: ALL_PAIR_SYMBOLS,
   sizingMode: "fixed_lot",
   fixedLotSize: 0.10,
   riskPercent: 1.0,
@@ -56,13 +64,31 @@ const defaultSettings: AlgoSettings = {
   allowedSessions: ["london", "newyork"],
 };
 
+function arraysEqualIgnoringOrder(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const set = new Set(a);
+  for (const x of b) if (!set.has(x)) return false;
+  return true;
+}
+
 export function useAlgoConfig(botId: string) {
   const [settings, setSettings] = useState<AlgoSettings>(defaultSettings);
 
   useEffect(() => {
     const saved = localStorage.getItem(`algo_config_${botId}`);
     if (saved) {
-      try { setSettings({ ...defaultSettings, ...JSON.parse(saved) }); } catch {}
+      try {
+        const parsed = JSON.parse(saved);
+        const next: AlgoSettings = { ...defaultSettings, ...parsed };
+        // Migration: users on the original 5-pair default get upgraded to
+        // the full instrument universe. Users who customized their list
+        // are left alone.
+        if (Array.isArray(next.selectedPairs) && arraysEqualIgnoringOrder(next.selectedPairs, LEGACY_DEFAULT_PAIRS)) {
+          next.selectedPairs = ALL_PAIR_SYMBOLS;
+          try { localStorage.setItem(`algo_config_${botId}`, JSON.stringify(next)); } catch { /* ignore */ }
+        }
+        setSettings(next);
+      } catch { /* ignore */ }
     }
   }, [botId]);
 
