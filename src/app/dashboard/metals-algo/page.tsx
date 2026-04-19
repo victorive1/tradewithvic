@@ -36,7 +36,7 @@ const entryModels = [
 
 export default function MetalsAlgoPage() {
   const { settings: algoSettings, updateSettings: updateAlgoSettings } = useAlgoConfig("metals");
-  const [showConfig, setShowConfig] = useState(false);
+  const [showConfig, setShowConfig] = useState(true);
   const [enabled, setEnabled] = useState(false);
   const [running, setRunning] = useState(false);
   const [lotSize, setLotSize] = useState("0.10");

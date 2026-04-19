@@ -34,7 +34,7 @@ const strategyModes = [
 
 export default function US30AlgoPage() {
   const { settings: algoSettings, updateSettings: updateAlgoSettings } = useAlgoConfig("us30");
-  const [showConfig, setShowConfig] = useState(false);
+  const [showConfig, setShowConfig] = useState(true);
   const [enabled, setEnabled] = useState(false);
   const [running, setRunning] = useState(false);
   const [lotSize, setLotSize] = useState("0.05");

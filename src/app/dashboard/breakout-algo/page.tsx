@@ -38,7 +38,7 @@ const breakoutTypes = [
 
 export default function BreakoutAlgoPage() {
   const { settings: algoSettings, updateSettings: updateAlgoSettings } = useAlgoConfig("breakout");
-  const [showConfig, setShowConfig] = useState(false);
+  const [showConfig, setShowConfig] = useState(true);
   const [enabled, setEnabled] = useState(false);
   const [running, setRunning] = useState(false);
   const [lotSize, setLotSize] = useState("0.10");

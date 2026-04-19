@@ -143,7 +143,7 @@ function Skeleton() {
 /* ───────── main page ───────── */
 export default function AlgoVicPage() {
   const { settings: algoSettings, updateSettings: updateAlgoSettings } = useAlgoConfig("algo_vic");
-  const [showConfig, setShowConfig] = useState(false);
+  const [showConfig, setShowConfig] = useState(true);
   const [symbolStates, setSymbolStates] = useState<SymbolState[]>([]);
   const [botMode, setBotMode] = useState<"signal" | "paper" | "live">("paper");
   const [scanning, setScanning] = useState(false);

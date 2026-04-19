@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
+import { getOrCreateUserKey } from "@/lib/trading/user-key-client";
 
 export interface AlgoSettings {
   // Pair selection
@@ -87,13 +89,64 @@ export function AlgoConfigPanel({
   const [showPairSelector, setShowPairSelector] = useState(false);
   const [showPerPair, setShowPerPair] = useState(settings.usePerPairLots);
 
-  // Check for saved MT accounts
-  const [savedAccounts, setSavedAccounts] = useState<any[]>([]);
+  // Load saved MT accounts. Read the multi-account localStorage array
+  // and merge backend-synced accounts keyed by the signed-in user's email
+  // so cross-device setups just work.
+  const [savedAccounts, setSavedAccounts] = useState<Array<{
+    id?: string;
+    platform: string;
+    login: string;
+    server: string;
+    broker: string;
+    label?: string;
+  }>>([]);
   useEffect(() => {
-    const acct = localStorage.getItem("mt_account");
-    if (acct) {
-      try { setSavedAccounts([JSON.parse(acct)]); } catch {}
-    }
+    // Local first — paints immediately.
+    try {
+      const raw = localStorage.getItem("mt_accounts");
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) setSavedAccounts(arr);
+      } else {
+        // Legacy single-account fallback for accounts added before the
+        // multi-account migration.
+        const legacy = localStorage.getItem("mt_account");
+        if (legacy) {
+          try { setSavedAccounts([JSON.parse(legacy)]); } catch { /* ignore */ }
+        }
+      }
+    } catch { /* ignore */ }
+
+    // Backend merge — picks up accounts added on another device.
+    const userKey = getOrCreateUserKey();
+    if (!userKey) return;
+    fetch("/api/trading/accounts", {
+      headers: { "x-trading-user-key": userKey },
+      cache: "no-store",
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data?.accounts?.length) return;
+        setSavedAccounts((prev) => {
+          const byKey = new Map<string, typeof prev[number]>();
+          for (const a of prev) byKey.set(`${a.login}:${a.server}`, a);
+          for (const b of data.accounts) {
+            const k = `${b.accountLogin}:${b.serverName}`;
+            if (!byKey.has(k)) {
+              byKey.set(k, {
+                id: b.id,
+                platform: b.platformType,
+                login: b.accountLogin,
+                server: b.serverName,
+                broker: b.brokerName,
+                label: b.accountLabel ?? undefined,
+              });
+            }
+          }
+          return Array.from(byKey.values());
+        });
+      })
+      .catch(() => { /* silent */ });
   }, []);
 
   function togglePair(symbol: string) {
@@ -332,7 +385,18 @@ export function AlgoConfigPanel({
             ))}
           </div>
         ) : (
-          <p className="text-xs text-muted">No trading accounts connected. Go to Trading Hub to connect your MT4/MT5 account.</p>
+          <div className="rounded-xl border border-dashed border-border/50 p-4 text-center space-y-2">
+            <div className="text-2xl">🔗</div>
+            <p className="text-xs text-muted-light">
+              No trading accounts connected yet. Link your MT4/MT5 account to route signals from this algo.
+            </p>
+            <Link
+              href="/dashboard/trading-hub"
+              className="inline-block mt-1 px-4 py-2 rounded-lg bg-accent text-white text-xs font-semibold hover:bg-accent/90 transition-smooth"
+            >
+              Connect MT4/MT5 account →
+            </Link>
+          </div>
         )}
       </div>
 

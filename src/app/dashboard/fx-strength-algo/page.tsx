@@ -30,7 +30,7 @@ const timeframes = ["M5", "M15", "H1", "H4"];
 
 export default function FXStrengthAlgoPage() {
   const { settings: algoSettings, updateSettings: updateAlgoSettings } = useAlgoConfig("fx_strength");
-  const [showConfig, setShowConfig] = useState(false);
+  const [showConfig, setShowConfig] = useState(true);
   const [enabled, setEnabled] = useState(false);
   const [running, setRunning] = useState(false);
   const [lotSize, setLotSize] = useState("0.10");
