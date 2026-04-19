@@ -41,7 +41,10 @@ export async function POST(req: NextRequest) {
     where: { userKey, platformType, accountLogin, serverName },
   });
 
-  const adapterKind = typeof body.adapterKind === "string" ? body.adapterKind : "pending_queue";
+  // Default to "mock" so the execute flow completes end-to-end with
+  // simulated fills; users upgrade to metaapi or ea_webhook once they
+  // install a real MT bridge.
+  const adapterKind = typeof body.adapterKind === "string" ? body.adapterKind : "mock";
 
   const account = existing
     ? await prisma.linkedTradingAccount.update({

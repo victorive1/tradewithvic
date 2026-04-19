@@ -52,6 +52,7 @@ interface LinkedAccount {
   accountLogin: string;
   accountLabel: string | null;
   connectionStatus: string;
+  adapterKind: string;
 }
 
 function normalizeSide(d: string): "buy" | "sell" {
@@ -190,6 +191,10 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
           body: JSON.stringify({
             platformType: a.platform, brokerName: a.broker,
             serverName: a.server, accountLogin: a.login, accountLabel: a.label ?? null,
+            // Default new accounts to mock adapter so the execute flow completes
+            // end-to-end with simulated fills. Users upgrade to metaapi /
+            // ea_webhook per-account once they install a real bridge.
+            adapterKind: "mock",
           }),
         }).catch(() => {});
       }
@@ -435,7 +440,21 @@ function ExecuteTradeModal({ setup, onClose }: { setup: SetupForExecution; onClo
                             {a.connectionStatus.toUpperCase()}
                           </span>
                         </div>
-                        <div className="text-[11px] text-muted-light truncate mt-0.5">{a.brokerName}{a.accountLabel ? ` · ${a.accountLabel}` : ""}</div>
+                        <div className="flex items-center justify-between mt-0.5">
+                          <div className="text-[11px] text-muted-light truncate">{a.brokerName}{a.accountLabel ? ` · ${a.accountLabel}` : ""}</div>
+                          <span className={cn("text-[9px] px-1.5 py-0.5 rounded font-bold tracking-wider uppercase shrink-0 ml-2",
+                            a.adapterKind === "mock" ? "bg-warn/10 text-warn border border-warn/30"
+                            : a.adapterKind === "pending_queue" ? "bg-accent/10 text-accent-light border border-accent/30"
+                            : a.adapterKind === "metaapi" || a.adapterKind === "ea_webhook" ? "bg-bull/10 text-bull-light border border-bull/30"
+                            : "bg-bear/10 text-bear-light border border-bear/30"
+                          )}>
+                            {a.adapterKind === "mock" ? "DEMO"
+                             : a.adapterKind === "pending_queue" ? "QUEUE"
+                             : a.adapterKind === "metaapi" ? "LIVE"
+                             : a.adapterKind === "ea_webhook" ? "LIVE"
+                             : "OFF"}
+                          </span>
+                        </div>
                       </button>
                     );
                   })}
@@ -586,9 +605,13 @@ function NoAccountState({ onClose }: { onClose: () => void }) {
 function ResultPanel({ result, onDismiss }: { result: any; onDismiss: () => void }) {
   const r = result?.result;
   if (!r) return null;
+  const adapterKind: string | undefined = (() => {
+    try { return JSON.parse(r.adapterResponse ?? "{}").kind; } catch { return undefined; }
+  })();
   const ok = r.executionStatus === "accepted" || r.executionStatus === "partial";
   const pending = r.executionStatus === "pending";
   const rejected = r.executionStatus === "rejected" || r.executionStatus === "error";
+  const isDemo = adapterKind === "mock";
 
   return (
     <div className={cn(
@@ -603,12 +626,20 @@ function ResultPanel({ result, onDismiss }: { result: any; onDismiss: () => void
           {ok ? "✓" : pending ? "⧗" : "✕"}
         </div>
         <div className="flex-1 min-w-0">
-          <h4 className="text-sm font-semibold">
-            {ok ? "Order accepted" : pending ? "Order queued" : "Order rejected"}
-          </h4>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h4 className="text-sm font-semibold">
+              {ok ? (isDemo ? "Demo fill accepted" : "Order accepted") : pending ? "Order queued" : "Order rejected"}
+            </h4>
+            {isDemo && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-warn/15 text-warn border border-warn/30 font-bold tracking-wider uppercase">
+                Demo
+              </span>
+            )}
+          </div>
           <p className="text-xs text-muted-light mt-1">
-            {ok && "Fill confirmed. Position is now active on your MT terminal."}
-            {pending && "Waiting for your MT bridge to pick up and execute the order."}
+            {ok && isDemo && "Simulated fill — account is in Demo mode. Ticket, price, and commission are synthetic so you can validate the flow. Switch the account to Live to route to a real MT bridge."}
+            {ok && !isDemo && "Fill confirmed. Position is now active on your MT terminal."}
+            {pending && "Order is saved as pending. Your MT bridge (EA or MetaAPI) picks it up next and reports the real fill."}
             {rejected && (r.rejectionReason ?? "The broker adapter rejected the order.")}
           </p>
         </div>
