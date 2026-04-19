@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { Suspense } from "react";
 import Link from "next/link";
 import { RefreshButton } from "./RefreshButton";
+import { ManualTickets } from "./ManualTickets";
 import { LiveRefresh } from "@/components/dashboard/LiveRefresh";
 
 export const dynamic = "force-dynamic";
@@ -429,11 +430,10 @@ export default async function BrainStatusPage() {
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide">
             Open Positions
-            {openPositions.length > 0 && (
-              <span className="ml-2 text-xs font-normal text-muted normal-case">
-                · {openPositions.length} live
-              </span>
-            )}
+            <span className="ml-2 text-xs font-normal text-muted normal-case">
+              · algo
+              {openPositions.length > 0 && ` · ${openPositions.length} live`}
+            </span>
           </h2>
           {openPositions.length > 0 && (
             <div className="flex items-center gap-4 text-xs">
@@ -516,6 +516,8 @@ export default async function BrainStatusPage() {
           </div>
         )}
       </section>
+
+      <ManualTickets />
 
       <section className="rounded-lg border border-border bg-card p-5">
         <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">
