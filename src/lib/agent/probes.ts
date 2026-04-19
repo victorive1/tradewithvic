@@ -116,13 +116,14 @@ async function probeScanCycleErrors(): Promise<ProbeResult> {
 }
 
 async function probeCandleCoverage(): Promise<ProbeResult> {
-  // Every (symbol, timeframe) should have at least 1 candle in last hour
-  // IF the market for that symbol is currently open. If the market is
-  // closed, a gap is expected behavior and we don't call it a failure.
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  // With the full 22-symbol universe and a rotating per-cycle budget, every
+  // (symbol, timeframe) pair should have been FETCHED within the rotation
+  // window (~30 min for open markets). We probe fetchedAt, not openTime,
+  // because the latter reflects candle bar time, not refresh recency.
+  const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
   const rows = await prisma.candle.groupBy({
     by: ["symbol", "timeframe"],
-    where: { openTime: { gte: oneHourAgo } },
+    where: { fetchedAt: { gte: thirtyMinAgo } },
     _count: { _all: true },
   });
   const pairs = new Set(rows.map((r) => `${r.symbol}:${r.timeframe}`));
@@ -140,27 +141,29 @@ async function probeCandleCoverage(): Promise<ProbeResult> {
   const closedCount = expectedClosed.length;
   const totalExpected = expectedOpen.length + expectedClosed.length;
 
-  const status: ProbeStatus = missingOpen.length === 0 ? "healthy"
-    : missingOpen.length <= 2 ? "warning"
+  // With ~12-minute full rotation, up to ~10% of pairs can legitimately be
+  // outside the 30-minute window right after a restart. Widen the warning
+  // band before marking critical.
+  const missRatio = expectedOpen.length > 0 ? missingOpen.length / expectedOpen.length : 0;
+  const status: ProbeStatus = missRatio === 0 ? "healthy"
+    : missRatio < 0.25 ? "warning"
     : "critical";
 
-  const closedNote = closedCount > 0 ? ` · ${closedCount} pair${closedCount === 1 ? "" : "s"} skipped (market closed)` : "";
+  const closedNote = closedCount > 0 ? ` · ${closedCount} skipped (market closed)` : "";
   const message = missingOpen.length === 0
-    ? `All open-market pairs fresh${closedNote}`
-    : `${missingOpen.length} pair${missingOpen.length === 1 ? "" : "s"} missing: ${missingOpen.slice(0, 4).join(", ")}${missingOpen.length > 4 ? "…" : ""}${closedNote}`;
+    ? `All ${expectedOpen.length} open-market pairs refreshed in last 30 min${closedNote}`
+    : `${missingOpen.length} of ${expectedOpen.length} open pairs stale: ${missingOpen.slice(0, 4).join(", ")}${missingOpen.length > 4 ? "…" : ""}${closedNote}`;
 
   return {
     id: "candle_coverage",
-    label: "Candle coverage (last hour)",
+    label: "Candle coverage (last 30 min)",
     status,
     message,
-    detail: closedCount > 0
-      ? `Tracking ${totalExpected} symbol×TF pairs total. Crypto runs 24/7; FX and metals are skipped outside market hours (Fri 22:00 UTC → Sun 22:00 UTC).`
-      : undefined,
+    detail: `Tracking ${totalExpected} symbol×TF pairs total across the full instrument universe. The Brain rotates through the universe over ~12 minutes, prioritising the stalest pairs first. Crypto runs 24/7; FX and metals pause Fri 22:00 UTC → Sun 22:00 UTC.`,
     value: missingOpen.length,
-    expected: "0 missing among open markets",
+    expected: "0 stale among open markets",
     remediationId: missingOpen.length > 0 ? "fetch_missing_candles" : undefined,
-    remediationLabel: missingOpen.length > 0 ? `Backfill ${missingOpen.length} missing pair${missingOpen.length === 1 ? "" : "s"}` : undefined,
+    remediationLabel: missingOpen.length > 0 ? `Backfill ${missingOpen.length} stale pair${missingOpen.length === 1 ? "" : "s"}` : undefined,
   };
 }
 

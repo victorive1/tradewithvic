@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { fetchAllQuotes, calculateCurrencyStrength } from "@/lib/market-data";
 import { ensureInstruments } from "@/lib/brain/instruments";
-import { fetchCandleSet, CANDLE_SYMBOLS, CANDLE_TIMEFRAMES } from "@/lib/brain/candles";
+import { fetchCandleSet, CANDLE_SYMBOLS, CANDLE_TIMEFRAMES, pickCycleSymbols } from "@/lib/brain/candles";
 import { analyzeAllStructure } from "@/lib/brain/structure";
 import { analyzeAllIndicators } from "@/lib/brain/indicators";
 import { analyzeAllLiquidity } from "@/lib/brain/liquidity";
@@ -84,35 +84,40 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       errors.push("No quotes returned from TwelveData");
     }
 
-    const candleResult = await fetchCandleSet(symbolToId);
+    // Pick this cycle's working subset (stalest open-market symbols from
+    // the full 22-instrument universe). Keeps the per-cycle workload bounded
+    // so the rotating Brain covers everything over ~12 minutes.
+    const cycleSymbols = await pickCycleSymbols();
+
+    const candleResult = await fetchCandleSet(symbolToId, { symbols: cycleSymbols });
     for (const r of candleResult.results) {
       if (r.error) errors.push(`${r.symbol} ${r.timeframe}: ${r.error}`);
     }
 
     const structureResult = await analyzeAllStructure(
-      CANDLE_SYMBOLS,
+      cycleSymbols,
       CANDLE_TIMEFRAMES,
       cycle.id
     );
 
     const indicatorResult = await analyzeAllIndicators(
-      CANDLE_SYMBOLS,
+      cycleSymbols,
       CANDLE_TIMEFRAMES
     );
 
     const regimeResult = await classifyAllRegimes(
-      CANDLE_SYMBOLS,
+      cycleSymbols,
       CANDLE_TIMEFRAMES
     );
 
     const liquidityResult = await analyzeAllLiquidity(
-      CANDLE_SYMBOLS,
+      cycleSymbols,
       CANDLE_TIMEFRAMES,
       cycle.id
     );
 
     const strategyResult = await detectAllStrategies(
-      CANDLE_SYMBOLS,
+      cycleSymbols,
       CANDLE_TIMEFRAMES,
       symbolToId,
       cycle.id
@@ -123,6 +128,8 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
     await persistSentiment(cycle.id, sentiment);
 
     await seedPlaceholderEventsIfEmpty();
+    // Event risk still runs across every tracked symbol so alerts persist
+    // even when a symbol isn't this cycle's analysis target.
     const eventRisk = await analyzeEventRisk(CANDLE_SYMBOLS);
     const eventRiskHigh = eventRisk.results.filter((r) => r.riskLevel === "high").length;
 
