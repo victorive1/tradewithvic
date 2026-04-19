@@ -31,12 +31,27 @@ const recipes: Record<string, RemediationRecipe> = {
         const symbolToId = new Map(instruments.map((i: { symbol: string; id: string }) => [i.symbol, i.id]));
         const result = await fetchCandleSet(symbolToId);
         const errors = result.results.filter((r) => r.error);
+        const providerEmpty = result.results.filter((r) => !r.error && r.fetched === 0).length;
+        const providerReturned = result.results.filter((r) => r.fetched > 0).length;
+
+        // Zero data back from provider across the board usually means the
+        // market is closed (weekend for FX/metals). Surface that clearly
+        // instead of silently "succeeding" with 0 new rows.
+        const allEmpty = providerEmpty === result.results.length && errors.length === 0;
+
         return {
-          ok: errors.length === 0,
-          summary: `Fetched ${result.requestCount} symbol×TF pairs · wrote ${result.totalWritten} new candles${errors.length ? ` · ${errors.length} errors` : ""}`,
+          ok: errors.length === 0 && !allEmpty,
+          summary: allEmpty
+            ? `Provider returned 0 candles for all ${result.requestCount} pairs — markets may be closed (weekend for FX/metals)`
+            : `Fetched ${result.requestCount} pairs · wrote ${result.totalWritten} new · ${providerReturned} pairs had data from provider${errors.length ? ` · ${errors.length} errors` : ""}`,
           details: result.results.map((r) =>
-            `${r.symbol} ${r.timeframe}: ${r.written} new${r.error ? ` · error: ${r.error}` : ""}`,
+            `${r.symbol} ${r.timeframe}: ${r.fetched} from provider · ${r.written} new${r.error ? ` · error: ${r.error}` : ""}`,
           ),
+          error: allEmpty
+            ? "No upstream data returned. If the market should be open, check TWELVEDATA_API_KEY and the provider status."
+            : errors.length > 0
+              ? errors.map((e) => `${e.symbol} ${e.timeframe}: ${e.error}`).join("; ")
+              : undefined,
           durationMs: Date.now() - started,
         };
       } catch (e: any) {

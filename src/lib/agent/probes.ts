@@ -14,6 +14,22 @@ const now = () => new Date();
 const ageSecs = (date: Date | null | undefined) =>
   date ? Math.max(0, Math.round((Date.now() - date.getTime()) / 1000)) : null;
 
+/**
+ * Rough market-hours check so probes don't flag weekend candle gaps as bugs.
+ *   - Crypto trades 24/7
+ *   - FX + metals: closed Fri 22:00 UTC → Sun 22:00 UTC
+ */
+function isMarketOpen(symbol: string, at: Date = new Date()): boolean {
+  const s = symbol.toUpperCase();
+  if (/^(BTC|ETH|SOL|XRP|ADA|DOGE|BNB|LTC)/.test(s)) return true;
+  const day = at.getUTCDay();     // 0 Sun … 6 Sat
+  const hour = at.getUTCHours();
+  if (day === 6) return false;
+  if (day === 5 && hour >= 22) return false;
+  if (day === 0 && hour < 22) return false;
+  return true;
+}
+
 function statusForAge(age: number | null, warnSecs: number, critSecs: number): ProbeStatus {
   if (age == null) return "critical";
   if (age > critSecs) return "critical";
@@ -101,6 +117,8 @@ async function probeScanCycleErrors(): Promise<ProbeResult> {
 
 async function probeCandleCoverage(): Promise<ProbeResult> {
   // Every (symbol, timeframe) should have at least 1 candle in last hour
+  // IF the market for that symbol is currently open. If the market is
+  // closed, a gap is expected behavior and we don't call it a failure.
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
   const rows = await prisma.candle.groupBy({
     by: ["symbol", "timeframe"],
@@ -108,21 +126,41 @@ async function probeCandleCoverage(): Promise<ProbeResult> {
     _count: { _all: true },
   });
   const pairs = new Set(rows.map((r) => `${r.symbol}:${r.timeframe}`));
-  const expectedPairs: string[] = [];
-  for (const sym of CANDLE_SYMBOLS) for (const tf of CANDLE_TIMEFRAMES) expectedPairs.push(`${sym}:${tf}`);
-  const missing = expectedPairs.filter((p) => !pairs.has(p));
-  const status: ProbeStatus = missing.length === 0 ? "healthy" : missing.length <= 2 ? "warning" : "critical";
+
+  const expectedOpen: string[] = [];
+  const expectedClosed: string[] = [];
+  for (const sym of CANDLE_SYMBOLS) {
+    const open = isMarketOpen(sym);
+    for (const tf of CANDLE_TIMEFRAMES) {
+      (open ? expectedOpen : expectedClosed).push(`${sym}:${tf}`);
+    }
+  }
+
+  const missingOpen = expectedOpen.filter((p) => !pairs.has(p));
+  const closedCount = expectedClosed.length;
+  const totalExpected = expectedOpen.length + expectedClosed.length;
+
+  const status: ProbeStatus = missingOpen.length === 0 ? "healthy"
+    : missingOpen.length <= 2 ? "warning"
+    : "critical";
+
+  const closedNote = closedCount > 0 ? ` · ${closedCount} pair${closedCount === 1 ? "" : "s"} skipped (market closed)` : "";
+  const message = missingOpen.length === 0
+    ? `All open-market pairs fresh${closedNote}`
+    : `${missingOpen.length} pair${missingOpen.length === 1 ? "" : "s"} missing: ${missingOpen.slice(0, 4).join(", ")}${missingOpen.length > 4 ? "…" : ""}${closedNote}`;
+
   return {
     id: "candle_coverage",
     label: "Candle coverage (last hour)",
     status,
-    message: missing.length === 0
-      ? `All ${expectedPairs.length} symbol×TF pairs fresh`
-      : `${missing.length} pairs missing: ${missing.slice(0, 4).join(", ")}${missing.length > 4 ? "…" : ""}`,
-    value: missing.length,
-    expected: "0 missing",
-    remediationId: missing.length > 0 ? "fetch_missing_candles" : undefined,
-    remediationLabel: missing.length > 0 ? `Backfill ${missing.length} missing pair${missing.length === 1 ? "" : "s"}` : undefined,
+    message,
+    detail: closedCount > 0
+      ? `Tracking ${totalExpected} symbol×TF pairs total. Crypto runs 24/7; FX and metals are skipped outside market hours (Fri 22:00 UTC → Sun 22:00 UTC).`
+      : undefined,
+    value: missingOpen.length,
+    expected: "0 missing among open markets",
+    remediationId: missingOpen.length > 0 ? "fetch_missing_candles" : undefined,
+    remediationLabel: missingOpen.length > 0 ? `Backfill ${missingOpen.length} missing pair${missingOpen.length === 1 ? "" : "s"}` : undefined,
   };
 }
 
