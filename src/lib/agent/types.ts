@@ -15,6 +15,11 @@ export interface ProbeResult {
   detail?: string;       // longer context for the drill-down
   value?: string | number | null;
   expected?: string;     // human-readable threshold
+  // If set, the UI shows a "Fix" button for this probe that POSTs to
+  // /api/agent/remediate with this recipeId. Only surface when the probe
+  // is failing — healthy probes don't need a fix.
+  remediationId?: string;
+  remediationLabel?: string;
 }
 
 export interface EngineStatus {

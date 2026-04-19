@@ -27,6 +27,7 @@ async function probeMarketSnapshotFreshness(): Promise<ProbeResult> {
   const last = await prisma.marketSnapshot.findFirst({ orderBy: { capturedAt: "desc" }, select: { capturedAt: true } });
   const age = ageSecs(last?.capturedAt ?? null);
   const status = statusForAge(age, 180, 600); // 3m warn, 10m crit
+  const isFailing = status !== "healthy";
   return {
     id: "market_snapshot_freshness",
     label: "MarketSnapshot freshness",
@@ -34,6 +35,8 @@ async function probeMarketSnapshotFreshness(): Promise<ProbeResult> {
     message: age == null ? "No snapshots ever captured" : `Latest capture ${age}s ago`,
     value: age,
     expected: "< 180s (warn) · < 600s (critical)",
+    remediationId: isFailing ? "run_scan_cycle" : undefined,
+    remediationLabel: isFailing ? "Run scan cycle" : undefined,
   };
 }
 
@@ -63,6 +66,7 @@ async function probeScanCycleFreshness(): Promise<ProbeResult> {
   const age = ageSecs(last?.startedAt ?? null);
   // Cron runs every 2 min; warn at 4m, crit at 10m
   const status = statusForAge(age, 240, 600);
+  const stuck = last?.status === "running" && (age ?? 0) > 300;
   return {
     id: "scan_cycle_freshness",
     label: "Last scan cycle",
@@ -72,6 +76,8 @@ async function probeScanCycleFreshness(): Promise<ProbeResult> {
       : "No scan cycles recorded yet",
     value: age,
     expected: "< 240s (warn) · < 600s (critical)",
+    remediationId: stuck ? "reset_stuck_scan_cycles" : (status !== "healthy" ? "run_scan_cycle" : undefined),
+    remediationLabel: stuck ? "Reset stuck cycles" : (status !== "healthy" ? "Run scan cycle" : undefined),
   };
 }
 
@@ -115,6 +121,8 @@ async function probeCandleCoverage(): Promise<ProbeResult> {
       : `${missing.length} pairs missing: ${missing.slice(0, 4).join(", ")}${missing.length > 4 ? "…" : ""}`,
     value: missing.length,
     expected: "0 missing",
+    remediationId: missing.length > 0 ? "fetch_missing_candles" : undefined,
+    remediationLabel: missing.length > 0 ? `Backfill ${missing.length} missing pair${missing.length === 1 ? "" : "s"}` : undefined,
   };
 }
 

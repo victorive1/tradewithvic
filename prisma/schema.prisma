@@ -1242,6 +1242,24 @@ model MonitoringAlert {
   @@index([status])
 }
 
+// Agent-driven remediation audit trail. Every "Fix" click from the Agent
+// tab creates one of these, updated with the outcome when the recipe returns.
+model AgentRemediationLog {
+  id          String    @id @default(cuid())
+  recipeId    String
+  engineId    String?
+  requestedAt DateTime  @default(now())
+  completedAt DateTime?
+  durationMs  Int?
+  success     Boolean   @default(false)
+  summary     String
+  detailsJson String    @default("[]")
+  error       String?
+
+  @@index([requestedAt])
+  @@index([recipeId])
+}
+
 model MonitoringSnapshot {
   id                         String   @id @default(cuid())
   createdAt                  DateTime @default(now())

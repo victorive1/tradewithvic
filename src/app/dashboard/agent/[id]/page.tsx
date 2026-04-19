@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { prisma } from "@/lib/prisma";
 import { probeEngine } from "@/lib/agent/probes";
 import { type ProbeStatus, formatAgoSeconds } from "@/lib/agent/types";
+import { FixButton } from "../FixButton";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -23,6 +25,12 @@ export default async function EngineDetailPage({ params }: { params: Promise<{ i
   const { id } = await params;
   const engine = await probeEngine(id);
   if (!engine) notFound();
+
+  const remediationHistory = await prisma.agentRemediationLog.findMany({
+    where: { engineId: id },
+    orderBy: { requestedAt: "desc" },
+    take: 10,
+  });
 
   return (
     <div className="space-y-6">
@@ -72,12 +80,21 @@ export default async function EngineDetailPage({ params }: { params: Promise<{ i
                   )}
                 </div>
               </div>
-              {p.value != null && (
-                <div className="text-right shrink-0">
-                  <div className="text-[10px] text-muted uppercase">Value</div>
-                  <div className="text-sm font-mono font-semibold">{String(p.value)}</div>
-                </div>
-              )}
+              <div className="flex flex-col items-end gap-2 shrink-0">
+                {p.value != null && (
+                  <div className="text-right">
+                    <div className="text-[10px] text-muted uppercase">Value</div>
+                    <div className="text-sm font-mono font-semibold">{String(p.value)}</div>
+                  </div>
+                )}
+                {p.remediationId && p.remediationLabel && (
+                  <FixButton
+                    engineId={engine.id}
+                    recipeId={p.remediationId}
+                    label={p.remediationLabel}
+                  />
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -164,6 +181,43 @@ export default async function EngineDetailPage({ params }: { params: Promise<{ i
                 </div>
               </div>
             ))}
+          </div>
+        </section>
+      )}
+
+      {/* Remediation history */}
+      {remediationHistory.length > 0 && (
+        <section className="glass-card p-5">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted mb-3">
+            Remediation History
+            <span className="ml-2 text-[10px] font-normal text-muted normal-case">· {remediationHistory.length} shown</span>
+          </h2>
+          <div className="space-y-1.5">
+            {remediationHistory.map((r) => {
+              const age = Math.round((Date.now() - r.requestedAt.getTime()) / 1000);
+              return (
+                <div
+                  key={r.id}
+                  className={`flex items-start gap-3 p-2.5 rounded-lg border text-xs ${
+                    r.success ? "bg-bull/5 border-bull/20" : r.completedAt ? "bg-bear/5 border-bear/20" : "bg-warn/5 border-warn/20"
+                  }`}
+                >
+                  <span className={`px-1.5 py-0.5 rounded font-mono font-bold shrink-0 text-[10px] ${
+                    r.success ? "bg-bull/15 text-bull-light" : r.completedAt ? "bg-bear/15 text-bear-light" : "bg-warn/15 text-warn"
+                  }`}>
+                    {r.success ? "✓" : r.completedAt ? "✗" : "…"}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-mono text-[11px] text-muted-light">
+                      {r.recipeId} · {formatAgoSeconds(age)}
+                      {r.durationMs != null && ` · ${r.durationMs}ms`}
+                    </div>
+                    <div className="break-words">{r.summary}</div>
+                    {r.error && <div className="text-bear-light break-words font-mono text-[11px] mt-0.5">{r.error}</div>}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
