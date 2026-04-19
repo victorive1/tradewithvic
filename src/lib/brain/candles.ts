@@ -7,11 +7,15 @@ const BASE_URL = "https://api.twelvedata.com";
 export const CANDLE_TIMEFRAMES = ["4h", "1h", "15min", "5min", "1day"] as const;
 export type CandleTimeframe = (typeof CANDLE_TIMEFRAMES)[number];
 
-// Full tracked universe: every instrument the app surfaces. Any single 2-min
-// cycle only works on the `pickCycleSymbols` subset below so we stay well
-// under TwelveData's 8 req/min free-tier cap and Vercel's 60s fn limit.
-// Full rotation through the universe takes ~12 minutes.
-export const CANDLE_SYMBOLS = ALL_INSTRUMENTS.map((i) => i.symbol) as readonly string[];
+// Full tracked universe for the Brain's candle pipeline: every instrument
+// we're confident TwelveData can serve candles for on our plan. Indices
+// (NAS100, US30, SPX500, GER40) and energy (USOIL) are intentionally
+// excluded — they either require a paid tier or return inconsistent
+// candles, producing noisy per-pair errors on every scan cycle. Quotes,
+// Market Radar, and Setups still cover the full 22-instrument universe.
+export const CANDLE_SYMBOLS = ALL_INSTRUMENTS
+  .filter((i) => i.category === "forex" || i.category === "metals" || i.category === "crypto")
+  .map((i) => i.symbol) as readonly string[];
 
 // How many symbols get freshly fetched + analyzed per scan cycle.
 const PER_CYCLE_SYMBOL_BUDGET = 4;

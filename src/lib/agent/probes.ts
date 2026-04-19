@@ -97,22 +97,49 @@ async function probeScanCycleFreshness(): Promise<ProbeResult> {
   };
 }
 
-async function probeScanCycleErrors(): Promise<ProbeResult> {
+async function probeScanCycleErrors(): Promise<ProbeResult[]> {
   const recent = await prisma.scanCycle.findMany({
     orderBy: { startedAt: "desc" },
     take: 10,
     select: { status: true, errorCount: true },
   });
-  const errorCycles = recent.filter((c) => c.status !== "completed" || c.errorCount > 0).length;
-  const status: ProbeStatus = errorCycles >= 5 ? "critical" : errorCycles >= 2 ? "warning" : "healthy";
-  return {
-    id: "scan_cycle_errors",
-    label: "Failed cycles in last 10",
-    status,
-    message: `${errorCycles} of the last 10 cycles failed or had errors`,
-    value: errorCycles,
-    expected: "< 2 (warn) · < 5 (critical)",
-  };
+  // True failures: cycle ended in a non-completed status. These are cases
+  // where something in the pipeline threw hard, not per-pair provider errors.
+  const failures = recent.filter((c) => c.status !== "completed").length;
+  const failStatus: ProbeStatus = failures >= 3 ? "critical" : failures >= 1 ? "warning" : "healthy";
+
+  // Error density: average per-cycle errors across the last 10. Small per-
+  // pair errors (market closed, provider hiccup, one flaky symbol) are
+  // normal — only flag when the noise level is materially elevated.
+  const totalErrors = recent.reduce((a, b) => a + (b.errorCount ?? 0), 0);
+  const avgErrors = recent.length > 0 ? totalErrors / recent.length : 0;
+  const densStatus: ProbeStatus = avgErrors >= 10 ? "critical" : avgErrors >= 3 ? "warning" : "healthy";
+
+  return [
+    {
+      id: "scan_cycle_failures",
+      label: "Failed scan cycles (last 10)",
+      status: failStatus,
+      message: failures === 0
+        ? "No hard failures in the last 10 cycles"
+        : `${failures} cycle${failures === 1 ? "" : "s"} ended in a non-completed status`,
+      value: failures,
+      expected: "0 (warn ≥ 1 · critical ≥ 3)",
+      remediationId: failures > 0 ? "run_scan_cycle" : undefined,
+      remediationLabel: failures > 0 ? "Run scan cycle" : undefined,
+    },
+    {
+      id: "scan_cycle_error_density",
+      label: "Avg errors per cycle (last 10)",
+      status: densStatus,
+      message: avgErrors < 0.5
+        ? "Cycles are running clean"
+        : `${avgErrors.toFixed(1)} avg errors/cycle · mostly per-pair provider noise`,
+      detail: "Per-pair provider errors (market closed, symbol not supported, transient rate limit) accumulate here but don't fail the cycle. A low baseline is normal.",
+      value: Number(avgErrors.toFixed(1)),
+      expected: "< 3 (warn) · < 10 (critical)",
+    },
+  ];
 }
 
 async function probeCandleCoverage(): Promise<ProbeResult> {
@@ -457,7 +484,7 @@ export async function probeMarketPrediction(radarStatus: ProbeStatus, radarMessa
 }
 
 export async function probeMarketCoreBrain(): Promise<EngineStatus> {
-  const [p1, p2, p3, p4, snapCycle, snapCandle, snapStruct, snapInd, snapLiq, errors, alerts] = await Promise.all([
+  const [p1, errorProbes, p3, p4, snapCycle, snapCandle, snapStruct, snapInd, snapLiq, errors, alerts] = await Promise.all([
     probeScanCycleFreshness(),
     probeScanCycleErrors(),
     probeCandleCoverage(),
@@ -470,7 +497,7 @@ export async function probeMarketCoreBrain(): Promise<EngineStatus> {
     recentScanCycleErrors(),
     recentMonitoringAlerts(["critical", "warning"]),
   ]);
-  const probes = [p1, p2, p3, p4];
+  const probes = [p1, ...errorProbes, p3, p4];
   const status = worstStatus(probes.map((p) => p.status));
   return {
     id: "market-core-brain",
