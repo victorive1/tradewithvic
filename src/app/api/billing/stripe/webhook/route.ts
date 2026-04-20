@@ -87,9 +87,11 @@ export async function POST(req: NextRequest) {
 }
 
 async function handlePaymentIntentSucceeded(intent: Stripe.PaymentIntent) {
-  const billingAccountId = intent.metadata?.billingAccountId;
-  const userKey = intent.metadata?.userKey;
-  if (!billingAccountId || !userKey) return; // not one of ours
+  // Intent metadata is a routing hint only — never trust it for crediting.
+  // We look up the DepositRequest by the immutable processorChargeRef and
+  // credit the billingAccount stored on *that* row, which was written
+  // server-side at intent creation.
+  if (!intent.metadata?.billingAccountId) return; // not one of ours
 
   const deposit = await prisma.depositRequest.findFirst({
     where: { processorChargeRef: intent.id },
@@ -112,13 +114,13 @@ async function handlePaymentIntentSucceeded(intent: Stripe.PaymentIntent) {
       },
     }),
     prisma.billingAccount.update({
-      where: { id: billingAccountId },
+      where: { id: deposit.billingAccountId },
       data: { availableBalance: { increment: amountUsd } },
     }),
     prisma.billingTransaction.create({
       data: {
-        billingAccountId,
-        userKey,
+        billingAccountId: deposit.billingAccountId,
+        userKey: deposit.userKey,
         transactionType: "deposit",
         referenceType: "deposit_request",
         referenceId: deposit.id,
