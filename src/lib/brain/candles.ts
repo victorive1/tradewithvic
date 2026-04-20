@@ -7,14 +7,25 @@ const BASE_URL = "https://api.twelvedata.com";
 export const CANDLE_TIMEFRAMES = ["4h", "1h", "15min", "5min", "1day"] as const;
 export type CandleTimeframe = (typeof CANDLE_TIMEFRAMES)[number];
 
-// Full tracked universe for the Brain's candle pipeline: every instrument
-// the app surfaces. With the upgraded TwelveData plan (4,181 credits/min)
-// we can include indices and energy alongside forex/metals/crypto. If any
-// specific ticker returns empty data the error-density probe will flag it.
-export const CANDLE_SYMBOLS = ALL_INSTRUMENTS.map((i) => i.symbol) as readonly string[];
+// Candle pipeline universe: forex + metals + crypto. Indices (NAS100, US30,
+// SPX500, GER40) and energy (USOIL) are intentionally excluded — their
+// candle endpoints return empty / malformed data on our TwelveData tier,
+// which previously poisoned the cycle error rate. Quotes, Market Radar,
+// Setups, and Market Direction still render all 22 instruments.
+export const CANDLE_SYMBOLS = ALL_INSTRUMENTS
+  .filter((i) => i.category === "forex" || i.category === "metals" || i.category === "crypto")
+  .map((i) => i.symbol) as readonly string[];
 
-// How many symbols get freshly fetched + analyzed per scan cycle.
-const PER_CYCLE_SYMBOL_BUDGET = 4;
+// Crypto symbols always get refreshed every cycle on top of the rotation.
+// They're 24/7 and the oversight engine treats BTC freshness as a canary
+// for the whole candle feed — we don't want a slow rotation pretending
+// the feed is broken.
+const CRYPTO_PRIORITY_SYMBOLS = ALL_INSTRUMENTS
+  .filter((i) => i.category === "crypto")
+  .map((i) => i.symbol) as readonly string[];
+
+// Total symbols analyzed per cycle = priority crypto + this many rotated.
+const PER_CYCLE_SYMBOL_BUDGET = 6;
 
 const SYMBOL_MAP: Record<string, string> = {
   EURUSD: "EUR/USD", GBPUSD: "GBP/USD", USDJPY: "USD/JPY", USDCHF: "USD/CHF",
@@ -43,10 +54,16 @@ function isMarketOpen(symbol: string, at: Date = new Date()): boolean {
 }
 
 /**
- * Pick the N stalest open-market symbols to work on this cycle. Symbols
- * with no candles yet (new to the universe) are stalest by definition.
- * If everything is closed (quiet weekend) we fall back to crypto so the
- * Brain still has something to do.
+ * Pick the symbols to work on this cycle.
+ *
+ *   1. Always include every crypto symbol — they trade 24/7 and the
+ *      oversight engine's BTC canary check expects <5 minute freshness.
+ *      Skipping them in the rotation would guarantee stale alerts.
+ *   2. Fill the rest of the budget with the stalest open-market
+ *      forex / metals symbols, so the non-crypto universe rotates
+ *      evenly (full rotation every ~3 cycles with budget 6).
+ *   3. If markets are fully closed (weekend) we fall back to crypto
+ *      only, which is already covered by step 1.
  */
 export async function pickCycleSymbols(budget = PER_CYCLE_SYMBOL_BUDGET): Promise<string[]> {
   const grouped = await prisma.candle.groupBy({
@@ -58,16 +75,19 @@ export async function pickCycleSymbols(budget = PER_CYCLE_SYMBOL_BUDGET): Promis
     lastFetchBySymbol.set(r.symbol, r._max.fetchedAt?.getTime() ?? 0);
   }
 
-  const open: Array<{ symbol: string; age: number }> = [];
-  const closed: Array<{ symbol: string; age: number }> = [];
+  const priority = [...CRYPTO_PRIORITY_SYMBOLS];
+  const remaining: Array<{ symbol: string; age: number; open: boolean }> = [];
   for (const sym of CANDLE_SYMBOLS) {
-    const age = lastFetchBySymbol.get(sym) ?? 0;
-    if (isMarketOpen(sym)) open.push({ symbol: sym, age });
-    else closed.push({ symbol: sym, age });
+    if (priority.includes(sym)) continue;
+    remaining.push({
+      symbol: sym,
+      age: lastFetchBySymbol.get(sym) ?? 0,
+      open: isMarketOpen(sym),
+    });
   }
-  const pool = open.length > 0 ? open : closed;
-  pool.sort((a, b) => a.age - b.age);
-  return pool.slice(0, budget).map((p) => p.symbol);
+  const openRest = remaining.filter((r) => r.open).sort((a, b) => a.age - b.age);
+  const rotated = openRest.slice(0, Math.max(0, budget - priority.length));
+  return [...priority, ...rotated.map((r) => r.symbol)];
 }
 
 interface TwelveDataCandle {
@@ -166,6 +186,13 @@ export async function fetchAndPersistCandles(
     await bumpFetchedAt(symbol, timeframe);
     return { symbol, timeframe, written: result.count, fetched: raw.length };
   } catch (err: any) {
+    // Critical: bump fetchedAt even on failure so the rotation keeps
+    // moving. Previously a chronically-failing symbol would stay at
+    // fetchedAt=ancient and monopolise pickCycleSymbols forever,
+    // starving healthy symbols of refresh time. Losing the "last
+    // failed at" nuance is fine — the error is already logged via the
+    // return value and accumulates in ScanCycle.errorLogJson.
+    await bumpFetchedAt(symbol, timeframe);
     return { symbol, timeframe, written: 0, fetched: 0, error: err?.message || String(err) };
   }
 }
