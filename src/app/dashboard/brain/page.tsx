@@ -43,6 +43,8 @@ export default async function BrainStatusPage() {
     latestSentiment,
     upcomingEvents,
     elevatedEventRisks,
+    activeZones,
+    totalZones,
   ] = await Promise.all([
     prisma.scanCycle.findFirst({ orderBy: { startedAt: "desc" } }),
     prisma.scanCycle.count(),
@@ -89,6 +91,17 @@ export default async function BrainStatusPage() {
     prisma.eventRiskSnapshot.findMany({
       where: { riskLevel: { in: ["medium", "high"] } },
       orderBy: { minutesToEvent: "asc" },
+    }),
+    prisma.supplyDemandZone.findMany({
+      where: {
+        freshnessState: { in: ["FRESH", "ARMED", "TOUCHED"] },
+        grade: { in: ["A+", "A", "B"] },
+      },
+      orderBy: [{ institutionalScore: "desc" }, { createdAt: "desc" }],
+      take: 18,
+    }),
+    prisma.supplyDemandZone.count({
+      where: { freshnessState: { in: ["FRESH", "ARMED", "TOUCHED"] } },
     }),
   ]);
 
@@ -415,6 +428,72 @@ export default async function BrainStatusPage() {
           </section>
         );
       })()}
+
+      <section className="rounded-lg border border-border bg-card p-5">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide">
+            Supply &amp; Demand Zones
+            <span className="ml-2 text-[11px] font-normal text-muted normal-case">
+              · {totalZones} live · showing top {activeZones.length}
+            </span>
+          </h2>
+          <span className="text-[10px] text-muted">
+            Institutional score · A+/A/B only
+          </span>
+        </div>
+        {activeZones.length === 0 ? (
+          <p className="text-sm text-muted">
+            No qualifying zones yet. Zone discovery runs on every brain cycle after candle ingestion; give the rotation a few passes to accumulate.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {activeZones.map((z) => {
+              const isDemand = z.zoneType === "demand";
+              const gradeClass = z.grade === "A+" ? "bg-purple-500/15 text-purple-300 border-purple-500/40"
+                : z.grade === "A" ? "bg-green-500/15 text-green-400 border-green-500/40"
+                : z.grade === "B" ? "bg-blue-500/15 text-blue-400 border-blue-500/40"
+                : "bg-muted/10 text-muted border-border";
+              const stateClass = z.freshnessState === "FRESH" ? "text-bull-light"
+                : z.freshnessState === "ARMED" ? "text-accent-light"
+                : z.freshnessState === "TOUCHED" ? "text-warn"
+                : z.freshnessState === "PARTIALLY_MITIGATED" ? "text-warn"
+                : "text-muted";
+              const priceDigits = z.midpoint > 100 ? 2 : 5;
+              return (
+                <div key={z.id} className="rounded-lg border border-border bg-background/30 p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded ${isDemand ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"}`}>
+                        {isDemand ? "▲ DEMAND" : "▼ SUPPLY"}
+                      </span>
+                      <span className="font-mono text-sm font-semibold truncate">{z.symbol}</span>
+                      <span className="text-[10px] text-muted">{z.timeframe}</span>
+                    </div>
+                    <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded border ${gradeClass}`}>{z.grade}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px] font-mono">
+                    <div className="flex justify-between"><span className="text-muted">Proximal</span><span>{z.proximal.toFixed(priceDigits)}</span></div>
+                    <div className="flex justify-between"><span className="text-muted">Distal</span><span>{z.distal.toFixed(priceDigits)}</span></div>
+                    <div className="flex justify-between"><span className="text-muted">Score</span><span className="text-accent-light">{z.institutionalScore}</span></div>
+                    <div className="flex justify-between"><span className="text-muted">State</span><span className={`uppercase ${stateClass}`}>{z.freshnessState}</span></div>
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] text-muted font-mono pt-1.5 border-t border-border/40">
+                    <span>F{Math.round(z.formationScore)} · D{Math.round(z.displacementScore)} · I{Math.round(z.imbalanceScore)} · S{Math.round(z.structureScore)}</span>
+                    <span>{timeAgo(z.createdAt)}</span>
+                  </div>
+                  {(z.fvgPresent || z.bosFlag || z.sweepFlag) && (
+                    <div className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider">
+                      {z.fvgPresent && <span className="px-1 py-0.5 rounded bg-warn/10 text-warn">FVG</span>}
+                      {z.bosFlag && <span className="px-1 py-0.5 rounded bg-accent/10 text-accent-light">BOS</span>}
+                      {z.sweepFlag && <span className="px-1 py-0.5 rounded bg-bear/10 text-bear-light">Sweep</span>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <section className="rounded-lg border border-border bg-card p-5">

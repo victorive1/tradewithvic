@@ -5,6 +5,7 @@ import { fetchCandleSet, CANDLE_SYMBOLS, CANDLE_TIMEFRAMES, pickCycleSymbols } f
 import { analyzeAllStructure } from "@/lib/brain/structure";
 import { analyzeAllIndicators } from "@/lib/brain/indicators";
 import { analyzeAllLiquidity } from "@/lib/brain/liquidity";
+import { persistZonesForCycle } from "@/lib/brain/zones";
 import { detectAllStrategies } from "@/lib/brain/strategies";
 import { computeSentiment, persistSentiment } from "@/lib/brain/sentiment";
 import { analyzeEventRisk, seedPlaceholderEventsIfEmpty } from "@/lib/brain/fundamentals";
@@ -46,6 +47,9 @@ export interface ScanCycleResult {
   execPositionsClosed: number;
   execBalance: number;
   execEquity: number;
+  zonesDetected: number;
+  zonesPersisted: number;
+  zoneTransitions: number;
   errors: string[];
 }
 
@@ -115,6 +119,13 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       CANDLE_TIMEFRAMES,
       cycle.id
     );
+
+    // Supply & Demand zone detection + lifecycle update. Runs on the same
+    // symbols/timeframes as every other analyzer so it reuses hot candles.
+    const zoneResult = await persistZonesForCycle(cycleSymbols, CANDLE_TIMEFRAMES).catch((err) => {
+      errors.push(`zones: ${err?.message ?? String(err)}`);
+      return { detected: 0, persisted: 0, lifecycleTransitions: 0 };
+    });
 
     const strategyResult = await detectAllStrategies(
       cycleSymbols,
@@ -201,6 +212,9 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       execPositionsClosed: execution.positionsClosed,
       execBalance: execution.balance,
       execEquity: execution.equity,
+      zonesDetected: zoneResult.detected,
+      zonesPersisted: zoneResult.persisted,
+      zoneTransitions: zoneResult.lifecycleTransitions,
       errors,
     };
   } catch (err: any) {
@@ -251,6 +265,9 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       execPositionsClosed: 0,
       execBalance: 0,
       execEquity: 0,
+      zonesDetected: 0,
+      zonesPersisted: 0,
+      zoneTransitions: 0,
       errors,
     };
   }

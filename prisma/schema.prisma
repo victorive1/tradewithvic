@@ -249,6 +249,74 @@ model LiquidityEvent {
   @@index([detectedAt])
 }
 
+// ==================== MARKET BRAIN — SUPPLY & DEMAND ZONES ====================
+// See docs/supply-demand-blueprint.md for the full spec.
+
+model SupplyDemandZone {
+  id        String   @id @default(cuid())
+  symbol    String
+  timeframe String
+  zoneType  String // "supply" | "demand"
+
+  // Boundaries of the zone
+  proximal Float
+  distal   Float
+  midpoint Float
+
+  // Formation / departure metadata
+  originTime           DateTime // when the base candle closed
+  baseCandles          Int
+  departureAtrMultiple Float
+  fvgPresent           Boolean  @default(false)
+  fvgSize              Float?
+  bosFlag              Boolean  @default(false)
+  sweepFlag            Boolean  @default(false)
+
+  // Component + final scores (0-100)
+  formationScore     Float
+  displacementScore  Float
+  imbalanceScore     Float
+  structureScore     Float
+  freshnessScore     Float
+  retestQualityScore Float @default(0)
+  contextScore       Float @default(0)
+  institutionalScore Float
+  grade              String // "A+" | "A" | "B" | "WATCH" | "IGNORE"
+
+  // Lifecycle
+  freshnessState String  @default("NEW") // NEW | FRESH | ARMED | TOUCHED | PARTIALLY_MITIGATED | CONSUMED | INVALIDATED
+  retestCount    Int     @default(0)
+  lastRetestAt   DateTime?
+  currentPrice   Float?
+  penetrationPct Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events SupplyDemandZoneEvent[]
+
+  @@unique([symbol, timeframe, originTime, zoneType])
+  @@index([symbol, timeframe, freshnessState])
+  @@index([grade, institutionalScore])
+  @@index([createdAt])
+}
+
+model SupplyDemandZoneEvent {
+  id         String   @id @default(cuid())
+  zoneId     String
+  eventType  String // state_transition | retest | score_recalc
+  oldState   String?
+  newState   String?
+  reason     String?
+  price      Float?
+  detectedAt DateTime @default(now())
+
+  zone SupplyDemandZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@index([zoneId, detectedAt])
+  @@index([eventType])
+}
+
 // ==================== MARKET BRAIN — EXECUTION ENGINE (Layer 5) ====================
 
 model ExecutionAccount {

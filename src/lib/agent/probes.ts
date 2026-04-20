@@ -290,6 +290,18 @@ async function sourceIndicatorSnapshot(): Promise<DataSourceSnapshot> {
   });
 }
 
+async function sourceSupplyDemandZone(): Promise<DataSourceSnapshot> {
+  return snapTable({
+    label: "Supply & demand zones",
+    tableName: "SupplyDemandZone",
+    count: () => prisma.supplyDemandZone.count({ where: { freshnessState: { in: ["FRESH", "ARMED", "TOUCHED"] } } }),
+    lastUpdated: async () => (await prisma.supplyDemandZone.findFirst({ orderBy: { updatedAt: "desc" }, select: { updatedAt: true } }))?.updatedAt ?? null,
+    warnSecs: 600,
+    critSecs: 1800,
+    note: "Active zones only (FRESH / ARMED / TOUCHED)",
+  });
+}
+
 async function sourceLiquidityLevel(): Promise<DataSourceSnapshot> {
   return snapTable({
     label: "Liquidity levels",
@@ -487,7 +499,7 @@ export async function probeMarketPrediction(radarStatus: ProbeStatus, radarMessa
 }
 
 export async function probeMarketCoreBrain(): Promise<EngineStatus> {
-  const [p1, errorProbes, p3, p4, snapCycle, snapCandle, snapStruct, snapInd, snapLiq, errors, alerts] = await Promise.all([
+  const [p1, errorProbes, p3, p4, snapCycle, snapCandle, snapStruct, snapInd, snapLiq, snapZone, errors, alerts] = await Promise.all([
     probeScanCycleFreshness(),
     probeScanCycleErrors(),
     probeCandleCoverage(),
@@ -497,6 +509,7 @@ export async function probeMarketCoreBrain(): Promise<EngineStatus> {
     sourceStructureState(),
     sourceIndicatorSnapshot(),
     sourceLiquidityLevel(),
+    sourceSupplyDemandZone(),
     recentScanCycleErrors(),
     recentMonitoringAlerts(["critical", "warning"]),
   ]);
@@ -511,7 +524,7 @@ export async function probeMarketCoreBrain(): Promise<EngineStatus> {
     statusMessage: probes.find((p) => p.status === status)?.message ?? "",
     lastUpdatedAt: snapCycle.lastUpdatedAt,
     probes,
-    dataSources: [snapCycle, snapCandle, snapStruct, snapInd, snapLiq],
+    dataSources: [snapCycle, snapCandle, snapStruct, snapInd, snapLiq, snapZone],
     dependencies: [{ engineId: "market-radar", label: "Market Radar (quotes feed)", status: "healthy", statusMessage: "" }],
     recentErrors: [...errors, ...alerts].slice(0, 10),
   };
