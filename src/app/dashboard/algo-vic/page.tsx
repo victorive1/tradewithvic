@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { AlgoConfigPanel, useAlgoConfig, AlgoRoutingBadge } from "@/components/algo/AlgoConfig";
+import { AlgoConfigPanel, useAlgoConfig, AlgoRoutingBadge, AlgoAccountsCard } from "@/components/algo/AlgoConfig";
 
 /* ───────── types ───────── */
 const SYMBOLS = ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "BTCUSD", "XAGUSD", "US30", "USOIL", "NAS100", "USDCHF", "GBPJPY"];
@@ -279,6 +279,9 @@ export default function AlgoVicPage() {
           </div>
         </div>
       </div>
+
+      {/* Trading Accounts — hoisted from config so it's always visible */}
+      <AlgoAccountsCard settings={algoSettings} updateSettings={updateAlgoSettings} />
 
       {/* Config Toggle */}
       <button

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { AlgoConfigPanel, useAlgoConfig, AlgoRoutingBadge } from "@/components/algo/AlgoConfig";
+import { AlgoConfigPanel, useAlgoConfig, AlgoRoutingBadge, AlgoAccountsCard } from "@/components/algo/AlgoConfig";
 
 interface MarketQuote {
   symbol: string;
@@ -308,6 +308,9 @@ export default function MetalsAlgoPage() {
           </span>
         )}
       </div>
+
+      {/* Trading Accounts — hoisted from config so it's always visible */}
+      <AlgoAccountsCard settings={algoSettings} updateSettings={updateAlgoSettings} />
 
       {/* Config Toggle */}
       <button

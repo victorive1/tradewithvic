@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { AlgoConfigPanel, useAlgoConfig, AlgoRoutingBadge } from "@/components/algo/AlgoConfig";
+import { AlgoConfigPanel, useAlgoConfig, AlgoRoutingBadge, AlgoAccountsCard } from "@/components/algo/AlgoConfig";
 
 interface MarketQuote {
   symbol: string;
@@ -217,6 +217,9 @@ export default function MDAlgoPage() {
           <div className="text-lg font-bold text-accent-light">{confluenceMin}% min</div>
         </div>
       </div>
+
+      {/* Trading Accounts — hoisted from config so it's always visible */}
+      <AlgoAccountsCard settings={algoSettings} updateSettings={updateAlgoSettings} />
 
       {/* Start / Stop */}
       <div className="flex items-center gap-3">

@@ -79,11 +79,132 @@ export function useConnectedAccounts(): ConnectedAccount[] {
  * Infer whether a server name / platform points at a demo or live account.
  * Heuristic-only — broker server strings almost always encode it.
  */
-function classifyAccount(server: string): "live" | "demo" | "unknown" {
+export function classifyAccount(server: string): "live" | "demo" | "unknown" {
   const s = server.toLowerCase();
   if (s.includes("demo") || s.includes("trial") || s.includes("practice") || s.includes("paper")) return "demo";
   if (s.includes("live") || s.includes("real") || s.includes("ecn") || s.includes("pro")) return "live";
   return "unknown";
+}
+
+/**
+ * Standalone Trading Accounts card — meant to render at the top of every
+ * algo page so users don't have to scroll through the whole config panel
+ * to find the account picker. Same behavior as the accounts section
+ * inside AlgoConfigPanel: loads linked MT accounts from localStorage +
+ * backend, shows LIVE/DEMO/UNKNOWN chip per account, routes via
+ * settings.selectedAccounts toggles.
+ */
+export function AlgoAccountsCard({
+  settings,
+  updateSettings,
+}: {
+  settings: AlgoSettings;
+  updateSettings: (partial: Partial<AlgoSettings>) => void;
+}) {
+  const savedAccounts = useConnectedAccounts();
+
+  // Auto-select on first visit once accounts exist.
+  const autoSelectedRef = useMemo(() => ({ done: false }), []);
+  useEffect(() => {
+    if (autoSelectedRef.done) return;
+    if (savedAccounts.length === 0) return;
+    if (settings.selectedAccounts.length > 0) { autoSelectedRef.done = true; return; }
+    autoSelectedRef.done = true;
+    updateSettings({ selectedAccounts: savedAccounts.map((a) => a.login) });
+  }, [savedAccounts, settings.selectedAccounts.length, updateSettings, autoSelectedRef]);
+
+  function toggleAccount(accountId: string) {
+    const accounts = settings.selectedAccounts.includes(accountId)
+      ? settings.selectedAccounts.filter((a) => a !== accountId)
+      : [...settings.selectedAccounts, accountId];
+    updateSettings({ selectedAccounts: accounts });
+  }
+
+  return (
+    <div className="glass-card p-5">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+          🔗 Trading Accounts from Trading Hub
+          {savedAccounts.length > 0 && (
+            <span className="text-[10px] font-normal text-muted">
+              · {settings.selectedAccounts.length} of {savedAccounts.length} routed
+            </span>
+          )}
+        </h3>
+        {savedAccounts.length > 0 && (
+          <div className="flex items-center gap-2 text-[10px]">
+            <button
+              onClick={() => updateSettings({ selectedAccounts: savedAccounts.map((a) => a.login) })}
+              className="text-accent-light hover:text-accent transition-smooth"
+            >
+              Select All
+            </button>
+            <span className="text-muted">·</span>
+            <button
+              onClick={() => updateSettings({ selectedAccounts: [] })}
+              className="text-muted hover:text-muted-light transition-smooth"
+            >
+              Clear All
+            </button>
+            <span className="text-muted">·</span>
+            <Link href="/dashboard/trading-hub" className="text-accent-light hover:text-accent transition-smooth">
+              + Add from Trading Hub
+            </Link>
+          </div>
+        )}
+      </div>
+      <p className="text-[11px] text-muted mb-3">
+        Trades route directly to the MT4/MT5 accounts you&apos;ve linked in Trading Hub. Live or demo only — never paper.
+      </p>
+      {savedAccounts.length > 0 ? (
+        <div className="space-y-2">
+          {savedAccounts.map((acct, i) => {
+            const kind = classifyAccount(acct.server);
+            const isSelected = settings.selectedAccounts.includes(acct.login);
+            return (
+              <div key={i} className="flex items-center justify-between bg-surface-2 rounded-xl p-3 gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                    <span className="text-xs font-semibold text-foreground truncate">{acct.broker} · #{acct.login}</span>
+                    <span className={cn(
+                      "px-1.5 py-0.5 text-[9px] rounded uppercase tracking-wider font-bold border shrink-0",
+                      kind === "live" ? "bg-bull/10 text-bull-light border-bull/30"
+                        : kind === "demo" ? "bg-accent/10 text-accent-light border-accent/30"
+                        : "bg-surface-3 text-muted border-border",
+                    )}>
+                      {kind === "unknown" ? "UNKNOWN" : kind}
+                    </span>
+                    <span className="px-1.5 py-0.5 text-[9px] rounded bg-surface-3 text-muted uppercase tracking-wider shrink-0">{acct.platform}</span>
+                  </div>
+                  <div className="text-[10px] text-muted truncate">{acct.server}{acct.label ? ` · ${acct.label}` : ""}</div>
+                </div>
+                <button
+                  onClick={() => toggleAccount(acct.login)}
+                  className={cn("w-10 h-5 rounded-full relative transition-smooth shrink-0", isSelected ? "bg-accent" : "bg-surface-3")}
+                  aria-label={isSelected ? "Route trades to this account" : "Stop routing to this account"}
+                >
+                  <div className={cn("absolute top-0.5 w-4 h-4 rounded-full bg-white transition-smooth", isSelected ? "left-5" : "left-0.5")} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-dashed border-border/50 p-5 text-center space-y-2">
+          <div className="text-2xl">🔗</div>
+          <p className="text-xs text-muted-light">
+            No MT4/MT5 accounts linked yet. This algo won&apos;t place trades until you connect at least one live or demo account in Trading Hub.
+          </p>
+          <Link
+            href="/dashboard/trading-hub"
+            className="inline-block mt-1 px-4 py-2 rounded-lg bg-accent text-white text-xs font-semibold hover:bg-accent/90 transition-smooth"
+          >
+            Open Trading Hub →
+          </Link>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -236,22 +357,6 @@ export function AlgoConfigPanel({
   const [showPairSelector, setShowPairSelector] = useState(false);
   const [showPerPair, setShowPerPair] = useState(settings.usePerPairLots);
 
-  // Merged list of MT accounts (local + backend, deduped).
-  const savedAccounts = useConnectedAccounts();
-
-  // First-time convenience: if the user hasn't picked any accounts yet AND
-  // they have accounts available, route to all of them by default. Mirrors
-  // the "all pairs enabled" default we flipped earlier — you shouldn't
-  // have to hunt for a toggle to activate routing.
-  const autoSelectedRef = useMemo(() => ({ done: false }), []);
-  useEffect(() => {
-    if (autoSelectedRef.done) return;
-    if (savedAccounts.length === 0) return;
-    if (settings.selectedAccounts.length > 0) { autoSelectedRef.done = true; return; }
-    autoSelectedRef.done = true;
-    updateSettings({ selectedAccounts: savedAccounts.map((a) => a.login) });
-  }, [savedAccounts, settings.selectedAccounts.length, updateSettings, autoSelectedRef]);
-
   function togglePair(symbol: string) {
     const pairs = settings.selectedPairs.includes(symbol)
       ? settings.selectedPairs.filter((p) => p !== symbol)
@@ -264,13 +369,6 @@ export function AlgoConfigPanel({
       ? settings.allowedSessions.filter((s) => s !== session)
       : [...settings.allowedSessions, session];
     updateSettings({ allowedSessions: sessions });
-  }
-
-  function toggleAccount(accountId: string) {
-    const accounts = settings.selectedAccounts.includes(accountId)
-      ? settings.selectedAccounts.filter((a) => a !== accountId)
-      : [...settings.selectedAccounts, accountId];
-    updateSettings({ selectedAccounts: accounts });
   }
 
   return (
@@ -467,91 +565,6 @@ export function AlgoConfigPanel({
             </button>
           ))}
         </div>
-      </div>
-
-      {/* Accounts */}
-      <div className="glass-card p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h4 className="text-sm font-semibold text-foreground">
-            Trading Accounts
-            {savedAccounts.length > 0 && (
-              <span className="ml-2 text-[10px] font-normal text-muted">
-                · {settings.selectedAccounts.length} of {savedAccounts.length} routed
-              </span>
-            )}
-          </h4>
-          {savedAccounts.length > 0 && (
-            <div className="flex items-center gap-2 text-[10px]">
-              <button
-                onClick={() => updateSettings({ selectedAccounts: savedAccounts.map((a) => a.login) })}
-                className="text-accent-light hover:text-accent transition-smooth"
-              >
-                Select All
-              </button>
-              <span className="text-muted">·</span>
-              <button
-                onClick={() => updateSettings({ selectedAccounts: [] })}
-                className="text-muted hover:text-muted-light transition-smooth"
-              >
-                Clear All
-              </button>
-              <span className="text-muted">·</span>
-              <Link href="/dashboard/trading-hub" className="text-accent-light hover:text-accent transition-smooth">
-                + Add Account
-              </Link>
-            </div>
-          )}
-        </div>
-        <p className="text-[11px] text-muted mb-3">
-          Trades route directly to the MT4/MT5 accounts you've linked in Trading Hub. Live or demo only — this algo never runs in paper mode.
-        </p>
-        {savedAccounts.length > 0 ? (
-          <div className="space-y-2">
-            {savedAccounts.map((acct, i) => {
-              const kind = classifyAccount(acct.server);
-              const isSelected = settings.selectedAccounts.includes(acct.login);
-              return (
-                <div key={i} className="flex items-center justify-between bg-surface-2 rounded-xl p-3 gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-xs font-semibold text-foreground truncate">{acct.broker} · #{acct.login}</span>
-                      <span className={cn(
-                        "px-1.5 py-0.5 text-[9px] rounded uppercase tracking-wider font-bold border shrink-0",
-                        kind === "live" ? "bg-bull/10 text-bull-light border-bull/30"
-                          : kind === "demo" ? "bg-accent/10 text-accent-light border-accent/30"
-                          : "bg-surface-3 text-muted border-border",
-                      )}>
-                        {kind === "unknown" ? "UNKNOWN" : kind}
-                      </span>
-                      <span className="px-1.5 py-0.5 text-[9px] rounded bg-surface-3 text-muted uppercase tracking-wider shrink-0">{acct.platform}</span>
-                    </div>
-                    <div className="text-[10px] text-muted truncate">{acct.server}{acct.label ? ` · ${acct.label}` : ""}</div>
-                  </div>
-                  <button
-                    onClick={() => toggleAccount(acct.login)}
-                    className={cn("w-10 h-5 rounded-full relative transition-smooth shrink-0", isSelected ? "bg-accent" : "bg-surface-3")}
-                    aria-label={isSelected ? "Route trades to this account" : "Stop routing to this account"}
-                  >
-                    <div className={cn("absolute top-0.5 w-4 h-4 rounded-full bg-white transition-smooth", isSelected ? "left-5" : "left-0.5")} />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="rounded-xl border border-dashed border-border/50 p-5 text-center space-y-2">
-            <div className="text-2xl">🔗</div>
-            <p className="text-xs text-muted-light">
-              No MT4/MT5 accounts linked yet. This algo won't place trades until you connect at least one live or demo account.
-            </p>
-            <Link
-              href="/dashboard/trading-hub"
-              className="inline-block mt-1 px-4 py-2 rounded-lg bg-accent text-white text-xs font-semibold hover:bg-accent/90 transition-smooth"
-            >
-              Open Trading Hub →
-            </Link>
-          </div>
-        )}
       </div>
 
       {/* Config summary */}

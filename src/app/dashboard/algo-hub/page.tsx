@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
-import { AlgoConfigPanel, useAlgoConfig } from "@/components/algo/AlgoConfig";
+import { AlgoConfigPanel, useAlgoConfig, AlgoAccountsCard } from "@/components/algo/AlgoConfig";
 
 /* ───────── types ───────── */
 type AlgoTab = "dashboard" | "strategies" | "settings" | "trades" | "analytics" | "config";
@@ -278,7 +278,10 @@ export default function AlgoHubPage() {
         </div>
       )}
       {tab === "config" && (
-        <AlgoConfigPanel settings={algoSettings} updateSettings={updateAlgoSettings} botName="Algo Hub" />
+        <div className="space-y-4">
+          <AlgoAccountsCard settings={algoSettings} updateSettings={updateAlgoSettings} />
+          <AlgoConfigPanel settings={algoSettings} updateSettings={updateAlgoSettings} botName="Algo Hub" />
+        </div>
       )}
     </div>
   );
