@@ -43,13 +43,21 @@ const EVENT_COLOR: Record<string, string> = {
 
 export default async function VwapPage() {
   const renderedAt = Date.now();
-  const [snapshots, events] = await Promise.all([
+  const [snapshots, events, setups] = await Promise.all([
     prisma.vwapSnapshot.findMany({
       orderBy: [{ symbol: "asc" }, { anchor: "asc" }],
       take: 200,
     }),
     prisma.vwapDeviationEvent.findMany({
       orderBy: { detectedAt: "desc" },
+      take: 30,
+    }),
+    prisma.tradeSetup.findMany({
+      where: {
+        status: "active",
+        setupType: { in: ["vwap_reclaim", "vwap_rejection", "vwap_stretch"] },
+      },
+      orderBy: { createdAt: "desc" },
       take: 30,
     }),
   ]);
@@ -76,7 +84,7 @@ export default async function VwapPage() {
       </div>
 
       {/* Top status strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
         <div className="glass-card p-4 text-center">
           <div className="text-xs text-muted mb-1">Snapshots</div>
           <div className="text-xl font-bold">{snapshots.length}</div>
@@ -92,6 +100,10 @@ export default async function VwapPage() {
         <div className="glass-card p-4 text-center">
           <div className="text-xs text-muted mb-1">Stretched</div>
           <div className="text-xl font-bold text-warn">{stretchedDaily}</div>
+        </div>
+        <div className="glass-card p-4 text-center">
+          <div className="text-xs text-muted mb-1">Active Setups</div>
+          <div className="text-xl font-bold text-accent-light">{setups.length}</div>
         </div>
       </div>
 
@@ -206,6 +218,76 @@ export default async function VwapPage() {
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* VWAP Trade Setups — tradeable signals emitted on reclaim, rejection,
+          and band-stretch transitions. These flow through the Brain's
+          confluence + execution pipeline just like breakout / pullback
+          setups. */}
+      <div className="glass-card p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-foreground">Active VWAP Setups</h3>
+          <span className="text-[10px] text-muted">Reclaim · Rejection · Stretch fade</span>
+        </div>
+        {setups.length === 0 ? (
+          <p className="text-xs text-muted py-4 text-center">
+            No active VWAP setups right now. Next reclaim / rejection / stretch transition will emit one here
+            and through the Brain&apos;s confluence + execution pipeline.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-muted border-b border-border/30">
+                  <th className="text-left py-2 pr-3">Symbol</th>
+                  <th className="text-left py-2 px-3">Setup</th>
+                  <th className="text-center py-2 px-3">Dir</th>
+                  <th className="text-right py-2 px-3">Entry</th>
+                  <th className="text-right py-2 px-3">SL</th>
+                  <th className="text-right py-2 px-3">TP1</th>
+                  <th className="text-right py-2 px-3">R:R</th>
+                  <th className="text-center py-2 px-3">Score</th>
+                  <th className="text-center py-2 px-3">Grade</th>
+                  <th className="text-right py-2 pl-3">Created</th>
+                </tr>
+              </thead>
+              <tbody>
+                {setups.map((s) => {
+                  const label = s.setupType === "vwap_reclaim" ? "Reclaim"
+                    : s.setupType === "vwap_rejection" ? "Rejection"
+                    : "Stretch";
+                  return (
+                    <tr key={s.id} className="border-b border-border/20 hover:bg-surface-2/50">
+                      <td className="py-2 pr-3 font-semibold text-foreground">{s.symbol}</td>
+                      <td className="py-2 px-3 text-muted">{label} · {s.timeframe}</td>
+                      <td className="py-2 px-3 text-center">
+                        <span className={`px-1.5 py-0.5 text-[10px] rounded uppercase tracking-wider border ${s.direction === "long" ? "bg-bull/10 text-bull-light border-bull/30" : "bg-bear/10 text-bear-light border-bear/30"}`}>
+                          {s.direction}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono">{s.entry.toFixed(5)}</td>
+                      <td className="py-2 px-3 text-right font-mono text-bear-light">{s.stopLoss.toFixed(5)}</td>
+                      <td className="py-2 px-3 text-right font-mono text-bull-light">{s.takeProfit1.toFixed(5)}</td>
+                      <td className="py-2 px-3 text-right font-mono">{s.riskReward.toFixed(2)}</td>
+                      <td className="py-2 px-3 text-center font-semibold">{s.confidenceScore}</td>
+                      <td className="py-2 px-3 text-center">
+                        <span className={`px-1.5 py-0.5 text-[10px] rounded uppercase tracking-wider border ${
+                          s.qualityGrade === "A+" ? "bg-bull/20 text-bull-light border-bull/40"
+                            : s.qualityGrade === "A" ? "bg-bull/10 text-bull-light border-bull/30"
+                            : s.qualityGrade === "B" ? "bg-accent/10 text-accent-light border-accent/30"
+                            : "bg-surface-3 text-muted border-border"
+                        }`}>
+                          {s.qualityGrade}
+                        </span>
+                      </td>
+                      <td className="py-2 pl-3 text-right text-[10px] text-muted">{timeAgo(s.createdAt)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

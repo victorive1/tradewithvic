@@ -54,6 +54,7 @@ export interface ScanCycleResult {
   zoneTransitions: number;
   vwapSnapshots: number;
   vwapEvents: number;
+  vwapSetups: number;
   errors: string[];
 }
 
@@ -136,7 +137,7 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
     // state transitions so the dashboard feed stays meaningful.
     const vwapResult = await analyzeAllVwap(cycleSymbols).catch((err) => {
       errors.push(`vwap: ${err?.message ?? String(err)}`);
-      return { results: [], snapshotsWritten: 0, eventsCreated: 0 };
+      return { results: [], snapshotsWritten: 0, eventsCreated: 0, setupsPersisted: 0 };
     });
 
     const strategyResult = await detectAllStrategies(
@@ -241,6 +242,7 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       zoneTransitions: zoneResult.lifecycleTransitions,
       vwapSnapshots: vwapResult.snapshotsWritten,
       vwapEvents: vwapResult.eventsCreated,
+      vwapSetups: vwapResult.setupsPersisted,
       errors,
     };
   } catch (err: any) {
@@ -296,6 +298,7 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       zoneTransitions: 0,
       vwapSnapshots: 0,
       vwapEvents: 0,
+      vwapSetups: 0,
       errors,
     };
   }

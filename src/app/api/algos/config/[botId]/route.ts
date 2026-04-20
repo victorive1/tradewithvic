@@ -26,8 +26,8 @@ const DEFAULT_STRATEGY_FILTER: Record<string, string> = {
   metals: "breakout,trend_pullback,sweep_reversal",
   ob: "sweep_reversal,trend_pullback",
   "fx-strength": "trend_pullback",
-  vic: "breakout,sweep_reversal",
-  hub: "breakout,trend_pullback,sweep_reversal",
+  vic: "breakout,sweep_reversal,vwap_reclaim,vwap_rejection",
+  hub: "breakout,trend_pullback,sweep_reversal,vwap_reclaim,vwap_rejection,vwap_stretch",
 };
 
 const DEFAULT_SYMBOL_FILTER: Record<string, string> = {

@@ -153,6 +153,207 @@ export interface VwapAnalysisResult {
   anchor: VwapAnchor;
   computed: boolean;
   eventCreated?: string | null;
+  setupPersisted?: boolean;
+}
+
+function gradeFromScore(score: number): string {
+  if (score >= 90) return "A+";
+  if (score >= 80) return "A";
+  if (score >= 65) return "B";
+  if (score >= 50) return "C";
+  return "D";
+}
+
+/**
+ * Translate a VWAP deviation event into a TradeSetup ticket.
+ *
+ * Signal families supported:
+ *   - reclaim   → long: price just crossed back above VWAP
+ *   - rejection → short: price just fell back below VWAP
+ *   - stretch_upper → short fade: 2σ+ above VWAP, price rejecting
+ *   - stretch_lower → long fade: 2σ+ below VWAP, price rejecting
+ *
+ * Stops sit just beyond the opposite σ band (or VWAP itself for
+ * reclaim/rejection, padded by 0.25σ). Targets ladder from VWAP
+ * midline out to ±1σ / ±2σ depending on direction.
+ */
+function buildVwapSetup(args: {
+  symbol: string;
+  timeframe: string;
+  anchor: VwapAnchor;
+  eventType: "reclaim" | "rejection" | "stretch_upper" | "stretch_lower";
+  price: number;
+  vwap: number;
+  stddev: number;
+  upperBand1: number;
+  lowerBand1: number;
+  upperBand2: number;
+  lowerBand2: number;
+  slopeState: "rising" | "falling" | "flat";
+  zScore: number;
+  volumeQuality: "reliable" | "degraded" | "synthetic";
+}): {
+  direction: "bullish" | "bearish";
+  entry: number;
+  stopLoss: number;
+  tp1: number; tp2: number; tp3: number;
+  setupType: string;
+  score: number;
+  explanation: string;
+  invalidation: string;
+} | null {
+  const {
+    eventType, price, vwap, stddev, upperBand1, lowerBand1, upperBand2, lowerBand2,
+    slopeState, zScore, volumeQuality,
+  } = args;
+  const sigma = Math.max(stddev, Math.abs(vwap) * 0.0001);
+  const pad = sigma * 0.25;
+
+  if (eventType === "reclaim") {
+    const direction = "bullish" as const;
+    const entry = price;
+    const stopLoss = vwap - pad;
+    const tp1 = upperBand1;
+    const tp2 = upperBand2;
+    const tp3 = vwap + 3 * sigma;
+    let score = 55;
+    if (slopeState === "rising") score += 15;
+    else if (slopeState === "flat") score += 5;
+    if (Math.abs(zScore) < 0.6) score += 10; // clean reclaim close to VWAP
+    if (volumeQuality === "reliable") score += 10;
+    else if (volumeQuality === "degraded") score += 3;
+    return {
+      direction, entry, stopLoss, tp1, tp2, tp3,
+      setupType: "vwap_reclaim",
+      score: Math.min(100, score),
+      explanation: `Price reclaimed VWAP ${vwap.toFixed(5)} from below; slope ${slopeState}, z=${zScore.toFixed(2)}.`,
+      invalidation: `Close back below ${vwap.toFixed(5)} invalidates the reclaim.`,
+    };
+  }
+
+  if (eventType === "rejection") {
+    const direction = "bearish" as const;
+    const entry = price;
+    const stopLoss = vwap + pad;
+    const tp1 = lowerBand1;
+    const tp2 = lowerBand2;
+    const tp3 = vwap - 3 * sigma;
+    let score = 55;
+    if (slopeState === "falling") score += 15;
+    else if (slopeState === "flat") score += 5;
+    if (Math.abs(zScore) < 0.6) score += 10;
+    if (volumeQuality === "reliable") score += 10;
+    else if (volumeQuality === "degraded") score += 3;
+    return {
+      direction, entry, stopLoss, tp1, tp2, tp3,
+      setupType: "vwap_rejection",
+      score: Math.min(100, score),
+      explanation: `Price rejected VWAP ${vwap.toFixed(5)} from above; slope ${slopeState}, z=${zScore.toFixed(2)}.`,
+      invalidation: `Close back above ${vwap.toFixed(5)} invalidates the rejection.`,
+    };
+  }
+
+  if (eventType === "stretch_upper") {
+    // Fade long extensions back toward VWAP — only trade against an
+    // already-rising slope if the z-score is deep (>2.3), otherwise skip.
+    if (slopeState === "rising" && zScore < 2.3) return null;
+    const direction = "bearish" as const;
+    const entry = price;
+    const stopLoss = price + pad + sigma * 0.5;
+    const tp1 = upperBand1;
+    const tp2 = vwap;
+    const tp3 = lowerBand1;
+    let score = 52;
+    if (zScore >= 2.3) score += 12;
+    if (slopeState === "flat") score += 10;
+    else if (slopeState === "falling") score += 18;
+    if (volumeQuality === "reliable") score += 8;
+    return {
+      direction, entry, stopLoss, tp1, tp2, tp3,
+      setupType: "vwap_stretch",
+      score: Math.min(100, score),
+      explanation: `Price stretched ${zScore.toFixed(2)}σ above VWAP ${vwap.toFixed(5)}; mean-reversion fade.`,
+      invalidation: `Acceptance above ${upperBand2.toFixed(5)} voids the fade thesis.`,
+    };
+  }
+
+  if (eventType === "stretch_lower") {
+    if (slopeState === "falling" && zScore > -2.3) return null;
+    const direction = "bullish" as const;
+    const entry = price;
+    const stopLoss = price - pad - sigma * 0.5;
+    const tp1 = lowerBand1;
+    const tp2 = vwap;
+    const tp3 = upperBand1;
+    let score = 52;
+    if (zScore <= -2.3) score += 12;
+    if (slopeState === "flat") score += 10;
+    else if (slopeState === "rising") score += 18;
+    if (volumeQuality === "reliable") score += 8;
+    return {
+      direction, entry, stopLoss, tp1, tp2, tp3,
+      setupType: "vwap_stretch",
+      score: Math.min(100, score),
+      explanation: `Price stretched ${Math.abs(zScore).toFixed(2)}σ below VWAP ${vwap.toFixed(5)}; mean-reversion long.`,
+      invalidation: `Acceptance below ${lowerBand2.toFixed(5)} voids the fade thesis.`,
+    };
+  }
+
+  return null;
+}
+
+async function persistVwapSetup(args: {
+  symbol: string;
+  timeframe: string;
+  setup: NonNullable<ReturnType<typeof buildVwapSetup>>;
+  validHours: number;
+}): Promise<boolean> {
+  const { symbol, timeframe, setup, validHours } = args;
+
+  // Idempotency: within 30 min skip any very-similar active setup.
+  const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
+  const similar = await prisma.tradeSetup.findFirst({
+    where: {
+      symbol, timeframe, status: "active",
+      setupType: setup.setupType,
+      direction: setup.direction,
+      createdAt: { gte: thirtyMinAgo },
+    },
+    select: { id: true, entry: true },
+  });
+  if (similar && Math.abs(similar.entry - setup.entry) / Math.max(Math.abs(setup.entry), 1e-9) < 0.002) {
+    return false;
+  }
+
+  const instrument = await prisma.instrument.findUnique({ where: { symbol }, select: { id: true } });
+  if (!instrument) return false;
+
+  const risk = Math.abs(setup.entry - setup.stopLoss);
+  const reward = Math.abs(setup.tp1 - setup.entry);
+  const riskReward = risk > 0 ? reward / risk : 0;
+
+  await prisma.tradeSetup.create({
+    data: {
+      instrumentId: instrument.id,
+      symbol,
+      direction: setup.direction === "bullish" ? "long" : "short",
+      setupType: setup.setupType,
+      timeframe,
+      entry: setup.entry,
+      stopLoss: setup.stopLoss,
+      takeProfit1: setup.tp1,
+      takeProfit2: setup.tp2,
+      takeProfit3: setup.tp3,
+      riskReward,
+      confidenceScore: setup.score,
+      qualityGrade: gradeFromScore(setup.score),
+      explanation: setup.explanation,
+      invalidation: setup.invalidation,
+      status: "active",
+      validUntil: new Date(Date.now() + validHours * 60 * 60 * 1000),
+    },
+  });
+  return true;
 }
 
 /**
@@ -227,6 +428,7 @@ export async function analyzeVwap(
   });
 
   let eventCreated: string | null = null;
+  let setupPersisted = false;
   if (existing) {
     // Detect state transitions that correspond to classic VWAP events.
     if (existing.position === "below" && position === "above") {
@@ -252,10 +454,37 @@ export async function analyzeVwap(
           reason: `${existing.position}→${position} · z=${zScore.toFixed(2)} · slope=${calc.slopeState}`,
         },
       });
+
+      // Translate tradeable events into TradeSetup rows so the Brain's
+      // existing confluence, qualification, tracking, and execution
+      // machinery can consume them just like breakout/pullback setups.
+      // snapback isn't tradeable — it's a thesis-close signal.
+      if (eventCreated === "reclaim" || eventCreated === "rejection"
+          || eventCreated === "stretch_upper" || eventCreated === "stretch_lower") {
+        const built = buildVwapSetup({
+          symbol, timeframe, anchor,
+          eventType: eventCreated,
+          price,
+          vwap: calc.vwap,
+          stddev: calc.stddev,
+          upperBand1: calc.upperBand1,
+          lowerBand1: calc.lowerBand1,
+          upperBand2: calc.upperBand2,
+          lowerBand2: calc.lowerBand2,
+          slopeState: calc.slopeState,
+          zScore,
+          volumeQuality: calc.volumeQuality,
+        });
+        if (built) {
+          // Daily anchors → 4h lifetime; weekly anchors → 24h.
+          const validHours = anchor === "weekly" ? 24 : 4;
+          setupPersisted = await persistVwapSetup({ symbol, timeframe, setup: built, validHours });
+        }
+      }
     }
   }
 
-  return { symbol, timeframe, anchor, computed: true, eventCreated };
+  return { symbol, timeframe, anchor, computed: true, eventCreated, setupPersisted };
 }
 
 /**
@@ -269,6 +498,7 @@ export async function analyzeAllVwap(
   results: VwapAnalysisResult[];
   snapshotsWritten: number;
   eventsCreated: number;
+  setupsPersisted: number;
 }> {
   const anchors: VwapAnchor[] = ["daily", "weekly"];
   const pairs: Array<[string, VwapAnchor]> = [];
@@ -278,5 +508,6 @@ export async function analyzeAllVwap(
   } as VwapAnalysisResult))));
   const snapshotsWritten = results.filter((r) => r.computed).length;
   const eventsCreated = results.filter((r) => r.eventCreated).length;
-  return { results, snapshotsWritten, eventsCreated };
+  const setupsPersisted = results.filter((r) => r.setupPersisted).length;
+  return { results, snapshotsWritten, eventsCreated, setupsPersisted };
 }
