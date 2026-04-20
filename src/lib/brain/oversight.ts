@@ -25,11 +25,31 @@ async function checkScanLag(): Promise<HealthCheck> {
 async function checkErrorRate(): Promise<HealthCheck> {
   const recent = await prisma.scanCycle.findMany({ orderBy: { startedAt: "desc" }, take: 20 });
   if (recent.length === 0) return { name: "error_rate", status: "ok", message: "No cycles yet." };
-  const failed = recent.filter((c: any) => c.status === "failed" || c.errorCount > 0).length;
+  // Only count STATUS=failed as true failures. Per-symbol fetch hiccups
+  // (errorCount > 0 with status=completed) are expected during market-close
+  // hours and thin-data windows on TwelveData — treating them as critical
+  // creates permanent false-positive alerts. Those are tracked separately.
+  const failed = recent.filter((c: any) => c.status === "failed").length;
   const pct = Math.round((failed / recent.length) * 100);
-  if (pct > 50) return { name: "error_rate", status: "critical", value: `${pct}%`, message: `${pct}% of last 20 cycles had errors.` };
-  if (pct > 20) return { name: "error_rate", status: "warning", value: `${pct}%`, message: `${pct}% of last 20 cycles had errors.` };
-  return { name: "error_rate", status: "ok", value: `${pct}%`, message: `${pct}% cycle error rate (last 20).` };
+  if (pct > 50) return { name: "error_rate", status: "critical", value: `${pct}%`, message: `${pct}% of last 20 cycles failed.` };
+  if (pct > 20) return { name: "error_rate", status: "warning", value: `${pct}%`, message: `${pct}% of last 20 cycles failed.` };
+  return { name: "error_rate", status: "ok", value: `${pct}%`, message: `${pct}% cycle failure rate (last 20).` };
+}
+
+async function checkHiccupDensity(): Promise<HealthCheck> {
+  // Secondary signal — average per-symbol fetch errors across the last 20
+  // completed cycles. A handful of hiccups is normal; a persistent spike
+  // points at a broken symbol or API quota issue.
+  const recent = await prisma.scanCycle.findMany({
+    where: { status: "completed" },
+    orderBy: { startedAt: "desc" },
+    take: 20,
+  });
+  if (recent.length === 0) return { name: "hiccup_density", status: "ok", message: "No completed cycles yet." };
+  const avg = recent.reduce((sum: number, c: any) => sum + (c.errorCount ?? 0), 0) / recent.length;
+  const rounded = Math.round(avg * 10) / 10;
+  if (avg > 10) return { name: "hiccup_density", status: "warning", value: `${rounded}/cycle`, message: `Avg ${rounded} per-symbol hiccups/cycle — check feed health.` };
+  return { name: "hiccup_density", status: "ok", value: `${rounded}/cycle`, message: `Avg ${rounded} per-symbol hiccups/cycle (normal).` };
 }
 
 async function checkCandleFreshness(): Promise<HealthCheck> {
@@ -96,10 +116,26 @@ async function openAlert(check: HealthCheck) {
   });
 }
 
+/**
+ * Close any still-open alerts for a check that's now passing. Without this
+ * the panel accumulates forever — an alert raised yesterday for 95% error
+ * rate stays "critical" on the dashboard even after cycles recover.
+ */
+async function resolveAlert(check: HealthCheck) {
+  await prisma.monitoringAlert.updateMany({
+    where: {
+      title: `oversight.${check.name}`,
+      status: { in: ["open", "acknowledged"] },
+    },
+    data: { status: "resolved", resolvedAt: new Date() },
+  });
+}
+
 export async function runOversightCycle(): Promise<OversightResult> {
   const checks = await Promise.all([
     checkScanLag(),
     checkErrorRate(),
+    checkHiccupDensity(),
     checkCandleFreshness(),
     checkStuckPositions(),
     checkExecutionHealth(),
@@ -110,6 +146,10 @@ export async function runOversightCycle(): Promise<OversightResult> {
     if (c.status !== "ok") {
       await openAlert(c);
       alertsCreated++;
+    } else {
+      // Condition cleared — close any lingering alerts of this name so the
+      // panel reflects current state instead of historical noise.
+      await resolveAlert(c);
     }
   }
 
