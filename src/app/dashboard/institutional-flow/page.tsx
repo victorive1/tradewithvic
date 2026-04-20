@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
+import { ALL_INSTRUMENTS } from "@/lib/constants";
 
 interface Signal {
   id: string;
@@ -48,6 +49,7 @@ export default function InstitutionalFlowPage() {
   const [loading, setLoading] = useState(true);
   const [minScore, setMinScore] = useState(0);
   const [directionFilter, setDirectionFilter] = useState<"all" | "long" | "short">("all");
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,10 +57,12 @@ export default function InstitutionalFlowPage() {
       const qs = new URLSearchParams();
       if (minScore > 0) qs.set("minScore", String(minScore));
       if (directionFilter !== "all") qs.set("direction", directionFilter);
+      qs.set("t", String(Date.now())); // cache-bust any edge layer
       const res = await fetch(`/api/iflow/signals/live?${qs.toString()}`, { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
         setSignals(data.signals ?? []);
+        setLastUpdated(Date.now());
       }
     } finally { setLoading(false); }
   }, [minScore, directionFilter]);
@@ -69,16 +73,24 @@ export default function InstitutionalFlowPage() {
     return () => clearInterval(int);
   }, [load]);
 
+  const ageSec = lastUpdated ? Math.round((Date.now() - lastUpdated) / 1000) : null;
+  const freshnessLabel = ageSec == null ? null
+    : ageSec < 60 ? `${ageSec}s ago`
+    : `${Math.floor(ageSec / 60)}m ago`;
+
   return (
     <div className="page-container space-y-5">
       <header className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <h1 className="text-fluid-3xl font-bold">Institutional Flow</h1>
             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-bull/10 border border-bull/30 text-[10px] font-bold text-bull-light uppercase tracking-wider">
               <span className="w-1.5 h-1.5 rounded-full bg-bull pulse-live" />
               Live
             </span>
+            {freshnessLabel && (
+              <span className="text-xs text-muted">Last updated {freshnessLabel} · refreshes every 45s</span>
+            )}
           </div>
           <p className="text-fluid-sm text-muted-light max-w-2xl">
             Where large informed capital is most likely entering, defending, rotating, or distributing.
@@ -221,20 +233,9 @@ function SignalCard({ signal }: { signal: Signal }) {
           </div>
         </div>
 
+        <IflowTradeSetup signal={signal} />
+
         <div className="flex items-center gap-2 flex-wrap">
-          <ExecuteTradeButton
-            setup={{
-              symbol: signal.assetSymbol,
-              direction: isLong ? "buy" : "sell",
-              stopLoss: signal.invalidationLevel ?? undefined,
-              takeProfit: signal.defendedLevel ?? undefined,
-              qualityGrade: signal.confidenceGrade,
-              confidenceScore: Math.round(signal.intentScore),
-              setupType: `iflow_${signal.classification}`,
-              sourceType: "institutional_flow",
-              sourceRef: signal.id,
-            }}
-          />
           <Link href={`/dashboard/institutional-flow/${signal.id}`}
             className="text-[11px] text-accent-light hover:text-accent transition-smooth px-3 py-2">
             Explain →
@@ -242,5 +243,102 @@ function SignalCard({ signal }: { signal: Signal }) {
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * Trade setup derived from the iflow signal itself. Entry anchored at the
+ * defended level (where informed capital stepped in), stop just beyond the
+ * invalidation level, targets stepped 1.5R / 2.5R off measured risk.
+ * Only renders when the signal has concrete levels — we don't invent them.
+ */
+function IflowTradeSetup({ signal }: { signal: Signal }) {
+  if (signal.direction === "neutral") return null;
+  if (signal.defendedLevel == null || signal.invalidationLevel == null) return null;
+
+  const isLong = signal.direction === "long";
+  const defended = signal.defendedLevel;
+  const invalidation = signal.invalidationLevel;
+
+  // Direction sanity: invalidation should sit on the opposite side of
+  // price relative to the bias. If the pair is malformed, skip the panel
+  // rather than render a nonsensical setup.
+  if (isLong && invalidation >= defended) return null;
+  if (!isLong && invalidation <= defended) return null;
+
+  const risk = Math.abs(defended - invalidation);
+  if (risk <= 0) return null;
+
+  const inst = ALL_INSTRUMENTS.find((i) => i.symbol === signal.assetSymbol);
+  const decimals = inst?.decimals ?? 4;
+
+  const entry = defended;
+  const stopLoss = invalidation;
+  const takeProfit1 = isLong ? entry + risk * 1.5 : entry - risk * 1.5;
+  const takeProfit2 = isLong ? entry + risk * 2.5 : entry - risk * 2.5;
+  const entryBand = risk * 0.10; // narrow band around defended
+  const entryLow = Math.min(entry - entryBand, entry);
+  const entryHigh = Math.max(entry + entryBand, entry);
+  const rr = 2.5;
+  const fmt = (n: number) => n.toFixed(decimals);
+
+  return (
+    <div className="rounded-xl border border-border/50 bg-surface-2/40 p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">Trade Setup</span>
+          <span className={cn(
+            "px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md border",
+            isLong ? "bg-bull/10 text-bull-light border-bull/40" : "bg-bear/10 text-bear-light border-bear/40",
+          )}>
+            {isLong ? "▲ BUY" : "▼ SELL"}
+          </span>
+        </div>
+        <span className="text-[11px] text-muted font-mono">
+          RR {rr.toFixed(2)} · {signal.classification}
+        </span>
+      </div>
+      <div className="grid grid-cols-4 gap-1.5 text-[10px] font-mono">
+        <div className="rounded-lg bg-surface-3/40 border border-border/30 p-1.5 text-center">
+          <div className="text-[9px] uppercase text-muted">Entry</div>
+          <div className="text-foreground">{fmt(entry)}</div>
+        </div>
+        <div className="rounded-lg bg-bear/5 border border-bear/20 p-1.5 text-center">
+          <div className="text-[9px] uppercase text-bear-light">Stop</div>
+          <div className="text-bear-light">{fmt(stopLoss)}</div>
+        </div>
+        <div className="rounded-lg bg-bull/5 border border-bull/20 p-1.5 text-center">
+          <div className="text-[9px] uppercase text-bull-light">TP1</div>
+          <div className="text-bull-light">{fmt(takeProfit1)}</div>
+        </div>
+        <div className="rounded-lg bg-bull/5 border border-bull/20 p-1.5 text-center">
+          <div className="text-[9px] uppercase text-bull-light">TP2</div>
+          <div className="text-bull-light">{fmt(takeProfit2)}</div>
+        </div>
+      </div>
+      <p className="text-[10px] text-muted-light leading-relaxed">
+        Entry at the defended level where informed capital appears to have stepped in. Stop just beyond the invalidation level; targets stepped 1.5R / 2.5R of measured risk.
+      </p>
+      <ExecuteTradeButton
+        setup={{
+          symbol: signal.assetSymbol,
+          direction: isLong ? "buy" : "sell",
+          entry,
+          stopLoss,
+          takeProfit: takeProfit1,
+          takeProfit2,
+          timeframe: signal.horizon,
+          setupType: `iflow_${signal.classification}`,
+          qualityGrade: signal.confidenceGrade,
+          confidenceScore: Math.round(signal.intentScore),
+          sourceType: "institutional_flow",
+          sourceRef: signal.id,
+        }}
+        className="w-full"
+      />
+      <div className="text-[10px] text-muted-light sr-only" aria-hidden>
+        {fmt(entryLow)}-{fmt(entryHigh)}
+      </div>
+    </div>
   );
 }

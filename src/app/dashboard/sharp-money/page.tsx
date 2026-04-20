@@ -249,20 +249,30 @@ export default function SharpMoneyPage() {
   const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null);
   const [activityFilter, setActivityFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     async function load() {
       try {
-        const res = await fetch("/api/market/quotes");
+        const res = await fetch(`/api/market/quotes?t=${Date.now()}`, { cache: "no-store" });
         const json = await res.json();
-        if (json.quotes) setData(json.quotes.map((q: any) => deriveRadarData(q)));
+        if (!cancelled && json.quotes) {
+          setData(json.quotes.map((q: any) => deriveRadarData(q)));
+          setLastUpdated(json.timestamp ?? Date.now());
+        }
       } catch {}
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     }
     load();
     const interval = setInterval(load, 60000);
-    return () => clearInterval(interval);
+    return () => { cancelled = true; clearInterval(interval); };
   }, []);
+
+  const ageSec = lastUpdated ? Math.round((Date.now() - lastUpdated) / 1000) : null;
+  const freshnessLabel = ageSec == null ? null
+    : ageSec < 60 ? `${ageSec}s ago`
+    : `${Math.floor(ageSec / 60)}m ago`;
 
   let filtered = data;
   if (activityFilter !== "all") filtered = filtered.filter((d) => d.activity === activityFilter);
@@ -286,7 +296,13 @@ export default function SharpMoneyPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Sharp Money Radar</h1>
+        <div className="flex items-center gap-3 flex-wrap">
+          <h1 className="text-2xl font-bold text-foreground">Sharp Money Radar</h1>
+          <span className="text-xs bg-bull/10 text-bull-light px-2 py-0.5 rounded-full border border-bull/20 pulse-live">Live</span>
+          {freshnessLabel && (
+            <span className="text-xs text-muted">Last updated {freshnessLabel} · refreshes every 60s</span>
+          )}
+        </div>
         <p className="text-sm text-muted mt-1">Inferred unusual market activity — where does the market deserve more attention?</p>
       </div>
 
