@@ -71,7 +71,7 @@ export default async function VwapPage() {
 
   return (
     <div className="space-y-6">
-      <LiveRefresh serverTimestamp={renderedAt} intervalMs={30000} />
+      <LiveRefresh serverTimestamp={renderedAt} />
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <div className="flex items-center gap-3 mb-1">

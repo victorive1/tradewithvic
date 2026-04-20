@@ -222,7 +222,9 @@ export default function BrainExecutionPage() {
   useEffect(() => {
     fetchState();
     fetchConfig();
-    pollRef.current = setInterval(fetchState, 10_000);
+    // 60s poll — scan cycle is 2 min, so 10s was 12× overkill and just
+    // burned DB cycles on the state endpoint (11 parallel Prisma queries).
+    pollRef.current = setInterval(fetchState, 60_000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [fetchState, fetchConfig]);
 

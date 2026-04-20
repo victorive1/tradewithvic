@@ -133,13 +133,14 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       return { detected: 0, persisted: 0, lifecycleTransitions: 0 };
     });
 
-    // Volume proxy — fetch real ETF/futures volume for spot FX + metals
-    // so VWAP has institutional flow to weight bars by. Crypto/indices
-    // bypass this (Candle.volume is already real). Silent errors — if
-    // the proxy is unreachable VWAP degrades to synthetic weighting.
+    // Volume proxy — fetch real ETF volume for spot FX + metals so VWAP
+    // has institutional flow to weight bars by. Automatically skipped
+    // outside NYSE hours (13:00–21:30 UTC weekdays) and throttled to
+    // ~14 min between refreshes per (symbol, timeframe). Silent errors —
+    // if the proxy is unreachable VWAP degrades to synthetic weighting.
     await persistVolumeReferences(cycleSymbols).catch((err) => {
       errors.push(`volume-proxy: ${err?.message ?? String(err)}`);
-      return { results: [], totalWritten: 0, requestCount: 0 };
+      return { results: [], totalWritten: 0, requestCount: 0, skipped: null };
     });
 
     // VWAP Phase 1 — daily + weekly anchored snapshots. Reuses the same

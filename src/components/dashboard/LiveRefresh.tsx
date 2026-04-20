@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 interface LiveRefreshProps {
   /** Server-render time (ms since epoch). Pass Date.now() from the page. */
   serverTimestamp: number;
-  /** Auto-refresh interval in ms. Defaults to 15 seconds. */
+  /** Auto-refresh interval in ms. Defaults to 60 seconds — matches the 2-min scan cycle without burning needless DB + API cost. */
   intervalMs?: number;
   /** Optional label prefix, defaults to "Live". */
   label?: string;
@@ -17,7 +17,7 @@ interface LiveRefreshProps {
  * server component re-fetches its data. Keeps server rendering (no need to
  * rewrite pages as client components) while ensuring nothing ever looks stale.
  */
-export function LiveRefresh({ serverTimestamp, intervalMs = 15000, label = "Live" }: LiveRefreshProps) {
+export function LiveRefresh({ serverTimestamp, intervalMs = 60000, label = "Live" }: LiveRefreshProps) {
   const router = useRouter();
   const [now, setNow] = useState(Date.now());
   const [refreshing, setRefreshing] = useState(false);

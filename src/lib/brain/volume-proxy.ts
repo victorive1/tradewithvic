@@ -54,6 +54,42 @@ export const VOLUME_PROXY_MAP: Record<string, { proxy: string; source: "etf" | "
 export const VWAP_VOLUME_TIMEFRAMES = ["15min", "1h"] as const;
 export type VwapVolumeTimeframe = (typeof VWAP_VOLUME_TIMEFRAMES)[number];
 
+// Don't re-fetch proxy volume more often than this. Volume data on
+// 15min/1h bars doesn't materially change between 2-min scan cycles —
+// checking every ~14 minutes still gives VWAP fresh-enough context and
+// cuts the proxy API spend by ~85%.
+const MIN_REFRESH_INTERVAL_MS = 14 * 60 * 1000;
+
+/**
+ * NYSE open/close gate. The proxy ETFs (FXE, GLD, etc.) only have
+ * volume during NYSE regular hours (09:30–16:00 ET = 13:30–20:00 UTC
+ * during standard time, 14:30–21:00 UTC during daylight saving). We
+ * widen slightly to 13:00–21:30 UTC to absorb both sides and the opening
+ * auction, and skip weekends entirely.
+ */
+function isNyseVolumeWindow(now: Date = new Date()): boolean {
+  const day = now.getUTCDay();
+  if (day === 0 || day === 6) return false; // Sat/Sun — ETFs closed
+  const hour = now.getUTCHours();
+  const minute = now.getUTCMinutes();
+  const minutes = hour * 60 + minute;
+  return minutes >= 13 * 60 && minutes <= 21 * 60 + 30;
+}
+
+/**
+ * Check whether we already fetched this (symbol, timeframe) pair recently.
+ * Looks at the newest VolumeReference row's fetchedAt timestamp.
+ */
+async function needsRefresh(symbol: string, timeframe: string): Promise<boolean> {
+  const newest = await prisma.volumeReference.findFirst({
+    where: { symbol, timeframe },
+    orderBy: { fetchedAt: "desc" },
+    select: { fetchedAt: true },
+  });
+  if (!newest) return true;
+  return Date.now() - newest.fetchedAt.getTime() >= MIN_REFRESH_INTERVAL_MS;
+}
+
 function timeframeToMillis(tf: string): number {
   switch (tf) {
     case "5min": return 5 * 60 * 1000;
@@ -155,15 +191,32 @@ export async function persistVolumeReferences(
   results: VolumeReferenceResult[];
   totalWritten: number;
   requestCount: number;
+  skipped: "outside_nyse_hours" | "throttled" | null;
 }> {
+  // Gate 1: NYSE is closed → proxy ETFs report 0 volume anyway, don't waste
+  // credits fetching them. VWAP degrades to synthetic weighting which is
+  // what we already did before this feature existed.
+  if (!isNyseVolumeWindow()) {
+    return { results: [], totalWritten: 0, requestCount: 0, skipped: "outside_nyse_hours" };
+  }
+
+  // Gate 2: throttle to MIN_REFRESH_INTERVAL_MS per (symbol, timeframe)
+  // via the fetchedAt freshness check. Only build tasks for pairs that
+  // are genuinely due.
   const tasks: Array<Promise<VolumeReferenceResult>> = [];
   for (const s of symbols) {
     if (!VOLUME_PROXY_MAP[s]) continue;
     for (const tf of VWAP_VOLUME_TIMEFRAMES) {
-      tasks.push(persistProxyVolume(s, tf));
+      if (await needsRefresh(s, tf)) {
+        tasks.push(persistProxyVolume(s, tf));
+      }
     }
   }
+  if (tasks.length === 0) {
+    return { results: [], totalWritten: 0, requestCount: 0, skipped: "throttled" };
+  }
+
   const results = await Promise.all(tasks);
   const totalWritten = results.reduce((a, b) => a + b.written, 0);
-  return { results, totalWritten, requestCount: tasks.length };
+  return { results, totalWritten, requestCount: tasks.length, skipped: null };
 }
