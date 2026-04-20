@@ -7,24 +7,27 @@ const BASE_URL = "https://api.twelvedata.com";
 export const CANDLE_TIMEFRAMES = ["4h", "1h", "15min", "5min", "1day"] as const;
 export type CandleTimeframe = (typeof CANDLE_TIMEFRAMES)[number];
 
-// Candle pipeline universe: forex + metals + crypto. Indices (NAS100, US30,
-// SPX500, GER40) and energy (USOIL) are intentionally excluded — their
-// candle endpoints return empty / malformed data on our TwelveData tier,
-// which previously poisoned the cycle error rate. Quotes, Market Radar,
-// Setups, and Market Direction still render all 22 instruments.
+// Candle pipeline universe: forex + metals + BTC + ETH. Indices (NAS100,
+// US30, SPX500, GER40) and energy (USOIL) are excluded — their candle
+// endpoints return empty / malformed data on our TwelveData tier. Alt-
+// crypto (SOL, XRP) trimmed to keep the priority list focused on the
+// majors the oversight canary actually cares about. Quotes, Market Radar,
+// Setups, and Market Direction still render the full 22 instruments.
 export const CANDLE_SYMBOLS = ALL_INSTRUMENTS
-  .filter((i) => i.category === "forex" || i.category === "metals" || i.category === "crypto")
+  .filter((i) =>
+    i.category === "forex"
+    || i.category === "metals"
+    || i.symbol === "BTCUSD"
+    || i.symbol === "ETHUSD",
+  )
   .map((i) => i.symbol) as readonly string[];
 
-// Crypto symbols always get refreshed every cycle on top of the rotation.
-// They're 24/7 and the oversight engine treats BTC freshness as a canary
-// for the whole candle feed — we don't want a slow rotation pretending
-// the feed is broken.
-const CRYPTO_PRIORITY_SYMBOLS = ALL_INSTRUMENTS
-  .filter((i) => i.category === "crypto")
-  .map((i) => i.symbol) as readonly string[];
+// BTC + ETH refreshed every main scan cycle + via the dedicated
+// /api/brain/crypto-refresh cron. 24/7 markets + oversight canary.
+export const CRYPTO_PRIORITY_SYMBOLS = ["BTCUSD", "ETHUSD"] as const;
 
-// Total symbols analyzed per cycle = priority crypto + this many rotated.
+// Total symbols analyzed per main cycle = priority crypto (2) + 4 rotated
+// forex/metals. Full non-crypto rotation in ~4 cycles (~8 min).
 const PER_CYCLE_SYMBOL_BUDGET = 6;
 
 const SYMBOL_MAP: Record<string, string> = {
@@ -75,7 +78,7 @@ export async function pickCycleSymbols(budget = PER_CYCLE_SYMBOL_BUDGET): Promis
     lastFetchBySymbol.set(r.symbol, r._max.fetchedAt?.getTime() ?? 0);
   }
 
-  const priority = [...CRYPTO_PRIORITY_SYMBOLS];
+  const priority: string[] = [...CRYPTO_PRIORITY_SYMBOLS];
   const remaining: Array<{ symbol: string; age: number; open: boolean }> = [];
   for (const sym of CANDLE_SYMBOLS) {
     if (priority.includes(sym)) continue;

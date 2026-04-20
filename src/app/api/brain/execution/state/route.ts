@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function GET(_req: NextRequest) {
+  try {
   const account = await prisma.executionAccount.findUnique({ where: { name: "paper-default" } });
   if (!account) {
     return NextResponse.json({ account: null, positions: [], trades: [], portfolio: null, events: [] });
@@ -164,4 +165,23 @@ export async function GET(_req: NextRequest) {
     },
     fetchedAt: Date.now(),
   });
+  } catch (err: any) {
+    console.error("[brain/execution/state] failed:", err);
+    return NextResponse.json({
+      account: null,
+      positions: [],
+      trades: [],
+      portfolio: null,
+      events: [],
+      rejectedOrders: [],
+      portfolioDecisions: [],
+      pendingOrders: [],
+      quotes: [],
+      latestCycle: null,
+      signals: [],
+      health: null,
+      error: err?.message ?? String(err),
+      fetchedAt: Date.now(),
+    }, { status: 200 });
+  }
 }
