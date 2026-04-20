@@ -245,16 +245,15 @@ export async function analyzeAllStructure(
   timeframes: readonly string[],
   scanCycleId: string | null
 ): Promise<{ analyses: StructureAnalysis[]; eventsDetected: number }> {
+  const pairs: Array<[string, string]> = [];
+  for (const symbol of symbols) for (const tf of timeframes) pairs.push([symbol, tf]);
+  const settled = await Promise.all(pairs.map(([s, tf]) => analyzeStructure(s, tf, scanCycleId)));
   const analyses: StructureAnalysis[] = [];
   let eventsDetected = 0;
-  for (const symbol of symbols) {
-    for (const timeframe of timeframes) {
-      const result = await analyzeStructure(symbol, timeframe, scanCycleId);
-      if (result) {
-        analyses.push(result);
-        if (result.eventDetected && result.priorBias !== result.bias) eventsDetected++;
-      }
-    }
+  for (const result of settled) {
+    if (!result) continue;
+    analyses.push(result);
+    if (result.eventDetected && result.priorBias !== result.bias) eventsDetected++;
   }
   return { analyses, eventsDetected };
 }

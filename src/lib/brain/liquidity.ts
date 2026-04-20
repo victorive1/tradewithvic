@@ -249,16 +249,14 @@ export async function analyzeAllLiquidity(
   timeframes: readonly string[],
   scanCycleId: string | null
 ): Promise<{ results: LiquidityResult[]; totalLevels: number; totalSweeps: number }> {
-  const results: LiquidityResult[] = [];
+  const pairs: Array<[string, string]> = [];
+  for (const s of symbols) for (const tf of timeframes) pairs.push([s, tf]);
+  const results = await Promise.all(pairs.map(([s, tf]) => analyzeLiquidity(s, tf, scanCycleId)));
   let totalLevels = 0;
   let totalSweeps = 0;
-  for (const s of symbols) {
-    for (const tf of timeframes) {
-      const r = await analyzeLiquidity(s, tf, scanCycleId);
-      results.push(r);
-      totalLevels += r.levelsTracked;
-      totalSweeps += r.sweepsDetected;
-    }
+  for (const r of results) {
+    totalLevels += r.levelsTracked;
+    totalSweeps += r.sweepsDetected;
   }
   return { results, totalLevels, totalSweeps };
 }

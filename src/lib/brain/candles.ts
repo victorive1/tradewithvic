@@ -193,25 +193,22 @@ async function bumpFetchedAt(symbol: string, timeframe: CandleTimeframe): Promis
 
 export async function fetchCandleSet(
   symbolToInstrumentId: Map<string, string>,
-  opts: { delayMs?: number; outputsize?: number; symbols?: readonly string[] } = {}
+  opts: { outputsize?: number; symbols?: readonly string[] } = {}
 ): Promise<{ results: CandleFetchResult[]; totalWritten: number; requestCount: number }> {
-  // Tighter default spacing now that we're on the 4,181-credits/min plan.
-  const delayMs = opts.delayMs ?? 150;
   const outputsize = opts.outputsize ?? 50;
   const symbols = opts.symbols ?? CANDLE_SYMBOLS;
-  const results: CandleFetchResult[] = [];
-  let requestCount = 0;
 
+  // Parallelize every (symbol, timeframe) fetch. TwelveData's 4,181
+  // credits/min allowance + their per-IP concurrency limit easily cover
+  // a handful of simultaneous requests, and Prisma's connection pool
+  // queues writes safely behind the scenes.
+  const tasks: Array<Promise<CandleFetchResult>> = [];
   for (const symbol of symbols) {
     for (const tf of CANDLE_TIMEFRAMES) {
-      const instrumentId = symbolToInstrumentId.get(symbol) ?? null;
-      const result = await fetchAndPersistCandles(symbol, tf, instrumentId, outputsize);
-      results.push(result);
-      requestCount++;
-      await new Promise((r) => setTimeout(r, delayMs));
+      tasks.push(fetchAndPersistCandles(symbol, tf, symbolToInstrumentId.get(symbol) ?? null, outputsize));
     }
   }
-
+  const results = await Promise.all(tasks);
   const totalWritten = results.reduce((a, b) => a + b.written, 0);
-  return { results, totalWritten, requestCount };
+  return { results, totalWritten, requestCount: tasks.length };
 }

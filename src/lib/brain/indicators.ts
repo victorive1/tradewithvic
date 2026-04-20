@@ -257,14 +257,9 @@ export async function analyzeAllIndicators(
   symbols: readonly string[],
   timeframes: readonly string[]
 ): Promise<{ results: IndicatorResult[]; computed: number }> {
-  const results: IndicatorResult[] = [];
-  let computed = 0;
-  for (const s of symbols) {
-    for (const tf of timeframes) {
-      const r = await analyzeIndicators(s, tf);
-      results.push(r);
-      if (r.computed) computed++;
-    }
-  }
+  const pairs: Array<[string, string]> = [];
+  for (const s of symbols) for (const tf of timeframes) pairs.push([s, tf]);
+  const results = await Promise.all(pairs.map(([s, tf]) => analyzeIndicators(s, tf)));
+  const computed = results.filter((r) => r.computed).length;
   return { results, computed };
 }

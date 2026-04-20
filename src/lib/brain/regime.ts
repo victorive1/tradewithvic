@@ -88,16 +88,15 @@ export async function classifyAllRegimes(
   symbols: readonly string[],
   timeframes: readonly string[]
 ): Promise<{ results: RegimeResult[]; unstableCount: number }> {
+  const pairs: Array<[string, string]> = [];
+  for (const s of symbols) for (const tf of timeframes) pairs.push([s, tf]);
+  const settled = await Promise.all(pairs.map(([s, tf]) => classifyRegime(s, tf)));
   const results: RegimeResult[] = [];
   let unstable = 0;
-  for (const s of symbols) {
-    for (const tf of timeframes) {
-      const r = await classifyRegime(s, tf);
-      if (r) {
-        results.push(r);
-        if (r.unstable) unstable++;
-      }
-    }
+  for (const r of settled) {
+    if (!r) continue;
+    results.push(r);
+    if (r.unstable) unstable++;
   }
   return { results, unstableCount: unstable };
 }

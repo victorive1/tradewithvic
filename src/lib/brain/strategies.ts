@@ -352,16 +352,16 @@ export async function detectAllStrategies(
   symbolToInstrumentId: Map<string, string>,
   scanCycleId: string | null
 ): Promise<{ results: StrategyResult[]; totalDetected: number; totalPersisted: number }> {
-  const results: StrategyResult[] = [];
+  const pairs: Array<[string, string]> = [];
+  for (const s of symbols) for (const tf of timeframes) pairs.push([s, tf]);
+  const results = await Promise.all(pairs.map(([s, tf]) =>
+    detectStrategies(s, tf, symbolToInstrumentId.get(s) ?? null, scanCycleId),
+  ));
   let totalDetected = 0;
   let totalPersisted = 0;
-  for (const s of symbols) {
-    for (const tf of timeframes) {
-      const r = await detectStrategies(s, tf, symbolToInstrumentId.get(s) ?? null, scanCycleId);
-      results.push(r);
-      totalDetected += r.detected.length;
-      totalPersisted += r.persisted;
-    }
+  for (const r of results) {
+    totalDetected += r.detected.length;
+    totalPersisted += r.persisted;
   }
 
   await prisma.tradeSetup.updateMany({
