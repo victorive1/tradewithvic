@@ -20,16 +20,16 @@ const ENGINE_BY_HREF: Record<string, string> = {
   "/dashboard/brain-execution": "brain-execution",
   "/dashboard/signal-channel": "signal-channel",
   "/dashboard/editors-pick": "editors-pick",
-  // Algo Bots — all fetch /api/market/quotes directly, so they reflect
-  // Market Radar health.
-  "/dashboard/algo-hub": "market-radar",
-  "/dashboard/fx-strength-algo": "market-radar",
-  "/dashboard/ob-algo": "market-radar",
-  "/dashboard/md-algo": "market-radar",
-  "/dashboard/breakout-algo": "market-radar",
-  "/dashboard/us30-algo": "market-radar",
-  "/dashboard/metals-algo": "market-radar",
-  "/dashboard/algo-vic": "market-radar",
+  // Admin Algo Bots — routed through the Brain execution pipeline, so
+  // reflect Market Core Brain health rather than raw Radar.
+  "/dashboard/admin/algos/hub": "market-core-brain",
+  "/dashboard/admin/algos/fx-strength": "market-core-brain",
+  "/dashboard/admin/algos/ob": "market-core-brain",
+  "/dashboard/admin/algos/md": "market-core-brain",
+  "/dashboard/admin/algos/breakout": "market-core-brain",
+  "/dashboard/admin/algos/us30": "market-core-brain",
+  "/dashboard/admin/algos/metals": "market-core-brain",
+  "/dashboard/admin/algos/vic": "market-core-brain",
   "/dashboard/custom-bot": "market-radar",
   "/dashboard/bot-agents": "market-radar",
 };
@@ -126,16 +126,17 @@ const navItems = [
     ],
   },
   {
-    section: "Algo Bots",
+    section: "Admin · Algos",
+    adminOnly: true,
     items: [
-      { label: "Algo Hub", href: "/dashboard/algo-hub", icon: "radar" },
-      { label: "FX Strength Algo", href: "/dashboard/fx-strength-algo", icon: "setups" },
-      { label: "Order Block Algo", href: "/dashboard/ob-algo", icon: "liquidity" },
-      { label: "Market Direction Algo", href: "/dashboard/md-algo", icon: "screener" },
-      { label: "Breakout Algo", href: "/dashboard/breakout-algo", icon: "setups" },
-      { label: "US30 Algo", href: "/dashboard/us30-algo", icon: "radar" },
-      { label: "Silver & Gold Algo", href: "/dashboard/metals-algo", icon: "strength" },
-      { label: "Algo Vic (Scalper)", href: "/dashboard/algo-vic", icon: "screener" },
+      { label: "Algo Hub", href: "/dashboard/admin/algos/hub", icon: "radar" },
+      { label: "FX Strength Algo", href: "/dashboard/admin/algos/fx-strength", icon: "setups" },
+      { label: "Order Block Algo", href: "/dashboard/admin/algos/ob", icon: "liquidity" },
+      { label: "Market Direction Algo", href: "/dashboard/admin/algos/md", icon: "screener" },
+      { label: "Breakout Algo", href: "/dashboard/admin/algos/breakout", icon: "setups" },
+      { label: "US30 Algo", href: "/dashboard/admin/algos/us30", icon: "radar" },
+      { label: "Silver & Gold Algo", href: "/dashboard/admin/algos/metals", icon: "strength" },
+      { label: "Algo Vic (Scalper)", href: "/dashboard/admin/algos/vic", icon: "screener" },
       { label: "Custom Bot Builder", href: "/dashboard/custom-bot", icon: "risk" },
       { label: "Bot Agents", href: "/dashboard/bot-agents", icon: "alerts" },
     ],
@@ -164,6 +165,12 @@ const navItems = [
       { label: "Settings", href: "/dashboard/settings", icon: "risk" },
       { label: "Billing & Plans", href: "/dashboard/billing", icon: "watchlist" },
       { label: "Payments", href: "/dashboard/payments", icon: "strength" },
+    ],
+  },
+  {
+    section: "Admin",
+    adminOnly: true,
+    items: [
       { label: "Admin Billing", href: "/dashboard/admin/billing", icon: "risk" },
     ],
   },
@@ -210,14 +217,32 @@ function useEngineHealth() {
   return { engines, overall };
 }
 
+function useIsAdmin(): boolean {
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("user");
+      if (!raw) return;
+      const u = JSON.parse(raw) as { role?: unknown };
+      if (typeof u?.role === "string" && u.role === "admin") setIsAdmin(true);
+    } catch { /* silent */ }
+  }, []);
+  return isAdmin;
+}
+
 function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { engines: engineHealth, overall: overallHealth } = useEngineHealth();
+  const isAdmin = useIsAdmin();
+
+  const visibleSections = navItems.filter(
+    (section: (typeof navItems)[number] & { adminOnly?: boolean }) => !section.adminOnly || isAdmin,
+  );
 
   return (
     <>
       <nav className="flex-1 overflow-y-auto p-3 space-y-5 relative">
-        {navItems.map((section) => (
+        {visibleSections.map((section) => (
           <div key={section.section}>
             <p className="text-[10px] font-semibold text-muted/80 tracking-[0.18em] uppercase mb-2 px-3 pt-1">
               {section.section}
