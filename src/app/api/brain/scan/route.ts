@@ -3,7 +3,9 @@ import { runScanCycle } from "@/lib/brain/scan";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-export const maxDuration = 60;
+// Pro tier supports up to 300s; 120s gives us headroom for the full
+// cycle without burning excess GB-hours on every invocation.
+export const maxDuration = 120;
 
 function isAuthorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;

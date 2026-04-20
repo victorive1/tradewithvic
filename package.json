@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "preflight": "npx prisma generate && npx tsc --noEmit && npx next build"
+    "preflight": "npx prisma generate && npx tsc --noEmit && npx next build",
+    "worker:brain": "tsx worker/brain-worker.ts"
   },
   "engines": {
     "node": "22.x"
@@ -53,6 +54,7 @@
     "eslint-config-next": "16.2.4",
     "prisma": "^7.7.0",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }
