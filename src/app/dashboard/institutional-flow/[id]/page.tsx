@@ -21,7 +21,7 @@ export default function SignalExplainPage({ params }: { params: Promise<{ id: st
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`/api/iflow/signals/${id}/explain`, { cache: "no-store" })
+    fetch(`/api/iflow/signals/explain/${id}`, { cache: "no-store" })
       .then((res) => res.ok ? res.json() : null)
       .then((d) => setData(d))
       .finally(() => setLoading(false));
