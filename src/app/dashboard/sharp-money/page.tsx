@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
+import { ALL_INSTRUMENTS } from "@/lib/constants";
 
 type RadarView = "dashboard" | "events" | "watchlist";
 type ActivityLevel = "high" | "elevated" | "moderate" | "low";
@@ -26,6 +28,11 @@ interface RadarData {
   warning: string | null;
   changePct: number;
   price: number;
+  // Extra quote data carried through so the trade-setup panel can
+  // compute entry / SL / TP from the same session range the radar saw.
+  high: number;
+  low: number;
+  decimals: number;
 }
 
 const ACTIVITY_CONFIG: Record<ActivityLevel, { label: string; color: string; badge: string }> = {
@@ -93,12 +100,139 @@ function deriveRadarData(quote: any): RadarData {
   // Explanation
   const explanation = generateExplanation(quote.displayName, direction, radarScore, activity, signals, confidence, isActiveSession);
 
+  const inst = ALL_INSTRUMENTS.find((i) => i.symbol === quote.symbol);
   return {
     symbol: quote.symbol, displayName: quote.displayName, category: quote.category,
     radarScore, direction, activity, volatilityShift, structureBehavior, reactionQuality,
     timingContext, pressurePersistence, signals, explanation, confidence, warning,
     changePct, price: quote.price,
+    high: quote.high ?? quote.price,
+    low: quote.low ?? quote.price,
+    decimals: inst?.decimals ?? 2,
   };
+}
+
+/**
+ * Turn a strong radar signal into a tradeable setup. Returns null when the
+ * signal isn't actionable — neutral direction, weak activity, or a warning
+ * present. Entry / SL / TP are derived from the session range the radar
+ * already scored, so the levels align with the activity being flagged.
+ */
+function radarToSetup(d: RadarData): {
+  side: "buy" | "sell";
+  entryLow: number;
+  entryHigh: number;
+  stopLoss: number;
+  takeProfit1: number;
+  takeProfit2: number;
+  riskReward: number;
+  grade: "A+" | "A" | "B";
+} | null {
+  if (d.direction === "neutral") return null;
+  if (d.activity !== "high" && d.activity !== "elevated") return null;
+  if (d.warning) return null;
+
+  const range = d.high - d.low;
+  if (range <= 0 || d.price <= 0) return null;
+
+  const isBuy = d.direction === "bullish";
+  // Entry zone: inside the recent range, skewed toward the pullback side.
+  const entryMid = isBuy ? d.low + range * 0.30 : d.high - range * 0.30;
+  const entryFar = isBuy ? d.low + range * 0.50 : d.high - range * 0.50;
+  const entryLow = Math.min(entryMid, entryFar);
+  const entryHigh = Math.max(entryMid, entryFar);
+
+  // Stop beyond the session extreme with a small buffer.
+  const stopLoss = isBuy ? d.low - range * 0.18 : d.high + range * 0.18;
+
+  // Targets scaled to measured risk.
+  const anchor = (entryLow + entryHigh) / 2;
+  const risk = Math.abs(anchor - stopLoss);
+  const takeProfit1 = isBuy ? anchor + risk * 1.5 : anchor - risk * 1.5;
+  const takeProfit2 = isBuy ? anchor + risk * 2.5 : anchor - risk * 2.5;
+  const riskReward = risk > 0 ? Math.abs(takeProfit2 - anchor) / risk : 0;
+
+  // Grade is a blend of radar score and confidence.
+  const blended = (d.radarScore + d.confidence) / 2;
+  const grade: "A+" | "A" | "B" =
+    blended >= 80 && d.activity === "high" ? "A+" : blended >= 65 ? "A" : "B";
+
+  return { side: isBuy ? "buy" : "sell", entryLow, entryHigh, stopLoss, takeProfit1, takeProfit2, riskReward, grade };
+}
+
+function fmt(n: number, decimals: number): string {
+  return n.toFixed(decimals);
+}
+
+function RadarTradeSetup({ d }: { d: RadarData }) {
+  const setup = radarToSetup(d);
+  if (!setup) return null;
+  const isBuy = setup.side === "buy";
+  const gradeClass =
+    setup.grade === "A+" ? "bg-purple-500/15 text-purple-300 border-purple-500/40" :
+    setup.grade === "A" ? "bg-bull/15 text-bull-light border-bull/40" :
+    "bg-accent/15 text-accent-light border-accent/40";
+  return (
+    <div className="rounded-xl border border-border/50 bg-surface-2/40 p-3 space-y-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">Trade Setup</span>
+          <span className={cn("text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border", gradeClass)}>
+            {setup.grade}
+          </span>
+          <span className={cn(
+            "px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md border",
+            isBuy ? "bg-bull/10 text-bull-light border-bull/40" : "bg-bear/10 text-bear-light border-bear/40",
+          )}>
+            {isBuy ? "▲ BUY" : "▼ SELL"}
+          </span>
+        </div>
+        <span className="text-[11px] text-muted font-mono">
+          RR {setup.riskReward.toFixed(2)} · Score {d.radarScore} · Conf {d.confidence}%
+        </span>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono">
+        <div className="rounded-lg bg-surface-3/40 border border-border/30 p-2 text-center">
+          <div className="text-[9px] uppercase text-muted mb-0.5">Entry</div>
+          <div className="text-foreground">{fmt(setup.entryLow, d.decimals)} – {fmt(setup.entryHigh, d.decimals)}</div>
+        </div>
+        <div className="rounded-lg bg-bear/5 border border-bear/20 p-2 text-center">
+          <div className="text-[9px] uppercase text-bear-light mb-0.5">Stop</div>
+          <div className="text-bear-light">{fmt(setup.stopLoss, d.decimals)}</div>
+        </div>
+        <div className="rounded-lg bg-bull/5 border border-bull/20 p-2 text-center">
+          <div className="text-[9px] uppercase text-bull-light mb-0.5">TP1</div>
+          <div className="text-bull-light">{fmt(setup.takeProfit1, d.decimals)}</div>
+        </div>
+        <div className="rounded-lg bg-bull/5 border border-bull/20 p-2 text-center">
+          <div className="text-[9px] uppercase text-bull-light mb-0.5">TP2</div>
+          <div className="text-bull-light">{fmt(setup.takeProfit2, d.decimals)}</div>
+        </div>
+      </div>
+      <p className="text-[10px] text-muted-light">
+        Aligned with the radar read: {d.direction} pressure at {d.activity === "high" ? "high" : "elevated"} interest on the {d.category} side.
+        Stop sits just beyond the session {isBuy ? "low" : "high"}; targets scale 1.5R / 2.5R off the measured risk.
+      </p>
+      <ExecuteTradeButton
+        setup={{
+          symbol: d.symbol,
+          direction: setup.side,
+          entry: (setup.entryLow + setup.entryHigh) / 2,
+          stopLoss: setup.stopLoss,
+          takeProfit: setup.takeProfit1,
+          takeProfit2: setup.takeProfit2,
+          timeframe: "1h",
+          setupType: "sharp_money_radar",
+          qualityGrade: setup.grade,
+          confidenceScore: d.confidence,
+          sourceType: "sharp_money_radar",
+          sourceRef: d.symbol,
+        }}
+        size="md"
+        className="w-full"
+      />
+    </div>
+  );
 }
 
 function generateExplanation(name: string, dir: string, score: number, activity: ActivityLevel, signals: string[], conf: number, activeSession: boolean): string {
@@ -249,6 +383,8 @@ export default function SharpMoneyPage() {
                       ))}
                     </div>
                     <div className="text-[10px] text-muted">Confidence: <span className="text-foreground font-medium">{d.confidence}%</span> • Freshness: <span className="text-foreground capitalize">{Math.abs(d.changePct) > 0.3 ? "Fresh" : Math.abs(d.changePct) > 0.1 ? "Recent" : "Aging"}</span></div>
+
+                    <RadarTradeSetup d={d} />
                   </div>
                 )}
               </div>
@@ -280,6 +416,9 @@ export default function SharpMoneyPage() {
                 ))}
               </div>
               <p className="text-xs text-muted leading-relaxed">{d.explanation}</p>
+              <div className="mt-3">
+                <RadarTradeSetup d={d} />
+              </div>
             </div>
           ))}
         </div>
