@@ -8,14 +8,10 @@ export const CANDLE_TIMEFRAMES = ["4h", "1h", "15min", "5min", "1day"] as const;
 export type CandleTimeframe = (typeof CANDLE_TIMEFRAMES)[number];
 
 // Full tracked universe for the Brain's candle pipeline: every instrument
-// we're confident TwelveData can serve candles for on our plan. Indices
-// (NAS100, US30, SPX500, GER40) and energy (USOIL) are intentionally
-// excluded — they either require a paid tier or return inconsistent
-// candles, producing noisy per-pair errors on every scan cycle. Quotes,
-// Market Radar, and Setups still cover the full 22-instrument universe.
-export const CANDLE_SYMBOLS = ALL_INSTRUMENTS
-  .filter((i) => i.category === "forex" || i.category === "metals" || i.category === "crypto")
-  .map((i) => i.symbol) as readonly string[];
+// the app surfaces. With the upgraded TwelveData plan (4,181 credits/min)
+// we can include indices and energy alongside forex/metals/crypto. If any
+// specific ticker returns empty data the error-density probe will flag it.
+export const CANDLE_SYMBOLS = ALL_INSTRUMENTS.map((i) => i.symbol) as readonly string[];
 
 // How many symbols get freshly fetched + analyzed per scan cycle.
 const PER_CYCLE_SYMBOL_BUDGET = 4;
@@ -155,15 +151,43 @@ export async function fetchAndPersistCandles(
       .filter((r) => Number.isFinite(r.open) && r.isClosed);
 
     if (rows.length === 0) {
+      // Provider returned nothing useful (market closed, thin data, etc.).
+      // Still record the check so the Agent freshness probe sees we tried.
+      await bumpFetchedAt(symbol, timeframe);
       return { symbol, timeframe, written: 0, fetched: raw.length };
     }
     const result = await prisma.candle.createMany({
       data: rows,
       skipDuplicates: true,
     });
+    // Record the successful check. Even when all returned candles are
+    // duplicates (no new rows written), the probe should see we refreshed
+    // — otherwise it flags the pair as stale forever.
+    await bumpFetchedAt(symbol, timeframe);
     return { symbol, timeframe, written: result.count, fetched: raw.length };
   } catch (err: any) {
     return { symbol, timeframe, written: 0, fetched: 0, error: err?.message || String(err) };
+  }
+}
+
+/**
+ * Mark a (symbol, timeframe) pair as "checked just now" by touching the
+ * fetchedAt on its newest candle. One read + one update per pair — the
+ * probe's freshness check groups by (symbol, timeframe) and looks at
+ * max(fetchedAt), so updating a single row is enough.
+ */
+async function bumpFetchedAt(symbol: string, timeframe: CandleTimeframe): Promise<void> {
+  try {
+    const newest = await prisma.candle.findFirst({
+      where: { symbol, timeframe },
+      orderBy: { openTime: "desc" },
+      select: { id: true },
+    });
+    if (newest) {
+      await prisma.candle.update({ where: { id: newest.id }, data: { fetchedAt: new Date() } });
+    }
+  } catch {
+    // Non-fatal — freshness tracking is nice-to-have; never let it block a scan.
   }
 }
 
@@ -171,7 +195,8 @@ export async function fetchCandleSet(
   symbolToInstrumentId: Map<string, string>,
   opts: { delayMs?: number; outputsize?: number; symbols?: readonly string[] } = {}
 ): Promise<{ results: CandleFetchResult[]; totalWritten: number; requestCount: number }> {
-  const delayMs = opts.delayMs ?? 600;
+  // Tighter default spacing now that we're on the 4,181-credits/min plan.
+  const delayMs = opts.delayMs ?? 150;
   const outputsize = opts.outputsize ?? 50;
   const symbols = opts.symbols ?? CANDLE_SYMBOLS;
   const results: CandleFetchResult[] = [];

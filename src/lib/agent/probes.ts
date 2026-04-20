@@ -259,7 +259,10 @@ async function sourceCandle(): Promise<DataSourceSnapshot> {
     label: "Candles",
     tableName: "Candle",
     count: () => prisma.candle.count(),
-    lastUpdated: async () => (await prisma.candle.findFirst({ orderBy: { openTime: "desc" }, select: { openTime: true } }))?.openTime ?? null,
+    // fetchedAt tracks when we last asked the provider for this row. openTime
+    // is the bar's own time and can legitimately be hours/days old on longer
+    // timeframes, which would misleadingly look like staleness.
+    lastUpdated: async () => (await prisma.candle.findFirst({ orderBy: { fetchedAt: "desc" }, select: { fetchedAt: true } }))?.fetchedAt ?? null,
     warnSecs: 900,
     critSecs: 3600,
   });
