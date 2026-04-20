@@ -17,6 +17,28 @@ import { PrismaPg } from "@prisma/adapter-pg";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
+/**
+ * Detect whether DATABASE_URL points at a connection pooler (PgBouncer,
+ * Supavisor, etc.) rather than direct Postgres. We scan for common markers:
+ *   - ?pgbouncer=true or ?pooler=true in the URL
+ *   - hostnames containing "pooler", "pgbouncer", or "supavisor"
+ *   - port 6432 (the PgBouncer standard)
+ * When a pooler is detected we raise max connections (pooler fans out
+ * safely on the server side) and drop client-side idle timeouts so we
+ * return capacity to the pooler quickly.
+ */
+function detectPooler(connectionString: string): boolean {
+  try {
+    const url = new URL(connectionString);
+    const search = url.search.toLowerCase();
+    const host = url.hostname.toLowerCase();
+    if (search.includes("pgbouncer=true") || search.includes("pooler=true")) return true;
+    if (host.includes("pgbouncer") || host.includes("pooler") || host.includes("supavisor")) return true;
+    if (url.port === "6432") return true;
+  } catch { /* malformed URL — treat as direct */ }
+  return false;
+}
+
 function createClient(): PrismaClient {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
@@ -24,18 +46,21 @@ function createClient(): PrismaClient {
       "DATABASE_URL is not set. This Prisma client should only be constructed at request time, not build time."
     );
   }
-  return new PrismaClient({
-    adapter: new PrismaPg({
-      connectionString,
-      max: 3,
-      idleTimeoutMillis: 10_000,
-      connectionTimeoutMillis: 5_000,
-      // Kill a single connection that's been open more than 30 min — forces
-      // recycling so we don't accumulate zombies in long-lived serverless
-      // warm starts.
-      maxLifetimeSeconds: 1800,
-    }),
-  });
+
+  const pooled = detectPooler(connectionString);
+
+  // Pooled path: PgBouncer / Supavisor handles real concurrency so we can
+  // safely raise per-instance max without nuking the DB. Short idle lets
+  // the pooler reclaim sessions between requests.
+  //
+  // Direct path: no pooler in front, so we conservatively cap at 3 to
+  // keep Railway's ~100 connection ceiling reachable even with ~30 warm
+  // serverless instances + cron.
+  const poolConfig = pooled
+    ? { connectionString, max: 12, idleTimeoutMillis: 5_000, connectionTimeoutMillis: 5_000, maxLifetimeSeconds: 1800 }
+    : { connectionString, max: 3, idleTimeoutMillis: 10_000, connectionTimeoutMillis: 5_000, maxLifetimeSeconds: 1800 };
+
+  return new PrismaClient({ adapter: new PrismaPg(poolConfig) });
 }
 
 function resolveClient(): PrismaClient {
