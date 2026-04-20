@@ -8,7 +8,7 @@
     },
     {
       "path": "/api/brain/crypto-refresh",
-      "schedule": "*/2 * * * *"
+      "schedule": "1-59/2 * * * *"
     },
     {
       "path": "/api/brain/learn",
