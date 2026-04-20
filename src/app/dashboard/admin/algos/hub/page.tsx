@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { AlgoConfigPanel, useAlgoConfig, AlgoAccountsCard } from "@/components/algo/AlgoConfig";
+import { AlgoBotStatusPanel } from "@/components/algo/AlgoBotStatusPanel";
 
 /* ───────── types ───────── */
 type AlgoTab = "dashboard" | "strategies" | "settings" | "trades" | "analytics" | "config";
@@ -92,7 +93,7 @@ function Skeleton() {
 
 /* ───────── main page ───────── */
 export default function AlgoHubPage() {
-  const { settings: algoSettings, updateSettings: updateAlgoSettings } = useAlgoConfig("algo_hub");
+  const { settings: algoSettings, updateSettings: updateAlgoSettings, serverState, setBotFlags } = useAlgoConfig("hub");
   const [tab, setTab] = useState<AlgoTab>("dashboard");
   const [botStatus, setBotStatus] = useState<BotStatus>("idle");
   const [opMode, setOpMode] = useState<OpMode>("Paper Trade");
@@ -280,6 +281,34 @@ export default function AlgoHubPage() {
       {tab === "config" && (
         <div className="space-y-4">
           <AlgoAccountsCard settings={algoSettings} updateSettings={updateAlgoSettings} />
+          <AlgoBotStatusPanel botId="hub" />
+          <div className="glass-card p-4 flex items-center justify-between">
+            <div>
+              <div className="text-sm font-semibold text-foreground">Server routing</div>
+              <div className="text-xs text-muted">
+                {serverState.enabled && serverState.running
+                  ? "Routing matching A/A+ setups to linked MT accounts"
+                  : "Disabled — toggle on to route matching setups to linked MT accounts"}
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                const next = !(serverState.enabled && serverState.running);
+                setBotFlags({ enabled: next, running: next });
+              }}
+              className={cn(
+                "w-12 h-6 rounded-full relative transition-smooth",
+                serverState.enabled && serverState.running ? "bg-accent" : "bg-surface-3",
+              )}
+            >
+              <div
+                className={cn(
+                  "absolute top-0.5 w-5 h-5 rounded-full bg-white transition-smooth",
+                  serverState.enabled && serverState.running ? "left-6" : "left-0.5",
+                )}
+              />
+            </button>
+          </div>
           <AlgoConfigPanel settings={algoSettings} updateSettings={updateAlgoSettings} botName="Algo Hub" />
         </div>
       )}

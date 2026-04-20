@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { AlgoConfigPanel, useAlgoConfig, AlgoRoutingBadge, AlgoAccountsCard } from "@/components/algo/AlgoConfig";
+import { AlgoBotStatusPanel } from "@/components/algo/AlgoBotStatusPanel";
 
 /* ───────── types ───────── */
 const SYMBOLS = ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "BTCUSD", "XAGUSD", "US30", "USOIL", "NAS100", "USDCHF", "GBPJPY"];
@@ -142,7 +143,7 @@ function Skeleton() {
 
 /* ───────── main page ───────── */
 export default function AlgoVicPage() {
-  const { settings: algoSettings, updateSettings: updateAlgoSettings } = useAlgoConfig("algo_vic");
+  const { settings: algoSettings, updateSettings: updateAlgoSettings, serverState, setBotFlags } = useAlgoConfig("vic");
   const [showConfig, setShowConfig] = useState(true);
   const [symbolStates, setSymbolStates] = useState<SymbolState[]>([]);
   const [botMode, setBotMode] = useState<"signal" | "live">("signal");
@@ -282,6 +283,40 @@ export default function AlgoVicPage() {
 
       {/* Trading Accounts — hoisted from config so it's always visible */}
       <AlgoAccountsCard settings={algoSettings} updateSettings={updateAlgoSettings} />
+
+      {/* Live server-routing activity */}
+      <AlgoBotStatusPanel botId="vic" />
+
+      {/* Server routing toggle — Algo Vic has its own in-page bot controls,
+          but the server runtime is driven separately so you can enable
+          routing without changing the page's scanner behaviour. */}
+      <div className="glass-card p-4 flex items-center justify-between">
+        <div>
+          <div className="text-sm font-semibold text-foreground">Server routing</div>
+          <div className="text-xs text-muted">
+            {serverState.enabled && serverState.running
+              ? "Routing matching A/A+ setups to linked MT accounts"
+              : "Disabled — toggle on to route matching setups to linked MT accounts"}
+          </div>
+        </div>
+        <button
+          onClick={() => {
+            const next = !(serverState.enabled && serverState.running);
+            setBotFlags({ enabled: next, running: next });
+          }}
+          className={cn(
+            "w-12 h-6 rounded-full relative transition-smooth",
+            serverState.enabled && serverState.running ? "bg-accent" : "bg-surface-3",
+          )}
+        >
+          <div
+            className={cn(
+              "absolute top-0.5 w-5 h-5 rounded-full bg-white transition-smooth",
+              serverState.enabled && serverState.running ? "left-6" : "left-0.5",
+            )}
+          />
+        </button>
+      </div>
 
       {/* Config Toggle */}
       <button

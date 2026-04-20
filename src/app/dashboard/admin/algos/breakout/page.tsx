@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { AlgoConfigPanel, useAlgoConfig, AlgoRoutingBadge, AlgoAccountsCard } from "@/components/algo/AlgoConfig";
+import { AlgoBotStatusPanel } from "@/components/algo/AlgoBotStatusPanel";
 
 interface MarketQuote {
   symbol: string;
@@ -37,10 +38,10 @@ const breakoutTypes = [
 ];
 
 export default function BreakoutAlgoPage() {
-  const { settings: algoSettings, updateSettings: updateAlgoSettings } = useAlgoConfig("breakout");
+  const { settings: algoSettings, updateSettings: updateAlgoSettings, serverState, setBotFlags } = useAlgoConfig("breakout");
   const [showConfig, setShowConfig] = useState(true);
-  const [enabled, setEnabled] = useState(false);
-  const [running, setRunning] = useState(false);
+  const enabled = serverState.enabled;
+  const running = serverState.running;
   const [lotSize, setLotSize] = useState("0.10");
   const [maxTrades, setMaxTrades] = useState("6");
   const [maxLoss, setMaxLoss] = useState("200");
@@ -128,10 +129,11 @@ export default function BreakoutAlgoPage() {
 
   const handleToggleEnabled = () => {
     const next = !enabled;
-    setEnabled(next);
     addLog(next ? "Algo ENABLED" : "Algo DISABLED");
-    if (!next) {
-      setRunning(false);
+    if (next) {
+      setBotFlags({ enabled: true });
+    } else {
+      setBotFlags({ enabled: false, running: false });
       addLog("Bot stopped (disabled)");
     }
   };
@@ -139,8 +141,8 @@ export default function BreakoutAlgoPage() {
   const handleToggleRunning = () => {
     if (!enabled) return;
     const next = !running;
-    setRunning(next);
-    addLog(next ? "Bot STARTED - monitoring breakout triggers" : "Bot STOPPED");
+    addLog(next ? "Bot STARTED - server runtime will route matching setups" : "Bot STOPPED");
+    setBotFlags({ running: next });
   };
 
   if (loading) {
@@ -233,6 +235,9 @@ export default function BreakoutAlgoPage() {
 
       {/* Trading Accounts — hoisted from config so it's always visible */}
       <AlgoAccountsCard settings={algoSettings} updateSettings={updateAlgoSettings} />
+
+      {/* Live server-routing activity */}
+      <AlgoBotStatusPanel botId="breakout" />
 
       {/* Config Toggle */}
       <button

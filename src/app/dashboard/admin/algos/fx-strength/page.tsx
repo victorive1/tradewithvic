@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { AlgoConfigPanel, useAlgoConfig, AlgoRoutingBadge, AlgoAccountsCard } from "@/components/algo/AlgoConfig";
+import { AlgoBotStatusPanel } from "@/components/algo/AlgoBotStatusPanel";
 
 interface MarketQuote {
   symbol: string;
@@ -29,10 +30,10 @@ interface Signal {
 const timeframes = ["M5", "M15", "H1", "H4"];
 
 export default function FXStrengthAlgoPage() {
-  const { settings: algoSettings, updateSettings: updateAlgoSettings } = useAlgoConfig("fx_strength");
+  const { settings: algoSettings, updateSettings: updateAlgoSettings, serverState, setBotFlags } = useAlgoConfig("fx-strength");
   const [showConfig, setShowConfig] = useState(true);
-  const [enabled, setEnabled] = useState(false);
-  const [running, setRunning] = useState(false);
+  const enabled = serverState.enabled;
+  const running = serverState.running;
   const [lotSize, setLotSize] = useState("0.10");
   const [timeframe, setTimeframe] = useState("M15");
   const [maxTrades, setMaxTrades] = useState("5");
@@ -114,19 +115,16 @@ export default function FXStrengthAlgoPage() {
 
   const handleToggleEnabled = () => {
     const next = !enabled;
-    setEnabled(next);
     addLog(next ? "Algo ENABLED" : "Algo DISABLED");
-    if (!next) {
-      setRunning(false);
-      addLog("Bot stopped (disabled)");
-    }
+    if (next) setBotFlags({ enabled: true });
+    else setBotFlags({ enabled: false, running: false });
   };
 
   const handleToggleRunning = () => {
     if (!enabled) return;
     const next = !running;
-    setRunning(next);
-    addLog(next ? "Bot STARTED - scanning for setups" : "Bot STOPPED");
+    addLog(next ? "Bot STARTED - server runtime will route matching setups" : "Bot STOPPED");
+    setBotFlags({ running: next });
   };
 
   if (loading) {
@@ -234,6 +232,9 @@ export default function FXStrengthAlgoPage() {
 
       {/* Trading Accounts — hoisted from config so it's always visible */}
       <AlgoAccountsCard settings={algoSettings} updateSettings={updateAlgoSettings} />
+
+      {/* Live server-routing activity */}
+      <AlgoBotStatusPanel botId="fx-strength" />
 
       {/* Config Toggle */}
       <button

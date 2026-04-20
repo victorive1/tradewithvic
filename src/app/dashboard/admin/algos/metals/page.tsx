@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { AlgoConfigPanel, useAlgoConfig, AlgoRoutingBadge, AlgoAccountsCard } from "@/components/algo/AlgoConfig";
+import { AlgoBotStatusPanel } from "@/components/algo/AlgoBotStatusPanel";
 
 interface MarketQuote {
   symbol: string;
@@ -35,10 +36,10 @@ const entryModels = [
 ];
 
 export default function MetalsAlgoPage() {
-  const { settings: algoSettings, updateSettings: updateAlgoSettings } = useAlgoConfig("metals");
+  const { settings: algoSettings, updateSettings: updateAlgoSettings, serverState, setBotFlags } = useAlgoConfig("metals");
   const [showConfig, setShowConfig] = useState(true);
-  const [enabled, setEnabled] = useState(false);
-  const [running, setRunning] = useState(false);
+  const enabled = serverState.enabled;
+  const running = serverState.running;
   const [lotSize, setLotSize] = useState("0.10");
   const [maxTrades, setMaxTrades] = useState("3");
   const [maxLoss, setMaxLoss] = useState("250");
@@ -160,19 +161,16 @@ export default function MetalsAlgoPage() {
 
   const handleToggleEnabled = () => {
     const next = !enabled;
-    setEnabled(next);
     addLog(next ? "Algo ENABLED" : "Algo DISABLED");
-    if (!next) {
-      setRunning(false);
-      addLog("Bot stopped (disabled)");
-    }
+    if (next) setBotFlags({ enabled: true });
+    else setBotFlags({ enabled: false, running: false });
   };
 
   const handleToggleRunning = () => {
     if (!enabled) return;
     const next = !running;
-    setRunning(next);
-    addLog(next ? "Bot STARTED - scanning metals" : "Bot STOPPED");
+    addLog(next ? "Bot STARTED - server runtime will route matching setups" : "Bot STOPPED");
+    setBotFlags({ running: next });
   };
 
   const instruments = [
@@ -311,6 +309,9 @@ export default function MetalsAlgoPage() {
 
       {/* Trading Accounts — hoisted from config so it's always visible */}
       <AlgoAccountsCard settings={algoSettings} updateSettings={updateAlgoSettings} />
+
+      {/* Live server-routing activity */}
+      <AlgoBotStatusPanel botId="metals" />
 
       {/* Config Toggle */}
       <button
