@@ -145,24 +145,33 @@ export default function SetupProPage() {
   const [filter, setFilter] = useState("all");
   const [timeframe, setTimeframe] = useState<TimeframeValue>("all");
   const [chartSymbol, setChartSymbol] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     async function load() {
       try {
-        const res = await fetch("/api/market/setups");
+        // cache: "no-store" + timestamp query keeps the setup feed truly live.
+        const res = await fetch(`/api/market/setups?t=${Date.now()}`, { cache: "no-store" });
         const data = await res.json();
-        if (data.setups) {
+        if (!cancelled && data.setups) {
           // Only show A+ and A setups for Pro
           const pro = data.setups.filter((s: TradeSetup) => s.qualityGrade === "A+" || s.qualityGrade === "A");
           setSetups(pro);
+          setLastUpdated(data.timestamp ?? Date.now());
         }
       } catch (e) { console.error("Failed to load setups:", e); }
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     }
     load();
-    const interval = setInterval(load, 120000);
-    return () => clearInterval(interval);
+    const interval = setInterval(load, 60_000);
+    return () => { cancelled = true; clearInterval(interval); };
   }, []);
+
+  const ageSec = lastUpdated ? Math.round((Date.now() - lastUpdated) / 1000) : null;
+  const freshnessLabel = ageSec == null ? null
+    : ageSec < 60 ? `${ageSec}s ago`
+    : `${Math.floor(ageSec / 60)}m ago`;
 
   const filteredByDirection = filter === "all" ? setups : setups.filter((s) => s.direction === filter);
   const timeframeCounts = buildTimeframeCounts(filteredByDirection, (s) => s.timeframe);
@@ -184,10 +193,13 @@ export default function SetupProPage() {
       {chartSymbol && <ChartModal symbol={chartSymbol} onClose={() => setChartSymbol(null)} />}
 
       <div>
-        <div className="flex items-center gap-3 mb-1">
+        <div className="flex items-center gap-3 mb-1 flex-wrap">
           <h1 className="text-2xl font-bold text-foreground">Trade Setup Pro</h1>
           <span className="text-xs bg-accent/20 text-accent-light px-2 py-0.5 rounded-full border border-accent/30">Premium</span>
           <span className="flex items-center gap-1.5 text-xs text-muted"><span className="w-1.5 h-1.5 rounded-full bg-bull pulse-live" />Live</span>
+          {freshnessLabel && (
+            <span className="text-xs text-muted">Last updated {freshnessLabel} · refreshes every 60s</span>
+          )}
         </div>
         <p className="text-sm text-muted">Curated A+ and A setups only. Real-time charts. Quality over quantity.</p>
       </div>

@@ -15,7 +15,11 @@ const setupFilters = [
   { id: "bestrr", label: "Best R:R" },
 ];
 
-export function SetupsClient({ initialSetups }: { initialSetups: TradeSetup[] }) {
+export function SetupsClient({ initialSetups, lastUpdated }: { initialSetups: TradeSetup[]; lastUpdated?: number | null }) {
+  const ageSec = lastUpdated ? Math.round((Date.now() - lastUpdated) / 1000) : null;
+  const freshnessLabel = ageSec == null ? null
+    : ageSec < 60 ? `${ageSec}s ago`
+    : `${Math.floor(ageSec / 60)}m ago`;
   const [category, setCategory] = useState("all");
   const [filter, setFilter] = useState("all");
   const [direction, setDirection] = useState<"all" | "buy" | "sell">("all");
@@ -48,9 +52,15 @@ export function SetupsClient({ initialSetups }: { initialSetups: TradeSetup[] })
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Trade Setups</h1>
+        <div className="flex items-center gap-3 flex-wrap">
+          <h1 className="text-2xl font-bold text-foreground">Trade Setups</h1>
+          <span className="text-xs bg-bull/10 text-bull-light px-2 py-0.5 rounded-full border border-bull/20 pulse-live">Live</span>
+          {freshnessLabel && (
+            <span className="text-xs text-muted">Last updated {freshnessLabel} · refreshes every 60s</span>
+          )}
+        </div>
         <p className="text-sm text-muted mt-1">
-          Curated trade ideas ranked by quality and confidence
+          Curated trade ideas ranked by quality and confidence — regenerated from live quotes on every refresh.
         </p>
       </div>
 

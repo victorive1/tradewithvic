@@ -7,21 +7,28 @@ import type { TradeSetup } from "@/lib/setup-engine";
 export default function SetupsPage() {
   const [setups, setSetups] = useState<TradeSetup[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     async function load() {
       try {
-        const res = await fetch("/api/market/setups");
+        // cache: "no-store" + timestamp query defeats any Next.js / CDN
+        // caching so the setups always reflect the latest quote snapshot.
+        const res = await fetch(`/api/market/setups?t=${Date.now()}`, { cache: "no-store" });
         const data = await res.json();
-        if (data.setups) setSetups(data.setups);
+        if (!cancelled && data.setups) {
+          setSetups(data.setups);
+          setLastUpdated(data.timestamp ?? Date.now());
+        }
       } catch (e) {
         console.error("Failed to load setups:", e);
       }
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     }
     load();
-    const interval = setInterval(load, 120000);
-    return () => clearInterval(interval);
+    const interval = setInterval(load, 60_000);
+    return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
   if (loading) {
@@ -37,5 +44,5 @@ export default function SetupsPage() {
     );
   }
 
-  return <SetupsClient initialSetups={setups} />;
+  return <SetupsClient initialSetups={setups} lastUpdated={lastUpdated} />;
 }
