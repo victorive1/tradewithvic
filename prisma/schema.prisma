@@ -965,6 +965,92 @@ model IndicatorSnapshot {
   @@index([trendBias])
 }
 
+// ==================== ADMIN ALGO RUNTIME ====================
+//
+// Admin-only algo bots. Each bot has one AlgoBotConfig row (keyed by
+// botId string, e.g. "breakout", "md", "us30", etc.) that the dashboard
+// UI reads/writes and that the server-side runtime loop consults every
+// 2 minutes to route matching TradeSetups through the real MT adapter.
+
+model AlgoBotConfig {
+  id                     String   @id @default(cuid())
+  botId                  String   @unique // "breakout" | "md" | "us30" | "metals" | "ob" | "fx-strength" | "vic" | "hub"
+  enabled                Boolean  @default(false)
+  running                Boolean  @default(false)
+
+  // Strategy filter — which setupTypes from the Brain to consider.
+  // Stored as comma-separated list so Postgres is happy either way.
+  strategyFilter         String   @default("") // e.g. "breakout" or "breakout,trend_pullback"
+  symbolFilter           String   @default("") // empty = all, otherwise "EURUSD,GBPUSD,..."
+
+  // Sizing
+  sizingMode             String   @default("fixed_lot") // fixed_lot | risk_percent
+  fixedLotSize           Float    @default(0.10)
+  riskPercent            Float    @default(1.0)
+
+  // Quality + risk gates
+  minScore               Int      @default(75)
+  minRiskReward          Float    @default(1.5)
+  maxOpenPositions       Int      @default(3)
+  maxPerPair             Int      @default(1)
+  maxSamePairInRow       Int      @default(2)
+  dailyDrawdownPercent   Float    @default(3.0)
+  pauseAfterLosses       Int      @default(3)
+
+  // Accounts (LinkedTradingAccount.accountLogin list)
+  selectedAccounts       String   @default("") // csv of logins
+
+  // Filters
+  newsFilter             Boolean  @default(true)
+  fridayCloseProtection  Boolean  @default(true)
+  preCloseBufferMinutes  Int      @default(30)
+  allowedSessions        String   @default("london,newyork")
+
+  ownerUserKey           String?  // admin that owns the bot — usually a single admin in practice
+
+  lastRunAt              DateTime?
+  lastErrorAt            DateTime?
+  lastErrorMessage       String?
+
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  executions             AlgoBotExecution[]
+
+  @@index([enabled])
+  @@index([updatedAt])
+}
+
+// One row per setup the runtime has routed (or attempted to route) for
+// a given bot — used for dedup, audit, and showing "Trades Today" on
+// the dashboard.
+model AlgoBotExecution {
+  id              String   @id @default(cuid())
+  algoBotConfigId String
+  botId           String
+  setupId         String
+  symbol          String
+  direction       String
+  grade           String?
+  accountLogin    String
+  accountId       String?
+
+  status          String   // "routed" | "rejected" | "duplicate" | "filtered"
+  rejectReason    String?
+
+  tradeRequestId  String?  // TradeExecutionRequest.id
+  tradeResultId   String?  // TradeExecutionResult.id
+  brokerOrderId   String?
+
+  routedAt        DateTime @default(now())
+
+  algoBotConfig   AlgoBotConfig @relation(fields: [algoBotConfigId], references: [id], onDelete: Cascade)
+
+  @@unique([botId, setupId, accountLogin])
+  @@index([botId, routedAt])
+  @@index([status])
+}
+
 // ==================== MARKET BRAIN — VWAP ENGINE (Phase 1) ====================
 //
 // Session / daily / weekly anchored VWAP with σ bands, slope classification,

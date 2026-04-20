@@ -313,8 +313,18 @@ function arraysEqualIgnoringOrder(a: string[], b: string[]): boolean {
   return true;
 }
 
+/**
+ * useAlgoConfig — local state backed by both localStorage (instant paint,
+ * offline-safe) and the /api/algos/config/[botId] endpoint (so the
+ * server-side runtime loop and any other admin browser see the same
+ * values). On mount we read localStorage first for snappy UX, then
+ * reconcile with the server. Every mutation writes through to both.
+ */
 export function useAlgoConfig(botId: string) {
   const [settings, setSettings] = useState<AlgoSettings>(defaultSettings);
+  const [serverState, setServerState] = useState<{ enabled: boolean; running: boolean }>(
+    { enabled: false, running: false },
+  );
 
   useEffect(() => {
     const saved = localStorage.getItem(`algo_config_${botId}`);
@@ -322,9 +332,6 @@ export function useAlgoConfig(botId: string) {
       try {
         const parsed = JSON.parse(saved);
         const next: AlgoSettings = { ...defaultSettings, ...parsed };
-        // Migration: users on the original 5-pair default get upgraded to
-        // the full instrument universe. Users who customized their list
-        // are left alone.
         if (Array.isArray(next.selectedPairs) && arraysEqualIgnoringOrder(next.selectedPairs, LEGACY_DEFAULT_PAIRS)) {
           next.selectedPairs = ALL_PAIR_SYMBOLS;
           try { localStorage.setItem(`algo_config_${botId}`, JSON.stringify(next)); } catch { /* ignore */ }
@@ -332,17 +339,108 @@ export function useAlgoConfig(botId: string) {
         setSettings(next);
       } catch { /* ignore */ }
     }
+
+    const userKey = getOrCreateUserKey();
+    fetch(`/api/algos/config/${botId}`, {
+      headers: userKey ? { "x-trading-user-key": userKey } : undefined,
+      cache: "no-store",
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((cfg) => {
+        if (!cfg) return;
+        setServerState({ enabled: !!cfg.enabled, running: !!cfg.running });
+        setSettings((prev) => {
+          const merged: AlgoSettings = {
+            ...prev,
+            sizingMode: cfg.sizingMode ?? prev.sizingMode,
+            fixedLotSize: cfg.fixedLotSize ?? prev.fixedLotSize,
+            riskPercent: cfg.riskPercent ?? prev.riskPercent,
+            minScore: cfg.minScore ?? prev.minScore,
+            minRiskReward: cfg.minRiskReward ?? prev.minRiskReward,
+            maxOpenPositions: cfg.maxOpenPositions ?? prev.maxOpenPositions,
+            maxPerPair: cfg.maxPerPair ?? prev.maxPerPair,
+            maxSamePairInRow: cfg.maxSamePairInRow ?? prev.maxSamePairInRow,
+            dailyDrawdownPercent: cfg.dailyDrawdownPercent ?? prev.dailyDrawdownPercent,
+            pauseAfterLosses: cfg.pauseAfterLosses ?? prev.pauseAfterLosses,
+            newsFilter: cfg.newsFilter ?? prev.newsFilter,
+            fridayCloseProtection: cfg.fridayCloseProtection ?? prev.fridayCloseProtection,
+            preCloseBufferMinutes: cfg.preCloseBufferMinutes ?? prev.preCloseBufferMinutes,
+          };
+          if (typeof cfg.selectedAccounts === "string" && cfg.selectedAccounts.length > 0) {
+            merged.selectedAccounts = cfg.selectedAccounts.split(",").filter(Boolean);
+          }
+          if (typeof cfg.allowedSessions === "string" && cfg.allowedSessions.length > 0) {
+            merged.allowedSessions = cfg.allowedSessions.split(",").filter(Boolean);
+          }
+          if (typeof cfg.symbolFilter === "string" && cfg.symbolFilter.length > 0) {
+            merged.selectedPairs = cfg.symbolFilter.split(",").filter(Boolean);
+          }
+          try { localStorage.setItem(`algo_config_${botId}`, JSON.stringify(merged)); } catch { /* ignore */ }
+          return merged;
+        });
+      })
+      .catch(() => { /* silent — localStorage fallback covers offline */ });
   }, [botId]);
+
+  async function persistToServer(next: AlgoSettings) {
+    const userKey = getOrCreateUserKey();
+    try {
+      await fetch(`/api/algos/config/${botId}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(userKey ? { "x-trading-user-key": userKey } : {}),
+        },
+        body: JSON.stringify({
+          sizingMode: next.sizingMode,
+          fixedLotSize: next.fixedLotSize,
+          riskPercent: next.riskPercent,
+          minScore: next.minScore,
+          minRiskReward: next.minRiskReward,
+          maxOpenPositions: next.maxOpenPositions,
+          maxPerPair: next.maxPerPair,
+          maxSamePairInRow: next.maxSamePairInRow,
+          dailyDrawdownPercent: next.dailyDrawdownPercent,
+          pauseAfterLosses: next.pauseAfterLosses,
+          selectedAccounts: next.selectedAccounts,
+          newsFilter: next.newsFilter,
+          fridayCloseProtection: next.fridayCloseProtection,
+          preCloseBufferMinutes: next.preCloseBufferMinutes,
+          allowedSessions: next.allowedSessions,
+          symbolFilter: next.selectedPairs,
+        }),
+      });
+    } catch { /* silent */ }
+  }
 
   function updateSettings(partial: Partial<AlgoSettings>) {
     setSettings((prev) => {
       const next = { ...prev, ...partial };
-      localStorage.setItem(`algo_config_${botId}`, JSON.stringify(next));
+      try { localStorage.setItem(`algo_config_${botId}`, JSON.stringify(next)); } catch { /* ignore */ }
+      persistToServer(next);
       return next;
     });
   }
 
-  return { settings, updateSettings };
+  async function setBotFlags(flags: { enabled?: boolean; running?: boolean }) {
+    const userKey = getOrCreateUserKey();
+    setServerState((prev) => ({
+      enabled: flags.enabled ?? prev.enabled,
+      running: flags.running ?? prev.running,
+    }));
+    try {
+      await fetch(`/api/algos/config/${botId}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(userKey ? { "x-trading-user-key": userKey } : {}),
+        },
+        body: JSON.stringify(flags),
+      });
+    } catch { /* silent */ }
+  }
+
+  return { settings, updateSettings, serverState, setBotFlags };
 }
 
 export function AlgoConfigPanel({

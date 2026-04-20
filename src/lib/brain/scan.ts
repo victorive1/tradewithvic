@@ -7,6 +7,7 @@ import { analyzeAllIndicators } from "@/lib/brain/indicators";
 import { analyzeAllLiquidity } from "@/lib/brain/liquidity";
 import { persistZonesForCycle } from "@/lib/brain/zones";
 import { analyzeAllVwap } from "@/lib/brain/vwap";
+import { runAlgoRuntime } from "@/lib/algos/runtime";
 import { detectAllStrategies } from "@/lib/brain/strategies";
 import { computeSentiment, persistSentiment } from "@/lib/brain/sentiment";
 import { analyzeEventRisk, seedPlaceholderEventsIfEmpty } from "@/lib/brain/fundamentals";
@@ -164,6 +165,18 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
     const execution = await runExecutionCycle();
 
     const oversight = await runOversightCycle();
+
+    // Admin algo runtime — routes qualifying A+/A setups from the Brain
+    // to the admin's linked MT accounts for each enabled AlgoBotConfig.
+    // Swallows its own errors so one bot failure doesn't fail the cycle.
+    try {
+      const algoRuntime = await runAlgoRuntime();
+      if (algoRuntime.errors.length > 0) {
+        for (const e of algoRuntime.errors.slice(0, 5)) errors.push(`algo: ${e}`);
+      }
+    } catch (err: any) {
+      errors.push(`algo-runtime: ${err?.message ?? String(err)}`);
+    }
 
     // Institutional Flow Intelligence — runs on the same 2-min cadence so
     // the live board stays fresh without a separate cron. Fire-and-forget
