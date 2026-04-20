@@ -7,6 +7,7 @@ import { analyzeAllIndicators } from "@/lib/brain/indicators";
 import { analyzeAllLiquidity } from "@/lib/brain/liquidity";
 import { persistZonesForCycle } from "@/lib/brain/zones";
 import { analyzeAllVwap } from "@/lib/brain/vwap";
+import { persistVolumeReferences } from "@/lib/brain/volume-proxy";
 import { runAlgoRuntime } from "@/lib/algos/runtime";
 import { detectAllStrategies } from "@/lib/brain/strategies";
 import { computeSentiment, persistSentiment } from "@/lib/brain/sentiment";
@@ -130,6 +131,15 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
     const zoneResult = await persistZonesForCycle(cycleSymbols, CANDLE_TIMEFRAMES).catch((err) => {
       errors.push(`zones: ${err?.message ?? String(err)}`);
       return { detected: 0, persisted: 0, lifecycleTransitions: 0 };
+    });
+
+    // Volume proxy — fetch real ETF/futures volume for spot FX + metals
+    // so VWAP has institutional flow to weight bars by. Crypto/indices
+    // bypass this (Candle.volume is already real). Silent errors — if
+    // the proxy is unreachable VWAP degrades to synthetic weighting.
+    await persistVolumeReferences(cycleSymbols).catch((err) => {
+      errors.push(`volume-proxy: ${err?.message ?? String(err)}`);
+      return { results: [], totalWritten: 0, requestCount: 0 };
     });
 
     // VWAP Phase 1 — daily + weekly anchored snapshots. Reuses the same

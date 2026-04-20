@@ -1051,6 +1051,35 @@ model AlgoBotExecution {
   @@index([status])
 }
 
+// ==================== MARKET BRAIN — VWAP VOLUME REFERENCE ====================
+//
+// Real-volume source for the VWAP engine. TwelveData returns 0 volume for
+// most spot FX, so for those pairs we fetch a liquid ETF / futures proxy
+// (FXE for EURUSD, GLD for XAUUSD, etc.) whose bar volume is genuine
+// institutional flow. Crypto / indices that already return real volume
+// bypass this table entirely and use Candle.volume directly.
+//
+// Keyed by (symbol, timeframe, openTime) — same shape as Candle so the
+// VWAP engine can LEFT JOIN cleanly. source field records which proxy
+// fed the row (futures | etf | spot) so the dashboard can show volume
+// lineage.
+
+model VolumeReference {
+  id           String   @id @default(cuid())
+  symbol       String   // internal FX Wonders symbol e.g. "EURUSD"
+  proxySymbol  String   // what we actually hit on TwelveData, e.g. "FXE"
+  timeframe    String
+  openTime     DateTime
+  closeTime    DateTime
+  volume       Float
+  source       String   @default("etf") // etf | futures | spot
+  fetchedAt    DateTime @default(now())
+
+  @@unique([symbol, timeframe, openTime])
+  @@index([symbol, timeframe])
+  @@index([fetchedAt])
+}
+
 // ==================== MARKET BRAIN — VWAP ENGINE (Phase 1) ====================
 //
 // Session / daily / weekly anchored VWAP with σ bands, slope classification,

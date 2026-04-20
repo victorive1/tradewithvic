@@ -54,6 +54,26 @@ function getAnchorTime(anchor: VwapAnchor, now: Date = new Date()): Date {
 }
 
 /**
+ * Merge a VolumeReference series into the candle window. For each bar we
+ * prefer the real proxy volume when we have one for that openTime — the
+ * ETF volume row was persisted by persistVolumeReferences before this
+ * function runs. Bars without a match fall through to the spot volume
+ * on the candle (crypto, indices, metals futures), and if that's 0 the
+ * computeAnchoredVwap fallback further down degrades to weight=1.
+ */
+function overlayProxyVolume(
+  candles: CandleRow[],
+  proxyByTime: Map<number, number>,
+): CandleRow[] {
+  if (proxyByTime.size === 0) return candles;
+  return candles.map((c) => {
+    const proxyVol = proxyByTime.get(c.openTime.getTime());
+    if (proxyVol && proxyVol > 0) return { ...c, volume: proxyVol };
+    return c;
+  });
+}
+
+/**
  * Compute running VWAP + σ bands from an ordered (oldest → newest) candle
  * window. Uses typical price (H+L+C)/3 weighted by volume. Bands are
  * running standard deviation of typical price around VWAP.
@@ -369,11 +389,18 @@ export async function analyzeVwap(
   const timeframe = BASE_TIMEFRAME[anchor];
   const anchorTime = getAnchorTime(anchor);
 
-  const rows = await prisma.candle.findMany({
-    where: { symbol, timeframe, openTime: { gte: anchorTime }, isClosed: true },
-    orderBy: { openTime: "asc" },
-    select: { openTime: true, open: true, high: true, low: true, close: true, volume: true },
-  });
+  const [rows, proxyRows] = await Promise.all([
+    prisma.candle.findMany({
+      where: { symbol, timeframe, openTime: { gte: anchorTime }, isClosed: true },
+      orderBy: { openTime: "asc" },
+      select: { openTime: true, open: true, high: true, low: true, close: true, volume: true },
+    }),
+    prisma.volumeReference.findMany({
+      where: { symbol, timeframe, openTime: { gte: anchorTime } },
+      orderBy: { openTime: "asc" },
+      select: { openTime: true, volume: true },
+    }),
+  ]);
 
   // Minimum bars for a meaningful VWAP — weekly needs more context, daily
   // can work with a handful of 15m bars.
@@ -382,7 +409,10 @@ export async function analyzeVwap(
     return { symbol, timeframe, anchor, computed: false };
   }
 
-  const candles = rows as CandleRow[];
+  const proxyByTime = new Map<number, number>(
+    proxyRows.map((r: { openTime: Date; volume: number }) => [r.openTime.getTime(), r.volume]),
+  );
+  const candles = overlayProxyVolume(rows as CandleRow[], proxyByTime);
   const calc = computeAnchoredVwap(candles);
   const last = candles[candles.length - 1];
   const price = last.close;

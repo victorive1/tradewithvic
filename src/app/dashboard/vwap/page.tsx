@@ -170,7 +170,9 @@ export default async function VwapPage() {
           </div>
         )}
         <p className="text-[10px] text-muted mt-3 italic">
-          FX/metals often return 0 volume from TwelveData — those rows fall back to time-weighted averaging (marked &quot;syn&quot;/&quot;deg&quot;).
+          Spot FX volume is proxied via liquid NYSE-listed ETFs (FXE, FXB, FXY, FXA, FXC, FXF) and
+          commodity ETFs (GLD, SLV) — real institutional flow during 13:30–20:00 UTC. Bars outside
+          those hours or without a proxy mapping degrade to time-weighted averaging (&quot;deg&quot;/&quot;syn&quot;).
         </p>
       </div>
 
