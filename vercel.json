@@ -7,6 +7,10 @@
       "schedule": "*/2 * * * *"
     },
     {
+      "path": "/api/brain/crypto-refresh",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/brain/learn",
       "schedule": "0 2 * * *"
     }
