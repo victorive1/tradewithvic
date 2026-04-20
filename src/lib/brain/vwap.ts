@@ -1,0 +1,282 @@
+import { prisma } from "@/lib/prisma";
+
+/**
+ * VWAP Phase 1 — anchored VWAP engine.
+ *
+ * Computes daily and weekly anchored VWAP with ±1σ / ±2σ bands, slope, bias,
+ * and regime classification. Runs on the same 2-min scan cadence as the rest
+ * of the brain layers so snapshots stay fresh for the dashboard and signal
+ * engine. Deviation events (reclaim, rejection, stretch, snapback) persist
+ * as discrete rows.
+ *
+ * Volume note: TwelveData returns 0 volume for most FX pairs. When that
+ * happens we synthesise weight = 1 per bar, which degrades to a time-weighted
+ * average price. Still useful as a fair-value reference but we flag
+ * volumeQuality so downstream scoring can discount it.
+ */
+
+interface CandleRow {
+  openTime: Date;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export type VwapAnchor = "daily" | "weekly";
+
+const BASE_TIMEFRAME: Record<VwapAnchor, string> = {
+  daily: "15min",
+  weekly: "1h",
+};
+
+/**
+ * Anchor reset times. Daily = 00:00 UTC of the current day. Weekly = Sunday
+ * 22:00 UTC (standard FX week open) so it covers the full Sun 22:00 → Fri
+ * 22:00 window; for 24/7 crypto this still works as a rolling 7-day mark.
+ */
+function getAnchorTime(anchor: VwapAnchor, now: Date = new Date()): Date {
+  if (anchor === "daily") {
+    const d = new Date(now);
+    d.setUTCHours(0, 0, 0, 0);
+    return d;
+  }
+  // weekly — walk back to last Sunday 22:00 UTC
+  const d = new Date(now);
+  const day = d.getUTCDay(); // 0 = Sun
+  const hour = d.getUTCHours();
+  // If we're past Sun 22:00 UTC, anchor is today; otherwise previous Sunday.
+  const daysBack = day === 0 && hour >= 22 ? 0 : (day === 0 ? 7 : day);
+  d.setUTCDate(d.getUTCDate() - daysBack);
+  d.setUTCHours(22, 0, 0, 0);
+  return d;
+}
+
+/**
+ * Compute running VWAP + σ bands from an ordered (oldest → newest) candle
+ * window. Uses typical price (H+L+C)/3 weighted by volume. Bands are
+ * running standard deviation of typical price around VWAP.
+ */
+function computeAnchoredVwap(candles: CandleRow[]): {
+  vwap: number;
+  stddev: number;
+  upperBand1: number;
+  lowerBand1: number;
+  upperBand2: number;
+  lowerBand2: number;
+  slope: number;
+  slopeState: "rising" | "falling" | "flat";
+  volumeQuality: "reliable" | "degraded" | "synthetic";
+  trail: number[]; // VWAP value at each bar — used for slope + events
+} {
+  const trail: number[] = [];
+  let cumPv = 0;
+  let cumV = 0;
+  let cumPv2 = 0; // for variance
+  let totalVol = 0;
+  let syntheticVol = 0;
+
+  for (const c of candles) {
+    const typical = (c.high + c.low + c.close) / 3;
+    // Guard against zero-volume bars (FX). Use 1 so the division still works
+    // — VWAP degrades to time-weighted average of typical price.
+    const vol = c.volume > 0 ? c.volume : 1;
+    if (c.volume <= 0) syntheticVol++;
+    totalVol++;
+    cumPv += typical * vol;
+    cumV += vol;
+    cumPv2 += typical * typical * vol;
+    const vwap = cumPv / cumV;
+    trail.push(vwap);
+  }
+
+  const last = trail.length - 1;
+  const vwap = trail[last];
+  const mean = vwap;
+  const variance = cumV > 0 ? Math.max(0, cumPv2 / cumV - mean * mean) : 0;
+  const stddev = Math.sqrt(variance);
+
+  // Slope across last ~10 bars of trail (or whatever we have).
+  const slopeWindow = Math.min(10, trail.length - 1);
+  const slope = slopeWindow > 0
+    ? (trail[last] - trail[last - slopeWindow]) / slopeWindow
+    : 0;
+  const slopeThresh = Math.max(1e-9, stddev * 0.05); // ~5% of σ per bar
+  const slopeState: "rising" | "falling" | "flat" =
+    slope > slopeThresh ? "rising" : slope < -slopeThresh ? "falling" : "flat";
+
+  const syntheticPct = totalVol > 0 ? syntheticVol / totalVol : 0;
+  const volumeQuality: "reliable" | "degraded" | "synthetic" =
+    syntheticPct >= 0.9 ? "synthetic" : syntheticPct >= 0.4 ? "degraded" : "reliable";
+
+  return {
+    vwap,
+    stddev,
+    upperBand1: vwap + stddev,
+    lowerBand1: vwap - stddev,
+    upperBand2: vwap + 2 * stddev,
+    lowerBand2: vwap - 2 * stddev,
+    slope,
+    slopeState,
+    volumeQuality,
+    trail,
+  };
+}
+
+function classifyBias(
+  price: number,
+  vwap: number,
+  slopeState: "rising" | "falling" | "flat",
+): "bullish" | "bearish" | "neutral" {
+  const above = price > vwap;
+  if (above && slopeState === "rising") return "bullish";
+  if (!above && slopeState === "falling") return "bearish";
+  return "neutral";
+}
+
+function classifyRegime(
+  zScore: number,
+  slopeState: "rising" | "falling" | "flat",
+): "trend" | "balanced" | "stretched" | "mean_revert" | "choppy" {
+  const absZ = Math.abs(zScore);
+  if (absZ >= 2.0) return "stretched";
+  if (absZ >= 1.2 && slopeState === "flat") return "mean_revert";
+  if (slopeState !== "flat" && absZ < 0.8) return "trend";
+  if (slopeState === "flat" && absZ < 0.5) return "balanced";
+  return "choppy";
+}
+
+export interface VwapAnalysisResult {
+  symbol: string;
+  timeframe: string;
+  anchor: VwapAnchor;
+  computed: boolean;
+  eventCreated?: string | null;
+}
+
+/**
+ * Analyze one (symbol, anchor) pair. Fetches the candle window from anchor
+ * time to now (at the anchor's base timeframe), computes VWAP + bands +
+ * slope + bias + regime, upserts the snapshot, and creates a deviation event
+ * on state transition.
+ */
+export async function analyzeVwap(
+  symbol: string,
+  anchor: VwapAnchor,
+): Promise<VwapAnalysisResult> {
+  const timeframe = BASE_TIMEFRAME[anchor];
+  const anchorTime = getAnchorTime(anchor);
+
+  const rows = await prisma.candle.findMany({
+    where: { symbol, timeframe, openTime: { gte: anchorTime }, isClosed: true },
+    orderBy: { openTime: "asc" },
+    select: { openTime: true, open: true, high: true, low: true, close: true, volume: true },
+  });
+
+  // Minimum bars for a meaningful VWAP — weekly needs more context, daily
+  // can work with a handful of 15m bars.
+  const minBars = anchor === "weekly" ? 12 : 4;
+  if (rows.length < minBars) {
+    return { symbol, timeframe, anchor, computed: false };
+  }
+
+  const candles = rows as CandleRow[];
+  const calc = computeAnchoredVwap(candles);
+  const last = candles[candles.length - 1];
+  const price = last.close;
+
+  const deviation = price - calc.vwap;
+  const deviationPct = calc.vwap > 0 ? (deviation / calc.vwap) * 100 : 0;
+  const zScore = calc.stddev > 0 ? deviation / calc.stddev : 0;
+
+  const position: "above" | "below" | "at" =
+    Math.abs(deviation) < calc.stddev * 0.1 ? "at" : deviation > 0 ? "above" : "below";
+  const bias = classifyBias(price, calc.vwap, calc.slopeState);
+  const regime = classifyRegime(zScore, calc.slopeState);
+
+  const existing = await prisma.vwapSnapshot.findUnique({
+    where: { symbol_timeframe_anchor: { symbol, timeframe, anchor } },
+    select: { position: true, bias: true, regime: true, vwap: true },
+  });
+
+  const data = {
+    anchorTime,
+    candleCount: candles.length,
+    lastClose: price,
+    vwap: calc.vwap,
+    upperBand1: calc.upperBand1,
+    lowerBand1: calc.lowerBand1,
+    upperBand2: calc.upperBand2,
+    lowerBand2: calc.lowerBand2,
+    stddev: calc.stddev,
+    slope: calc.slope,
+    slopeState: calc.slopeState,
+    deviationPct,
+    zScore,
+    position,
+    bias,
+    regime,
+    volumeQuality: calc.volumeQuality,
+  };
+
+  await prisma.vwapSnapshot.upsert({
+    where: { symbol_timeframe_anchor: { symbol, timeframe, anchor } },
+    create: { symbol, timeframe, anchor, ...data },
+    update: data,
+  });
+
+  let eventCreated: string | null = null;
+  if (existing) {
+    // Detect state transitions that correspond to classic VWAP events.
+    if (existing.position === "below" && position === "above") {
+      eventCreated = "reclaim";
+    } else if (existing.position === "above" && position === "below") {
+      eventCreated = "rejection";
+    } else if (regime === "stretched" && existing.regime !== "stretched") {
+      eventCreated = zScore > 0 ? "stretch_upper" : "stretch_lower";
+    } else if (existing.regime === "stretched" && regime !== "stretched" && Math.abs(zScore) < 1.0) {
+      eventCreated = "snapback";
+    }
+
+    if (eventCreated) {
+      await prisma.vwapDeviationEvent.create({
+        data: {
+          symbol,
+          timeframe,
+          anchor,
+          eventType: eventCreated,
+          price,
+          vwapAtEvent: calc.vwap,
+          zScoreAtEvent: zScore,
+          reason: `${existing.position}→${position} · z=${zScore.toFixed(2)} · slope=${calc.slopeState}`,
+        },
+      });
+    }
+  }
+
+  return { symbol, timeframe, anchor, computed: true, eventCreated };
+}
+
+/**
+ * Run VWAP analysis for every (symbol, anchor) pair. Parallelized the same
+ * way indicators + zones are — one Promise per pair, Prisma's pool queues
+ * the writes.
+ */
+export async function analyzeAllVwap(
+  symbols: readonly string[],
+): Promise<{
+  results: VwapAnalysisResult[];
+  snapshotsWritten: number;
+  eventsCreated: number;
+}> {
+  const anchors: VwapAnchor[] = ["daily", "weekly"];
+  const pairs: Array<[string, VwapAnchor]> = [];
+  for (const s of symbols) for (const a of anchors) pairs.push([s, a]);
+  const results = await Promise.all(pairs.map(([s, a]) => analyzeVwap(s, a).catch(() => ({
+    symbol: s, timeframe: BASE_TIMEFRAME[a], anchor: a, computed: false,
+  } as VwapAnalysisResult))));
+  const snapshotsWritten = results.filter((r) => r.computed).length;
+  const eventsCreated = results.filter((r) => r.eventCreated).length;
+  return { results, snapshotsWritten, eventsCreated };
+}

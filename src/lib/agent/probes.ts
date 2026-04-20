@@ -302,6 +302,18 @@ async function sourceSupplyDemandZone(): Promise<DataSourceSnapshot> {
   });
 }
 
+async function sourceVwapSnapshot(): Promise<DataSourceSnapshot> {
+  return snapTable({
+    label: "VWAP snapshots",
+    tableName: "VwapSnapshot",
+    count: () => prisma.vwapSnapshot.count(),
+    lastUpdated: async () => (await prisma.vwapSnapshot.findFirst({ orderBy: { updatedAt: "desc" }, select: { updatedAt: true } }))?.updatedAt ?? null,
+    warnSecs: 600,
+    critSecs: 1800,
+    note: "Daily + weekly anchors refreshed every 2-min scan cycle",
+  });
+}
+
 async function sourceLiquidityLevel(): Promise<DataSourceSnapshot> {
   return snapTable({
     label: "Liquidity levels",
@@ -499,7 +511,7 @@ export async function probeMarketPrediction(radarStatus: ProbeStatus, radarMessa
 }
 
 export async function probeMarketCoreBrain(): Promise<EngineStatus> {
-  const [p1, errorProbes, p3, p4, snapCycle, snapCandle, snapStruct, snapInd, snapLiq, snapZone, errors, alerts] = await Promise.all([
+  const [p1, errorProbes, p3, p4, snapCycle, snapCandle, snapStruct, snapInd, snapLiq, snapZone, snapVwap, errors, alerts] = await Promise.all([
     probeScanCycleFreshness(),
     probeScanCycleErrors(),
     probeCandleCoverage(),
@@ -510,6 +522,7 @@ export async function probeMarketCoreBrain(): Promise<EngineStatus> {
     sourceIndicatorSnapshot(),
     sourceLiquidityLevel(),
     sourceSupplyDemandZone(),
+    sourceVwapSnapshot(),
     recentScanCycleErrors(),
     recentMonitoringAlerts(["critical", "warning"]),
   ]);
@@ -519,12 +532,12 @@ export async function probeMarketCoreBrain(): Promise<EngineStatus> {
     id: "market-core-brain",
     label: "Market Core Brain",
     route: "/dashboard/brain",
-    summary: "2-minute multi-asset scanner: candles, structure, indicators, liquidity, strategies, confluence.",
+    summary: "2-minute multi-asset scanner: candles, structure, indicators, liquidity, strategies, confluence, VWAP.",
     status,
     statusMessage: probes.find((p) => p.status === status)?.message ?? "",
     lastUpdatedAt: snapCycle.lastUpdatedAt,
     probes,
-    dataSources: [snapCycle, snapCandle, snapStruct, snapInd, snapLiq, snapZone],
+    dataSources: [snapCycle, snapCandle, snapStruct, snapInd, snapLiq, snapZone, snapVwap],
     dependencies: [{ engineId: "market-radar", label: "Market Radar (quotes feed)", status: "healthy", statusMessage: "" }],
     recentErrors: [...errors, ...alerts].slice(0, 10),
   };

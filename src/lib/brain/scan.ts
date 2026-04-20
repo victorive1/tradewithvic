@@ -6,6 +6,7 @@ import { analyzeAllStructure } from "@/lib/brain/structure";
 import { analyzeAllIndicators } from "@/lib/brain/indicators";
 import { analyzeAllLiquidity } from "@/lib/brain/liquidity";
 import { persistZonesForCycle } from "@/lib/brain/zones";
+import { analyzeAllVwap } from "@/lib/brain/vwap";
 import { detectAllStrategies } from "@/lib/brain/strategies";
 import { computeSentiment, persistSentiment } from "@/lib/brain/sentiment";
 import { analyzeEventRisk, seedPlaceholderEventsIfEmpty } from "@/lib/brain/fundamentals";
@@ -50,6 +51,8 @@ export interface ScanCycleResult {
   zonesDetected: number;
   zonesPersisted: number;
   zoneTransitions: number;
+  vwapSnapshots: number;
+  vwapEvents: number;
   errors: string[];
 }
 
@@ -125,6 +128,14 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
     const zoneResult = await persistZonesForCycle(cycleSymbols, CANDLE_TIMEFRAMES).catch((err) => {
       errors.push(`zones: ${err?.message ?? String(err)}`);
       return { detected: 0, persisted: 0, lifecycleTransitions: 0 };
+    });
+
+    // VWAP Phase 1 — daily + weekly anchored snapshots. Reuses the same
+    // candle cache. Events (reclaim/rejection/stretch/snapback) emit on
+    // state transitions so the dashboard feed stays meaningful.
+    const vwapResult = await analyzeAllVwap(cycleSymbols).catch((err) => {
+      errors.push(`vwap: ${err?.message ?? String(err)}`);
+      return { results: [], snapshotsWritten: 0, eventsCreated: 0 };
     });
 
     const strategyResult = await detectAllStrategies(
@@ -215,6 +226,8 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       zonesDetected: zoneResult.detected,
       zonesPersisted: zoneResult.persisted,
       zoneTransitions: zoneResult.lifecycleTransitions,
+      vwapSnapshots: vwapResult.snapshotsWritten,
+      vwapEvents: vwapResult.eventsCreated,
       errors,
     };
   } catch (err: any) {
@@ -268,6 +281,8 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       zonesDetected: 0,
       zonesPersisted: 0,
       zoneTransitions: 0,
+      vwapSnapshots: 0,
+      vwapEvents: 0,
       errors,
     };
   }

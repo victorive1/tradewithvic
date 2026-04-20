@@ -965,6 +965,69 @@ model IndicatorSnapshot {
   @@index([trendBias])
 }
 
+// ==================== MARKET BRAIN — VWAP ENGINE (Phase 1) ====================
+//
+// Session / daily / weekly anchored VWAP with σ bands, slope classification,
+// and deviation event tracking. Built on the same 2-min scan cadence as the
+// other brain layers. FX/metals volume is often 0 on TwelveData so the
+// engine falls back to max(1, volume) — the reference level still captures
+// mean-reversion behaviour, and we flag "unreliable" in volumeQuality.
+
+model VwapSnapshot {
+  id        String @id @default(cuid())
+  symbol    String
+  timeframe String
+  anchor    String // "daily" | "weekly" | "session"
+
+  anchorTime  DateTime
+  candleCount Int
+  lastClose   Float
+
+  vwap        Float
+  upperBand1  Float // +1σ
+  lowerBand1  Float // -1σ
+  upperBand2  Float // +2σ
+  lowerBand2  Float // -2σ
+  stddev      Float
+
+  slope      Float // (vwap_now - vwap_n_ago) / n bars
+  slopeState String @default("flat") // rising | falling | flat
+
+  deviationPct Float // (price - vwap) / vwap * 100
+  zScore       Float // deviation / stddev
+
+  position String // "above" | "below" | "at"
+  bias     String // "bullish" | "bearish" | "neutral"
+  regime   String @default("balanced") // trend | balanced | stretched | mean_revert | choppy
+
+  volumeQuality String @default("reliable") // reliable | degraded | synthetic
+
+  computedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([symbol, timeframe, anchor])
+  @@index([updatedAt])
+  @@index([bias])
+  @@index([regime])
+}
+
+model VwapDeviationEvent {
+  id         String   @id @default(cuid())
+  symbol     String
+  timeframe  String
+  anchor     String
+  eventType  String // reclaim | rejection | stretch_upper | stretch_lower | snapback
+  price      Float
+  vwapAtEvent Float
+  zScoreAtEvent Float
+  reason     String?
+  detectedAt DateTime @default(now())
+
+  @@index([symbol, timeframe, anchor])
+  @@index([detectedAt])
+  @@index([eventType])
+}
+
 // ==================== TRADE SETUPS ====================
 
 model TradeSetup {

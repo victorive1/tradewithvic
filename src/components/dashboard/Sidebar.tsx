@@ -82,6 +82,7 @@ const navItems = [
       { label: "Sharp Money", href: "/dashboard/sharp-money", icon: "liquidity" },
       { label: "MTF Analyzer", href: "/dashboard/mtf", icon: "radar" },
       { label: "Volume Profile", href: "/dashboard/volume-profile", icon: "strength" },
+      { label: "VWAP Engine", href: "/dashboard/vwap", icon: "strength" },
       { label: "Daily Brief", href: "/dashboard/brief", icon: "calendar" },
       { label: "Macro Heatmap", href: "/dashboard/macro", icon: "strength" },
       { label: "Central Banks", href: "/dashboard/central-banks", icon: "levels" },
