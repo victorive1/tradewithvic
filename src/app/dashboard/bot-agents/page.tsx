@@ -5,42 +5,48 @@ import { cn } from "@/lib/utils";
 
 type AgentType = "supervisor" | "performance" | "debug";
 
-interface BotConfig {
-  botName: string;
-  entryType: string;
-  selectedTimeframes: string[];
-  selectedSessions: string[];
-  riskPerTrade: string;
-  maxSpread: string;
-  slMethod: string;
-  tpMethod: string;
-  maxTradesPerDay: string;
-  automationMode: string;
-  moveSLtoBE: boolean;
-  partialTP: boolean;
-  trailAfterBE: boolean;
-  createdAt: string;
+interface BotStatusApiRow {
+  botId: string;
+  name: string;
+  enabled: boolean;
+  running: boolean;
+  status: "healthy" | "warning" | "offline" | "stale";
+  lastRunAt: string | null;
+  lastErrorAt: string | null;
+  lastErrorMessage: string | null;
+  selectedAccounts: string;
+  allowedSessions: string;
+  strategyFilter: string;
+  symbolFilter: string;
+  signalsToday: number;
+  routedToday: number;
+  rejectedToday: number;
+  filteredToday: number;
 }
 
 interface BotRow {
+  botId: string;
   name: string;
-  status: "healthy" | "warning" | "offline";
+  status: "healthy" | "warning" | "offline" | "stale";
   lastHeartbeat: string;
   signalsToday: number;
   incidents: number;
-  config: BotConfig | null;
+  configured: boolean;
+  raw?: BotStatusApiRow;
 }
 
-const DEFAULT_BOT_NAMES = [
-  "FX Strength Algo",
-  "Order Block Algo",
-  "Market Direction Algo",
-  "Breakout Algo",
-  "US30 Algo",
-  "Silver & Gold Algo",
-  "Algo Trading Hub",
-  "Algo Vic",
-];
+function formatRelative(iso: string | null): string {
+  if (!iso) return "—";
+  const ms = Date.now() - new Date(iso).getTime();
+  const s = Math.round(ms / 1000);
+  if (s < 5) return "Just now";
+  if (s < 60) return `${s}s ago`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.round(h / 24)}d ago`;
+}
 
 const agents: { id: AgentType; name: string; desc: string }[] = [
   {
@@ -74,58 +80,28 @@ export default function BotAgentsPage() {
   const [isFetchingQuotes, setIsFetchingQuotes] = useState(false);
   const [isHealthChecking, setIsHealthChecking] = useState(false);
 
-  // Build bot rows from localStorage
-  const buildBotRows = useCallback((): BotRow[] => {
-    let savedBots: Record<string, BotConfig> = {};
+  // Fetch bot rows from server — replaces the old localStorage-only source
+  // that reported "0 configured" because it never saw the DB-backed bots.
+  const fetchBotRows = useCallback(async (): Promise<BotRow[]> => {
     try {
-      const raw = localStorage.getItem("twv_all_custom_bots");
-      if (raw) savedBots = JSON.parse(raw);
+      const res = await fetch("/api/algos/status", { cache: "no-store", credentials: "include" });
+      if (!res.ok) throw new Error(`status_${res.status}`);
+      const data = (await res.json()) as { bots: BotStatusApiRow[] };
+      return data.bots.map((b) => ({
+        botId: b.botId,
+        name: b.name,
+        status: b.status,
+        lastHeartbeat: formatRelative(b.lastRunAt),
+        signalsToday: b.signalsToday,
+        incidents: b.rejectedToday,
+        configured: b.enabled && b.running,
+        raw: b,
+      }));
     } catch {
-      // ignore
+      return [];
     }
-
-    // Also check the single custom bot key
-    try {
-      const single = localStorage.getItem("twv_custom_bot");
-      if (single) {
-        const cfg = JSON.parse(single) as BotConfig;
-        if (cfg.botName) savedBots[cfg.botName] = cfg;
-      }
-    } catch {
-      // ignore
-    }
-
-    const savedNames = new Set(Object.keys(savedBots));
-    const now = formatTime(new Date());
-
-    const rows: BotRow[] = DEFAULT_BOT_NAMES.map((name) => {
-      const hasConfig = savedNames.has(name);
-      return {
-        name,
-        status: hasConfig ? "healthy" : "offline",
-        lastHeartbeat: hasConfig ? now : "\u2014",
-        signalsToday: 0,
-        incidents: 0,
-        config: hasConfig ? savedBots[name] : null,
-      };
-    });
-
-    // Add any custom bots not in the default list
-    for (const [name, cfg] of Object.entries(savedBots)) {
-      if (!DEFAULT_BOT_NAMES.includes(name)) {
-        rows.push({
-          name,
-          status: "healthy",
-          lastHeartbeat: now,
-          signalsToday: 0,
-          incidents: 0,
-          config: cfg,
-        });
-      }
-    }
-
-    return rows;
   }, []);
+
 
   // Fetch quotes for freshness indicator
   const fetchQuotes = useCallback(async () => {
@@ -145,64 +121,57 @@ export default function BotAgentsPage() {
     }
   }, []);
 
-  // Initialize
+  // Initialize: fetch live bot state from DB
   useEffect(() => {
-    setBotRows(buildBotRows());
+    fetchBotRows().then(setBotRows);
     fetchQuotes();
-  }, [buildBotRows, fetchQuotes]);
+    // Auto-refresh every 30s so the dashboard doesn't silently decay.
+    const id = window.setInterval(() => {
+      fetchBotRows().then(setBotRows);
+    }, 30_000);
+    return () => window.clearInterval(id);
+  }, [fetchBotRows, fetchQuotes]);
 
-  // Run health check
-  const runHealthCheck = () => {
+  // Run health check — re-fetch from the server and summarize.
+  const runHealthCheck = async () => {
     setIsHealthChecking(true);
-    const rows = buildBotRows();
+    const rows = await fetchBotRows();
     setBotRows(rows);
 
-    const configured = rows.filter((r) => r.config !== null).length;
+    const configured = rows.filter((r) => r.configured).length;
     const active = rows.filter((r) => r.status === "healthy").length;
+    const stale = rows.filter((r) => r.status === "stale").length;
+    const offline = rows.filter((r) => r.status === "offline").length;
+    const warning = rows.filter((r) => r.status === "warning").length;
+    const routedToday = rows.reduce((n, r) => n + (r.raw?.routedToday ?? 0), 0);
+
+    const detail = `${configured} configured · ${active} healthy · ${warning} warning · ${stale} stale · ${offline} offline · ${routedToday} trades routed today`;
 
     const now = formatTime(new Date());
     setIncidentLog((prev) => [
-      { time: now, agent: "Supervisor", severity: "info", msg: `Health check complete. ${configured} bots configured, ${active} active.` },
+      { time: now, agent: "Supervisor", severity: "info", msg: `Health check complete. ${detail}.` },
       ...prev,
     ]);
-
-    setTimeout(() => {
-      setIsHealthChecking(false);
-      alert(`Health check complete. ${configured} bots configured, ${active} active.`);
-    }, 400);
+    setIsHealthChecking(false);
+    alert(`Health check complete.\n\n${detail}.`);
   };
 
-  // Restart all bots
-  const restartAllBots = () => {
-    if (!confirm("Are you sure you want to restart all bots? This will reset all bot states.")) return;
-
-    try {
-      localStorage.removeItem("twv_all_custom_bots");
-      localStorage.removeItem("twv_custom_bot");
-    } catch {
-      // ignore
-    }
-
+  const restartAllBots = async () => {
+    if (!confirm("Refresh bot state from the server?")) return;
+    const rows = await fetchBotRows();
+    setBotRows(rows);
     const now = formatTime(new Date());
-    setBotRows(
-      DEFAULT_BOT_NAMES.map((name) => ({
-        name,
-        status: "offline",
-        lastHeartbeat: "\u2014",
-        signalsToday: 0,
-        incidents: 0,
-        config: null,
-      }))
-    );
-
     setIncidentLog((prev) => [
-      { time: now, agent: "Supervisor", severity: "warning", msg: "All bots restarted. Configurations cleared." },
+      { time: now, agent: "Supervisor", severity: "info", msg: "Refreshed bot state from server." },
       ...prev,
     ]);
   };
 
-  const statusBadge = (s: "healthy" | "warning" | "offline") =>
-    s === "healthy" ? "bg-bull/10 text-bull-light" : s === "warning" ? "bg-warn/10 text-warn" : "bg-bear/10 text-bear-light";
+  const statusBadge = (s: BotRow["status"]) =>
+    s === "healthy" ? "bg-bull/10 text-bull-light"
+    : s === "warning" ? "bg-warn/10 text-warn"
+    : s === "stale" ? "bg-muted/20 text-muted-light"
+    : "bg-bear/10 text-bear-light";
 
   const sevColor = (sev: string) =>
     sev === "error" ? "bg-bear" : sev === "warning" ? "bg-warn" : "bg-accent";
@@ -376,73 +345,48 @@ export default function BotAgentsPage() {
           {/* Selected bot detail panel */}
           {selectedBotData && (
             <div className="mt-4 p-4 bg-surface-2 rounded-xl border border-border/50">
-              <h4 className="text-xs font-bold text-foreground mb-3">{selectedBotData.name} -- Configuration</h4>
-              {selectedBotData.config ? (
+              <h4 className="text-xs font-bold text-foreground mb-3">{selectedBotData.name} · Live state</h4>
+              {selectedBotData.raw ? (
                 <div className="grid grid-cols-2 gap-2 text-[10px]">
-                  <div>
-                    <span className="text-muted">Entry Type:</span>{" "}
-                    <span className="text-foreground font-medium">{selectedBotData.config.entryType}</span>
+                  <div><span className="text-muted">Enabled:</span>{" "}
+                    <span className="text-foreground font-medium">{selectedBotData.raw.enabled ? "Yes" : "No"}</span>
                   </div>
-                  <div>
-                    <span className="text-muted">Timeframes:</span>{" "}
+                  <div><span className="text-muted">Running:</span>{" "}
+                    <span className="text-foreground font-medium">{selectedBotData.raw.running ? "Yes" : "No"}</span>
+                  </div>
+                  <div><span className="text-muted">Strategy:</span>{" "}
+                    <span className="text-foreground font-medium">{selectedBotData.raw.strategyFilter || "(all)"}</span>
+                  </div>
+                  <div><span className="text-muted">Symbols:</span>{" "}
+                    <span className="text-foreground font-medium">{selectedBotData.raw.symbolFilter || "(all)"}</span>
+                  </div>
+                  <div><span className="text-muted">Sessions:</span>{" "}
+                    <span className="text-foreground font-medium">{selectedBotData.raw.allowedSessions || "(any)"}</span>
+                  </div>
+                  <div><span className="text-muted">Accounts:</span>{" "}
+                    <span className="text-foreground font-medium">{selectedBotData.raw.selectedAccounts || "(none)"}</span>
+                  </div>
+                  <div><span className="text-muted">Last heartbeat:</span>{" "}
+                    <span className="text-foreground font-medium">{formatRelative(selectedBotData.raw.lastRunAt)}</span>
+                  </div>
+                  <div><span className="text-muted">Last error:</span>{" "}
+                    <span className="text-foreground font-medium">{selectedBotData.raw.lastErrorAt ? formatRelative(selectedBotData.raw.lastErrorAt) : "never"}</span>
+                  </div>
+                  <div className="col-span-2"><span className="text-muted">Today:</span>{" "}
                     <span className="text-foreground font-medium">
-                      {selectedBotData.config.selectedTimeframes.join(", ")}
+                      {selectedBotData.raw.routedToday} routed · {selectedBotData.raw.filteredToday} filtered · {selectedBotData.raw.rejectedToday} rejected
                     </span>
                   </div>
-                  <div>
-                    <span className="text-muted">Sessions:</span>{" "}
-                    <span className="text-foreground font-medium">
-                      {selectedBotData.config.selectedSessions.join(", ")}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-muted">Risk:</span>{" "}
-                    <span className="text-foreground font-medium">{selectedBotData.config.riskPerTrade}%</span>
-                  </div>
-                  <div>
-                    <span className="text-muted">SL Method:</span>{" "}
-                    <span className="text-foreground font-medium">{selectedBotData.config.slMethod}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted">TP Method:</span>{" "}
-                    <span className="text-foreground font-medium">{selectedBotData.config.tpMethod}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted">Max Trades/Day:</span>{" "}
-                    <span className="text-foreground font-medium">{selectedBotData.config.maxTradesPerDay}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted">Mode:</span>{" "}
-                    <span className="text-foreground font-medium">{selectedBotData.config.automationMode}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted">Move SL to BE:</span>{" "}
-                    <span className="text-foreground font-medium">
-                      {selectedBotData.config.moveSLtoBE ? "Yes" : "No"}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-muted">Partial TP:</span>{" "}
-                    <span className="text-foreground font-medium">
-                      {selectedBotData.config.partialTP ? "Yes" : "No"}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-muted">Trail After BE:</span>{" "}
-                    <span className="text-foreground font-medium">
-                      {selectedBotData.config.trailAfterBE ? "Yes" : "No"}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-muted">Created:</span>{" "}
-                    <span className="text-foreground font-medium">
-                      {new Date(selectedBotData.config.createdAt).toLocaleDateString()}
-                    </span>
-                  </div>
+                  {selectedBotData.raw.lastErrorMessage && (
+                    <div className="col-span-2 mt-2 p-2 rounded bg-bear/10 border border-bear/30 text-bear-light">
+                      <span className="text-[9px] uppercase tracking-wider text-bear-light/70 block mb-1">Last error message</span>
+                      <span className="break-all">{selectedBotData.raw.lastErrorMessage}</span>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <p className="text-[10px] text-muted">
-                  No configuration found. Create a bot in the Custom Bot Builder to see its config here.
+                  This bot has no database config yet. Open its admin page (sidebar → Admin → Algo) to save a config, or wait for the first cron cycle.
                 </p>
               )}
             </div>

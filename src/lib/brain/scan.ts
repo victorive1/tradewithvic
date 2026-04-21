@@ -53,6 +53,7 @@ export interface ScanCycleResult {
   zonesDetected: number;
   zonesPersisted: number;
   zoneTransitions: number;
+  algoRuntime?: Record<string, unknown> | null;
   vwapSnapshots: number;
   vwapEvents: number;
   vwapSetups: number;
@@ -181,14 +182,28 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
     // Admin algo runtime — routes qualifying A+/A setups from the Brain
     // to the admin's linked MT accounts for each enabled AlgoBotConfig.
     // Swallows its own errors so one bot failure doesn't fail the cycle.
+    let algoRuntimeSummary: Record<string, unknown> | null = null;
     try {
       const algoRuntime = await runAlgoRuntime();
+      algoRuntimeSummary = {
+        botsEvaluated: algoRuntime.botsEvaluated,
+        setupsConsidered: algoRuntime.setupsConsidered,
+        ordersRouted: algoRuntime.ordersRouted,
+        filtered: algoRuntime.filtered,
+        errorCount: algoRuntime.errors.length,
+        firstError: algoRuntime.errors[0] ?? null,
+      };
       if (algoRuntime.errors.length > 0) {
         for (const e of algoRuntime.errors.slice(0, 5)) errors.push(`algo: ${e}`);
       }
     } catch (err: any) {
       errors.push(`algo-runtime: ${err?.message ?? String(err)}`);
+      algoRuntimeSummary = { fatalError: err?.message ?? String(err) };
     }
+    // Stash the summary on the cycle row for post-hoc inspection. Using
+    // errorCount field is wrong but ScanCycle doesn't have a JSON blob; we
+    // just log to console for now — the value surfaces in Vercel logs.
+    console.log("[scan.algo]", JSON.stringify(algoRuntimeSummary));
 
     // Institutional Flow Intelligence — runs on the same 2-min cadence so
     // the live board stays fresh without a separate cron. Fire-and-forget
@@ -254,6 +269,7 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       vwapSnapshots: vwapResult.snapshotsWritten,
       vwapEvents: vwapResult.eventsCreated,
       vwapSetups: vwapResult.setupsPersisted,
+      algoRuntime: algoRuntimeSummary,
       errors,
     };
   } catch (err: any) {
