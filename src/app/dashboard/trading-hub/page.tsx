@@ -424,11 +424,36 @@ function HistoryTab() {
   );
 }
 
+type SyncState = { status: "idle" | "syncing" | "synced" | "error"; message?: string };
+
+async function syncAccountToBackend(
+  userKey: string,
+  account: ConnectedAccount,
+): Promise<void> {
+  const res = await fetch("/api/trading/accounts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-trading-user-key": userKey },
+    body: JSON.stringify({
+      platformType: account.platform,
+      brokerName: account.broker,
+      serverName: account.server,
+      accountLogin: account.login,
+      accountLabel: account.label ?? null,
+      adapterKind: "mock",
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.error ? `sync_${body.error}` : `sync_failed_${res.status}`);
+  }
+}
+
 export default function TradingHubPage() {
   const [tab, setTab] = useState<Tab>("account");
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [sync, setSync] = useState<SyncState>({ status: "idle" });
 
   useEffect(() => {
     const { accounts, activeId } = loadAccounts();
@@ -440,22 +465,31 @@ export default function TradingHubPage() {
     // Backfill any local-only accounts to the backend so other devices and
     // the multi-MT hub can see them. Upsert on server handles duplicates.
     const userKey = getOrCreateUserKey();
-    if (userKey && accounts.length > 0) {
-      for (const a of accounts) {
-        fetch("/api/trading/accounts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-trading-user-key": userKey },
-          body: JSON.stringify({
-            platformType: a.platform,
-            brokerName: a.broker,
-            serverName: a.server,
-            accountLogin: a.login,
-            accountLabel: a.label ?? null,
-            adapterKind: "mock",
-          }),
-        }).catch(() => {});
+    if (!userKey || !userKey.startsWith("email:")) {
+      if (accounts.length > 0) {
+        setSync({
+          status: "error",
+          message: "Sign in to sync your accounts across devices.",
+        });
       }
+      return;
     }
+    if (accounts.length === 0) return;
+
+    setSync({ status: "syncing" });
+    Promise.allSettled(accounts.map((a) => syncAccountToBackend(userKey, a))).then(
+      (results) => {
+        const failed = results.filter((r) => r.status === "rejected");
+        if (failed.length === 0) {
+          setSync({ status: "synced" });
+        } else {
+          setSync({
+            status: "error",
+            message: `${failed.length} of ${accounts.length} accounts failed to sync. Your local copy is still intact — try again or refresh.`,
+          });
+        }
+      },
+    );
   }, []);
 
   useEffect(() => {
@@ -474,20 +508,22 @@ export default function TradingHubPage() {
     setTab("account");
     // Persist to the backend so other devices / the multi-MT hub can see it.
     const userKey = getOrCreateUserKey();
-    if (userKey) {
-      fetch("/api/trading/accounts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-trading-user-key": userKey },
-        body: JSON.stringify({
-          platformType: account.platform,
-          brokerName: account.broker,
-          serverName: account.server,
-          accountLogin: account.login,
-          accountLabel: account.label ?? null,
-          adapterKind: "mock",
-        }),
-      }).catch(() => {});
+    if (!userKey || !userKey.startsWith("email:")) {
+      setSync({
+        status: "error",
+        message: "Saved locally. Sign in to sync this account to your other devices.",
+      });
+      return;
     }
+    setSync({ status: "syncing" });
+    syncAccountToBackend(userKey, account)
+      .then(() => setSync({ status: "synced" }))
+      .catch((e: Error) =>
+        setSync({
+          status: "error",
+          message: `Saved locally, but sync failed (${e.message}). Other devices won't see this account yet.`,
+        }),
+      );
   }
 
   function handleSetActive(id: string) {
@@ -532,6 +568,25 @@ export default function TradingHubPage() {
         </div>
         <p className="text-sm text-muted mt-1">Connect multiple MetaTrader accounts and switch between them to execute trades directly from TradeWithVic.</p>
       </div>
+
+      {sync.status === "syncing" && (
+        <div className="glass-card p-3 text-xs text-muted-light border border-border/50 flex items-center gap-2">
+          <span className="inline-block w-3 h-3 rounded-full bg-accent/40 animate-pulse" />
+          <span>Syncing accounts to your other devices…</span>
+        </div>
+      )}
+      {sync.status === "synced" && (
+        <div className="glass-card p-3 text-xs text-bull-light border border-bull/30 flex items-center gap-2">
+          <span>✓</span>
+          <span>Accounts synced — visible on your other devices.</span>
+        </div>
+      )}
+      {sync.status === "error" && (
+        <div className="glass-card p-3 text-xs text-warn border border-warn/30 flex items-center gap-2">
+          <span>⚠</span>
+          <span>{sync.message ?? "Sync failed."}</span>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2">
         {tabs.map((t) => (

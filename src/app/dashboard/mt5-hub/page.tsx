@@ -107,6 +107,7 @@ export default function Mt5HubPage() {
   const [groups, setGroups] = useState<HubGroup[]>(DEFAULT_GROUPS);
   const [meta, setMeta] = useState<Record<string, AccountMeta>>({});
   const [hydrated, setHydrated] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   const [viewMode, setViewMode] = useState<ViewMode>("operator");
   const [search, setSearch] = useState("");
@@ -117,63 +118,63 @@ export default function Mt5HubPage() {
   const [newGroupName, setNewGroupName] = useState("");
 
   useEffect(() => {
-    const local = loadAccounts();
-    setAccounts(local);
     setGroups(loadGroups());
     setMeta(loadMeta());
     try {
       const m = window.localStorage.getItem(VIEW_MODE_KEY);
       if (m === "operator" || m === "showcase") setViewMode(m);
     } catch {}
-    setHydrated(true);
 
-    // Merge backend-synced accounts on top of local ones so the hub picks up
-    // accounts connected in Trading Hub (including from other devices when
-    // the user is signed in).
+    // Render cached accounts instantly for fast first paint, then let the
+    // backend response overwrite them as the authoritative source.
+    const cached = loadAccounts();
+    setAccounts(cached);
+
     const userKey = getOrCreateUserKey();
-    if (!userKey) return;
+    const canSync = !!userKey && userKey.startsWith("email:");
+    if (!canSync) {
+      setHydrated(true);
+      return;
+    }
+
     fetch("/api/trading/accounts", {
       headers: { "x-trading-user-key": userKey },
       cache: "no-store",
-    }).then(async (r) => {
-      if (!r.ok) return;
-      const data = (await r.json()) as {
-        accounts?: Array<{
-          id: string;
-          platformType: "MT4" | "MT5";
-          brokerName: string;
-          serverName: string;
-          accountLogin: string;
-          accountLabel: string | null;
-          connectionStatus: string;
-          createdAt?: string;
-        }>;
-      };
-      const backend = data.accounts ?? [];
-      if (backend.length === 0) return;
-      setAccounts((prev) => {
-        const byKey = new Map<string, Mt5Account>();
-        for (const a of prev) byKey.set(`${a.login}:${a.server}`, a);
-        for (const b of backend) {
-          const k = `${b.accountLogin}:${b.serverName}`;
-          if (!byKey.has(k)) {
-            byKey.set(k, {
-              id: b.id,
-              platform: b.platformType,
-              login: b.accountLogin,
-              server: b.serverName,
-              broker: b.brokerName,
-              label: b.accountLabel ?? undefined,
-              connected: b.connectionStatus === "linked",
-              connectedAt: b.createdAt ?? new Date().toISOString(),
-            });
-          }
-        }
-        const merged = Array.from(byKey.values());
-        try { window.localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(merged)); } catch {}
-        return merged;
+    })
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`status_${r.status}`);
+        const data = (await r.json()) as {
+          accounts?: Array<{
+            id: string;
+            platformType: "MT4" | "MT5";
+            brokerName: string;
+            serverName: string;
+            accountLogin: string;
+            accountLabel: string | null;
+            connectionStatus: string;
+            createdAt?: string;
+          }>;
+        };
+        const backend = (data.accounts ?? []).map<Mt5Account>((b) => ({
+          id: b.id,
+          platform: b.platformType,
+          login: b.accountLogin,
+          server: b.serverName,
+          broker: b.brokerName,
+          label: b.accountLabel ?? undefined,
+          connected: b.connectionStatus === "linked",
+          connectedAt: b.createdAt ?? new Date().toISOString(),
+        }));
+        setAccounts(backend);
+        try { window.localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(backend)); } catch {}
+        setSyncError(null);
+      })
+      .catch(() => {
+        setSyncError("Couldn't reach sync server — showing cached accounts.");
+      })
+      .finally(() => {
+        setHydrated(true);
       });
-    }).catch(() => {});
   }, []);
 
   const [showHidden, setShowHidden] = useState(false);
@@ -411,7 +412,19 @@ export default function Mt5HubPage() {
             </div>
           )}
 
-          {accounts.length === 0 ? (
+          {syncError && (
+            <div className="glass-card p-3 text-xs text-warn border border-warn/30 flex items-center gap-2">
+              <span>⚠</span>
+              <span>{syncError}</span>
+            </div>
+          )}
+
+          {!hydrated ? (
+            <div className="glass-card p-12 text-center space-y-3">
+              <div className="text-4xl opacity-50">⟳</div>
+              <h3 className="text-sm text-muted">Loading your accounts…</h3>
+            </div>
+          ) : accounts.length === 0 ? (
             <div className="glass-card p-12 text-center space-y-3">
               <div className="text-4xl">🧩</div>
               <h3 className="text-lg font-semibold text-foreground">No accounts connected yet</h3>

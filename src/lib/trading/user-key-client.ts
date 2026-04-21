@@ -1,37 +1,40 @@
 "use client";
 
-const LEGACY_KEY = "tradewithvic_billing_user_key";
 const USER_STORAGE = "user";
+const LEGACY_KEY = "tradewithvic_billing_user_key";
 
 /**
- * Returns the key that scopes all trading data (linked MT accounts, execution
- * history, pending orders) for the current browser.
+ * Returns the key that scopes trading data (linked MT accounts, execution
+ * history) for the current signed-in user. Derived from the email stored
+ * in localStorage["user"] so every device the user signs in on sees the
+ * same data.
  *
- * When the user is signed in we derive the key from their email so every
- * device they sign in on sees the same data. Otherwise we fall back to a
- * per-device random UUID kept in localStorage.
+ * Returns "" when the user is not signed in — callers MUST treat that as
+ * "no sync possible" and avoid making scoped API calls. Prior versions
+ * fell back to a per-device random UUID, which silently desynced data
+ * across devices and was the root cause of the "no accounts on file"
+ * bug on mobile.
  */
 export function getOrCreateUserKey(): string {
   if (typeof window === "undefined") return "";
-
   try {
     const raw = window.localStorage.getItem(USER_STORAGE);
-    if (raw) {
-      const u = JSON.parse(raw) as { email?: unknown };
-      if (typeof u?.email === "string" && u.email.length > 2) {
-        return `email:${u.email.trim().toLowerCase()}`;
-      }
+    if (!raw) return "";
+    const u = JSON.parse(raw) as { email?: unknown };
+    if (typeof u?.email === "string" && u.email.trim().length > 2) {
+      return `email:${u.email.trim().toLowerCase()}`;
     }
   } catch {
-    // fall through to anonymous key
+    // malformed storage — treat as signed-out
   }
+  return "";
+}
 
-  let k = window.localStorage.getItem(LEGACY_KEY);
-  if (!k) {
-    k = typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `uk_${Date.now()}`;
-    window.localStorage.setItem(LEGACY_KEY, k);
-  }
-  return k;
+/**
+ * One-time cleanup: remove the legacy per-device UUID written by older
+ * builds. Safe to call from anywhere on the client; noop on server.
+ */
+export function clearLegacyDeviceKey(): void {
+  if (typeof window === "undefined") return;
+  try { window.localStorage.removeItem(LEGACY_KEY); } catch {}
 }
