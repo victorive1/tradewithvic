@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 type BillingView = "plans" | "subscription" | "invoices" | "payment";
@@ -140,13 +141,22 @@ export default function BillingPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Billing & Plans</h1>
-        <p className="text-sm text-muted mt-1">Manage your subscription, view invoices, and choose the plan that fits your trading</p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Billing & Plans</h1>
+          <p className="text-sm text-muted mt-1">Manage your subscription, view invoices, and choose the plan that fits your trading</p>
+        </div>
+        <Link
+          href="/dashboard/payments"
+          className="shrink-0 px-4 py-2 rounded-xl bg-surface-2 border border-border hover:border-accent/50 text-xs font-medium text-muted-light hover:text-foreground transition-smooth flex items-center gap-2"
+        >
+          Wallet & Payments
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+        </Link>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         {[
           { id: "plans" as BillingView, l: "Plans" },
           { id: "subscription" as BillingView, l: "My Subscription" },

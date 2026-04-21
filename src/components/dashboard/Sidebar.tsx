@@ -6,6 +6,9 @@ import { useEffect, useState } from "react";
 import { Logo } from "@/components/ui/Logo";
 import { cn } from "@/lib/utils";
 import type { ProbeStatus } from "@/lib/agent/types";
+import { SidebarUserMenu } from "@/components/auth/SidebarUserMenu";
+import { useCurrentUser } from "@/components/auth/useCurrentUser";
+import { type AccessTag, hasAccess } from "@/lib/auth/roles";
 
 // Sidebar href -> Agent engine id. Any nav item whose href isn't mapped
 // here simply won't show a health dot. Algo pages are client-only
@@ -41,71 +44,86 @@ function statusDotClass(status: ProbeStatus | undefined): string {
     : "bg-muted/50";
 }
 
-const navItems = [
+interface NavItem {
+  label: string;
+  href: string;
+  icon: string;
+}
+interface NavSubsection {
+  label: string;
+  items: NavItem[];
+}
+interface NavSection {
+  section: string;
+  /**
+   * Role tag required to see this section. Sections without this field are
+   * visible to every signed-in user (baseline). Sections with a tag appear
+   * only for users whose role grants that tag (admin sees everything).
+   */
+  requiresAccess?: AccessTag;
+  /** Flat list — used when the section has no nested grouping. */
+  items?: NavItem[];
+  /** Collapsible subsections — used for Admin-style deep groupings. */
+  subsections?: NavSubsection[];
+}
+
+const navItems: NavSection[] = [
   {
     section: "Home",
     items: [
-      { label: "Market Core Brain", href: "/dashboard/brain", icon: "brain" },
-      { label: "Market Core Brain Execution", href: "/dashboard/brain-execution", icon: "strength" },
-      { label: "Agent", href: "/dashboard/agent", icon: "alerts" },
+      { label: "Command Center", href: "/dashboard/command-center", icon: "radar" },
       { label: "My Dashboard", href: "/dashboard/my-dashboard", icon: "radar" },
-      { label: "Market Radar", href: "/dashboard", icon: "screener" },
-      { label: "Profile", href: "/dashboard/profile", icon: "watchlist" },
     ],
   },
   {
     section: "Markets",
     items: [
-      { label: "Market Direction", href: "/dashboard/market-direction", icon: "setups" },
-      { label: "Market Prediction", href: "/dashboard/screener", icon: "screener" },
-      { label: "Currency Strength", href: "/dashboard/strength", icon: "strength" },
+      { label: "Alerts", href: "/dashboard/alerts", icon: "alerts" },
+      { label: "Capital Flow", href: "/dashboard/capital-flow", icon: "setups" },
+      { label: "Correlation", href: "/dashboard/correlation", icon: "risk" },
+      { label: "Daily Market Brief", href: "/dashboard/brief", icon: "calendar" },
+      { label: "FX Live Commentary", href: "/dashboard/commentary", icon: "alerts" },
       { label: "Intelligence Chart", href: "/dashboard/intelligence-chart", icon: "radar" },
+      { label: "Liquidity", href: "/dashboard/liquidity", icon: "liquidity" },
+      { label: "Market Radar", href: "/dashboard", icon: "screener" },
       { label: "Market Structure", href: "/dashboard/market-structure", icon: "levels" },
-    ],
-  },
-  {
-    section: "Signals",
-    items: [
-      { label: "Signal Channel", href: "/dashboard/signal-channel", icon: "alerts" },
-      { label: "Editors Pick", href: "/dashboard/editors-pick", icon: "watchlist" },
+      { label: "Sentiment", href: "/dashboard/sentiment", icon: "sentiment" },
+      { label: "Setups Pro", href: "/dashboard/setup-pro", icon: "setups" },
+      { label: "Support & Resistance", href: "/dashboard/levels", icon: "levels" },
       { label: "Trade Setups", href: "/dashboard/setups", icon: "setups" },
-      { label: "Setup Pro", href: "/dashboard/setup-pro", icon: "setups" },
-      { label: "Order Block Signals", href: "/dashboard/order-blocks", icon: "liquidity" },
-      { label: "Breakout Signals", href: "/dashboard/breakouts", icon: "setups" },
-      { label: "Custom Signal Builder", href: "/dashboard/custom-signals", icon: "screener" },
+      { label: "Volatility", href: "/dashboard/volatility", icon: "alerts" },
     ],
   },
   {
     section: "Intelligence",
     items: [
-      { label: "Institutional Flow", href: "/dashboard/institutional-flow", icon: "radar" },
-      { label: "Sharp Money", href: "/dashboard/sharp-money", icon: "liquidity" },
-      { label: "MTF Analyzer", href: "/dashboard/mtf", icon: "radar" },
-      { label: "Volume Profile", href: "/dashboard/volume-profile", icon: "strength" },
-      { label: "VWAP Engine", href: "/dashboard/vwap", icon: "strength" },
-      { label: "Daily Brief", href: "/dashboard/brief", icon: "calendar" },
+      { label: "CB Tracker", href: "/dashboard/central-banks", icon: "levels" },
+      { label: "Currency Strength", href: "/dashboard/strength", icon: "strength" },
+      { label: "Eco Calendar", href: "/dashboard/calendar", icon: "calendar" },
+      { label: "Free FX Course", href: "/dashboard/fx-course", icon: "watchlist" },
       { label: "Macro Heatmap", href: "/dashboard/macro", icon: "strength" },
-      { label: "Central Banks", href: "/dashboard/central-banks", icon: "levels" },
-      { label: "Trade Outcomes", href: "/dashboard/trade-outcomes", icon: "risk" },
-      { label: "Capital Flow", href: "/dashboard/capital-flow", icon: "setups" },
-      { label: "Signal Analytics", href: "/dashboard/signal-analytics", icon: "radar" },
+      { label: "Market Direction", href: "/dashboard/market-direction", icon: "setups" },
+      { label: "Replay", href: "/dashboard/replay", icon: "screener" },
+      { label: "Sharp Money", href: "/dashboard/sharp-money", icon: "liquidity" },
     ],
   },
   {
-    section: "Scanners",
+    section: "MT4/MT5",
     items: [
-      { label: "Volatility", href: "/dashboard/volatility", icon: "alerts" },
-      { label: "Engulfing", href: "/dashboard/engulfing", icon: "screener" },
-      { label: "Correlation", href: "/dashboard/correlation", icon: "risk" },
+      { label: "Execute Trade", href: "/dashboard/trading/execute", icon: "setups" },
+      { label: "Execution History", href: "/dashboard/trading/executions", icon: "screener" },
+      { label: "MT4/MT5 Multi Frame", href: "/dashboard/multi-mt5", icon: "radar" },
+      { label: "MT5 Multi Account Hub", href: "/dashboard/mt5-hub", icon: "radar" },
+      { label: "Trading Hub", href: "/dashboard/trading-hub", icon: "setups" },
     ],
   },
   {
-    section: "Analysis",
+    section: "Tools",
     items: [
-      { label: "Liquidity Map", href: "/dashboard/liquidity", icon: "liquidity" },
-      { label: "Support/Resistance", href: "/dashboard/levels", icon: "levels" },
-      { label: "Sentiment", href: "/dashboard/sentiment", icon: "sentiment" },
-      { label: "Economic Calendar", href: "/dashboard/calendar", icon: "calendar" },
+      { label: "Day Evaluator", href: "/dashboard/evaluator", icon: "watchlist" },
+      { label: "Notifications", href: "/dashboard/notifications", icon: "alerts" },
+      { label: "Risk Calculator", href: "/dashboard/risk", icon: "risk" },
+      { label: "Watchlist", href: "/dashboard/watchlist", icon: "watchlist" },
     ],
   },
   {
@@ -115,66 +133,89 @@ const navItems = [
     ],
   },
   {
-    section: "Trading Hub",
-    items: [
-      { label: "Execute Trade", href: "/dashboard/trading/execute", icon: "setups" },
-      { label: "Execution History", href: "/dashboard/trading/executions", icon: "screener" },
-      { label: "Trading Hub", href: "/dashboard/trading-hub", icon: "setups" },
-      { label: "MT5 Multi Account Hub", href: "/dashboard/mt5-hub", icon: "radar" },
-      { label: "Multi MT5", href: "/dashboard/multi-mt5", icon: "radar" },
-      { label: "Copy Trading", href: "/dashboard/copy-trading", icon: "strength" },
-    ],
-  },
-  {
-    section: "Admin · Algos",
-    adminOnly: true,
-    items: [
-      { label: "Algo Hub", href: "/dashboard/admin/algos/hub", icon: "radar" },
-      { label: "FX Strength Algo", href: "/dashboard/admin/algos/fx-strength", icon: "setups" },
-      { label: "Order Block Algo", href: "/dashboard/admin/algos/ob", icon: "liquidity" },
-      { label: "Market Direction Algo", href: "/dashboard/admin/algos/md", icon: "screener" },
-      { label: "Breakout Algo", href: "/dashboard/admin/algos/breakout", icon: "setups" },
-      { label: "US30 Algo", href: "/dashboard/admin/algos/us30", icon: "radar" },
-      { label: "Silver & Gold Algo", href: "/dashboard/admin/algos/metals", icon: "strength" },
-      { label: "Algo Vic (Scalper)", href: "/dashboard/admin/algos/vic", icon: "screener" },
-      { label: "Custom Bot Builder", href: "/dashboard/custom-bot", icon: "risk" },
-      { label: "Bot Agents", href: "/dashboard/bot-agents", icon: "alerts" },
-    ],
-  },
-  {
-    section: "Management",
+    section: "Algo Investors",
+    requiresAccess: "algo_investor",
     items: [
       { label: "Algo Investors", href: "/dashboard/algo-investors", icon: "risk" },
-      { label: "Day Evaluator", href: "/dashboard/evaluator", icon: "watchlist" },
-      { label: "FX Commentary", href: "/dashboard/commentary", icon: "alerts" },
-      { label: "Replay Mode", href: "/dashboard/replay", icon: "screener" },
     ],
   },
   {
-    section: "Learn",
+    section: "Agent Users",
+    requiresAccess: "agent",
     items: [
-      { label: "Free FX Course", href: "/dashboard/fx-course", icon: "watchlist" },
+      { label: "Copy Trading", href: "/dashboard/copy-trading", icon: "strength" },
+      { label: "Market Prediction", href: "/dashboard/screener", icon: "screener" },
+      { label: "V Profile + Order Flow", href: "/dashboard/volume-profile", icon: "strength" },
+      { label: "VWAP", href: "/dashboard/vwap", icon: "strength" },
     ],
   },
   {
-    section: "Tools",
+    section: "Signals",
+    requiresAccess: "agent",
     items: [
-      { label: "Risk Calculator", href: "/dashboard/risk", icon: "risk" },
-      { label: "Watchlist", href: "/dashboard/watchlist", icon: "watchlist" },
-      { label: "Alerts", href: "/dashboard/alerts", icon: "alerts" },
-      { label: "Settings", href: "/dashboard/settings", icon: "risk" },
-      { label: "Billing & Plans", href: "/dashboard/billing", icon: "watchlist" },
-      { label: "Payments", href: "/dashboard/payments", icon: "strength" },
+      { label: "Breakout Signals", href: "/dashboard/breakouts", icon: "setups" },
+      { label: "Editor's Picks", href: "/dashboard/editors-pick", icon: "watchlist" },
+      { label: "Engulfing", href: "/dashboard/engulfing", icon: "screener" },
+      { label: "Institutional Flow", href: "/dashboard/institutional-flow", icon: "radar" },
+      { label: "MTF Analyzer", href: "/dashboard/mtf", icon: "radar" },
+      { label: "Order Block Signals", href: "/dashboard/order-blocks", icon: "liquidity" },
+      { label: "Signal Channel", href: "/dashboard/signal-channel", icon: "alerts" },
     ],
   },
   {
     section: "Admin",
-    adminOnly: true,
+    requiresAccess: "admin",
+    subsections: [
+      {
+        label: "Algo",
+        items: [
+          { label: "Algo Agent", href: "/dashboard/bot-agents", icon: "alerts" },
+          { label: "Algo Vic / Scalper", href: "/dashboard/admin/algos/vic", icon: "screener" },
+          { label: "Breakout Algo", href: "/dashboard/admin/algos/breakout", icon: "setups" },
+          { label: "FX Strength Algo", href: "/dashboard/admin/algos/fx-strength", icon: "setups" },
+          { label: "Market Direction Algo", href: "/dashboard/admin/algos/md", icon: "screener" },
+          { label: "Order Block Algo", href: "/dashboard/admin/algos/ob", icon: "liquidity" },
+          { label: "Silver & Gold Algo", href: "/dashboard/admin/algos/metals", icon: "strength" },
+          { label: "US30 Algo", href: "/dashboard/admin/algos/us30", icon: "radar" },
+        ],
+      },
+      {
+        label: "Admin",
+        items: [
+          { label: "Admin Billing", href: "/dashboard/admin/billing", icon: "risk" },
+          { label: "Admin Portal", href: "/dashboard/admin/portal", icon: "radar" },
+          { label: "Agent", href: "/dashboard/agent", icon: "alerts" },
+          { label: "Custom Bot Builder", href: "/dashboard/custom-bot", icon: "risk" },
+          { label: "Custom Signal Builder", href: "/dashboard/custom-signals", icon: "screener" },
+          { label: "Market Core Brain", href: "/dashboard/brain", icon: "brain" },
+          { label: "Market Core Brain Execution", href: "/dashboard/brain-execution", icon: "strength" },
+          { label: "Signal Analysis", href: "/dashboard/signal-analytics", icon: "radar" },
+          { label: "Trade Outcomes", href: "/dashboard/trade-outcomes", icon: "risk" },
+        ],
+      },
+    ],
+  },
+  {
+    section: "Account",
     items: [
-      { label: "Admin Billing", href: "/dashboard/admin/billing", icon: "risk" },
+      { label: "Billing", href: "/dashboard/billing", icon: "watchlist" },
+      { label: "Profile", href: "/dashboard/profile", icon: "watchlist" },
+      { label: "Settings", href: "/dashboard/settings", icon: "risk" },
     ],
   },
 ];
+
+function sortByLabel<T extends { label: string }>(items: ReadonlyArray<T>): T[] {
+  return items.slice().sort((a, b) =>
+    a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
+  );
+}
+
+function sectionIsRenderable(section: NavSection): boolean {
+  const flat = section.items?.length ?? 0;
+  const nested = section.subsections?.reduce((n, s) => n + s.items.length, 0) ?? 0;
+  return flat + nested > 0;
+}
 
 const iconMap: Record<string, React.ReactNode> = {
   brain: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 3c-1.3 0-2.4.84-2.82 2H9a3 3 0 00-3 3v.18A3 3 0 003 11v1c0 1.3.84 2.4 2 2.82V15a3 3 0 003 3h.18A3 3 0 0011 21h2a3 3 0 002.82-2H16a3 3 0 003-3v-.18A3 3 0 0021 13v-1c0-1.3-.84-2.4-2-2.82V9a3 3 0 00-3-3h-.18A3 3 0 0013 3h-1zm0 3v12" /></svg>,
@@ -217,27 +258,98 @@ function useEngineHealth() {
   return { engines, overall };
 }
 
-function useIsAdmin(): boolean {
-  const [isAdmin, setIsAdmin] = useState(false);
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem("user");
-      if (!raw) return;
-      const u = JSON.parse(raw) as { role?: unknown };
-      if (typeof u?.role === "string" && u.role === "admin") setIsAdmin(true);
-    } catch { /* silent */ }
-  }, []);
-  return isAdmin;
+function NavItemLink({
+  item,
+  pathname,
+  engineHealth,
+  overallHealth,
+  onNavigate,
+}: {
+  item: NavItem;
+  pathname: string;
+  engineHealth: Record<string, { status: ProbeStatus; statusMessage: string }>;
+  overallHealth: ProbeStatus;
+  onNavigate?: () => void;
+}) {
+  const isActive = pathname === item.href;
+  const engineId = ENGINE_BY_HREF[item.href];
+  const health = engineId ? engineHealth[engineId] : undefined;
+  const dotStatus: ProbeStatus | undefined =
+    item.href === "/dashboard/agent" ? overallHealth : health?.status;
+  const dotTitle =
+    item.href === "/dashboard/agent"
+      ? `Overall system health: ${overallHealth}`
+      : health?.statusMessage;
+  return (
+    <Link
+      href={item.href}
+      onClick={onNavigate}
+      className={cn(
+        "group relative flex items-center gap-3 px-3 py-2 rounded-xl text-fluid-sm font-medium transition-smooth",
+        isActive
+          ? "text-foreground bg-gradient-to-r from-accent/15 via-accent/10 to-transparent border border-accent/25 shadow-[0_0_20px_var(--color-accent-glow)]"
+          : "text-muted-light hover:text-foreground hover:bg-surface-2/70",
+      )}
+    >
+      {isActive && (
+        <span
+          aria-hidden
+          className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r-full bg-gradient-to-b from-accent-light to-accent"
+        />
+      )}
+      <span
+        className={cn(
+          "transition-smooth shrink-0",
+          isActive ? "text-accent-light" : "text-muted group-hover:text-foreground",
+        )}
+      >
+        {iconMap[item.icon]}
+      </span>
+      <span className="truncate flex-1">{item.label}</span>
+      {dotStatus && (
+        <span
+          aria-label={`health ${dotStatus}`}
+          title={dotTitle}
+          className={cn("w-1.5 h-1.5 rounded-full shrink-0", statusDotClass(dotStatus))}
+        />
+      )}
+    </Link>
+  );
 }
 
 function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { engines: engineHealth, overall: overallHealth } = useEngineHealth();
-  const isAdmin = useIsAdmin();
+  const { user } = useCurrentUser();
+  const [openSubs, setOpenSubs] = useState<Record<string, boolean>>({});
 
-  const visibleSections = navItems.filter(
-    (section: (typeof navItems)[number] & { adminOnly?: boolean }) => !section.adminOnly || isAdmin,
-  );
+  const visibleSections = navItems.filter((section) => {
+    if (!sectionIsRenderable(section)) return false;
+    if (!section.requiresAccess) return true;
+    return hasAccess(user?.role, section.requiresAccess);
+  });
+
+  // Auto-expand the subsection containing the active route so the user
+  // lands on a visible highlighted item.
+  useEffect(() => {
+    const next: Record<string, boolean> = {};
+    for (const section of navItems) {
+      if (!section.subsections) continue;
+      for (const sub of section.subsections) {
+        const key = `${section.section}::${sub.label}`;
+        if (sub.items.some((i) => i.href === pathname)) {
+          next[key] = true;
+        }
+      }
+    }
+    if (Object.keys(next).length === 0) return;
+    setOpenSubs((prev) => ({ ...prev, ...next }));
+  }, [pathname]);
+
+  function toggleSub(sectionName: string, subLabel: string) {
+    const key = `${sectionName}::${subLabel}`;
+    setOpenSubs((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
 
   return (
     <>
@@ -247,76 +359,82 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
             <p className="text-[10px] font-semibold text-muted/80 tracking-[0.18em] uppercase mb-2 px-3 pt-1">
               {section.section}
             </p>
-            <div className="space-y-0.5">
-              {section.items.map((item) => {
-                const isActive = pathname === item.href;
-                const engineId = ENGINE_BY_HREF[item.href];
-                const health = engineId ? engineHealth[engineId] : undefined;
-                // The Agent tab itself shows the overall rollup dot.
-                const dotStatus: ProbeStatus | undefined = item.href === "/dashboard/agent"
-                  ? overallHealth
-                  : health?.status;
-                const dotTitle = item.href === "/dashboard/agent"
-                  ? `Overall system health: ${overallHealth}`
-                  : health?.statusMessage;
-                return (
-                  <Link
+
+            {section.items && section.items.length > 0 && (
+              <div className="space-y-0.5">
+                {sortByLabel(section.items).map((item) => (
+                  <NavItemLink
                     key={item.href}
-                    href={item.href}
-                    onClick={onNavigate}
-                    className={cn(
-                      "group relative flex items-center gap-3 px-3 py-2 rounded-xl text-fluid-sm font-medium transition-smooth",
-                      isActive
-                        ? "text-foreground bg-gradient-to-r from-accent/15 via-accent/10 to-transparent border border-accent/25 shadow-[0_0_20px_var(--color-accent-glow)]"
-                        : "text-muted-light hover:text-foreground hover:bg-surface-2/70"
-                    )}
-                  >
-                    {isActive && (
-                      <span
-                        aria-hidden
-                        className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r-full bg-gradient-to-b from-accent-light to-accent"
-                      />
-                    )}
-                    <span className={cn(
-                      "transition-smooth shrink-0",
-                      isActive ? "text-accent-light" : "text-muted group-hover:text-foreground"
-                    )}>
-                      {iconMap[item.icon]}
-                    </span>
-                    <span className="truncate flex-1">{item.label}</span>
-                    {dotStatus && (
-                      <span
-                        aria-label={`health ${dotStatus}`}
-                        title={dotTitle}
-                        className={cn("w-1.5 h-1.5 rounded-full shrink-0", statusDotClass(dotStatus))}
-                      />
-                    )}
-                  </Link>
-                );
-              })}
-            </div>
+                    item={item}
+                    pathname={pathname}
+                    engineHealth={engineHealth}
+                    overallHealth={overallHealth}
+                    onNavigate={onNavigate}
+                  />
+                ))}
+              </div>
+            )}
+
+            {section.subsections && (
+              <div className="space-y-1">
+                {section.subsections
+                  .filter((s) => s.items.length > 0)
+                  .map((sub) => {
+                    const key = `${section.section}::${sub.label}`;
+                    const isOpen = !!openSubs[key];
+                    return (
+                      <div key={sub.label}>
+                        <button
+                          type="button"
+                          onClick={() => toggleSub(section.section, sub.label)}
+                          aria-expanded={isOpen}
+                          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-fluid-sm font-medium text-muted-light hover:text-foreground hover:bg-surface-2/70 transition-smooth"
+                        >
+                          <svg
+                            className={cn(
+                              "w-3 h-3 shrink-0 text-muted transition-transform",
+                              isOpen ? "rotate-90" : "",
+                            )}
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 5l7 7-7 7"
+                            />
+                          </svg>
+                          <span className="flex-1 text-left truncate">{sub.label}</span>
+                          <span className="text-[10px] text-muted tabular-nums">
+                            {sub.items.length}
+                          </span>
+                        </button>
+                        {isOpen && (
+                          <div className="ml-4 mt-1 mb-1 space-y-0.5 border-l border-border/30 pl-2">
+                            {sortByLabel(sub.items).map((item) => (
+                              <NavItemLink
+                                key={item.href}
+                                item={item}
+                                pathname={pathname}
+                                engineHealth={engineHealth}
+                                overallHealth={overallHealth}
+                                onNavigate={onNavigate}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
           </div>
         ))}
       </nav>
 
-      <div className="p-3 border-t border-border/40 relative shrink-0">
-        <Link
-          href="/dashboard/profile"
-          onClick={onNavigate}
-          className="flex items-center gap-3 p-2 rounded-xl transition-smooth hover:bg-surface-2/70 border border-transparent hover:border-border/50"
-        >
-          <div className="relative">
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-accent via-accent-light to-accent flex items-center justify-center text-white text-xs font-bold shadow-[0_4px_16px_var(--color-accent-glow)]">
-              V
-            </div>
-            <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-bull border-2 border-surface" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold truncate">Victor</p>
-            <p className="text-[10px] text-muted truncate tracking-wider uppercase">Admin · Profile</p>
-          </div>
-        </Link>
-      </div>
+      <SidebarUserMenu onNavigate={onNavigate} />
     </>
   );
 }
