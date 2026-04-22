@@ -6,11 +6,134 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 function timeAgo(date: Date): string {
-  const s = Math.round((Date.now() - date.getTime()) / 1000);
-  if (s < 60) return `${s}s ago`;
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86400)}d ago`;
+  const s = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
+  if (s < 30) return "just now";
+  if (s < 60) return `${s}${s === 1 ? "sec" : "secs"} ago`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}${m === 1 ? "min" : "mins"} ago`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  const hPart = `${h}${h === 1 ? "hr" : "hrs"}`;
+  if (h < 24) return rem === 0 ? `${hPart} ago` : `${hPart} ${rem}${rem === 1 ? "min" : "mins"} ago`;
+  const d = Math.floor(h / 24);
+  return `${d}${d === 1 ? "day" : "days"} ago`;
+}
+
+interface VwapSnap {
+  id: string;
+  symbol: string;
+  timeframe: string;
+  anchor: string;
+  lastClose: number;
+  vwap: number;
+  upperBand1: number;
+  lowerBand1: number;
+  upperBand2: number;
+  lowerBand2: number;
+  zScore: number;
+  position: string;
+  bias: string;
+  regime: string;
+  slopeState: string;
+  computedAt: Date;
+  updatedAt: Date;
+}
+
+interface DerivedOpportunity {
+  key: string;
+  symbol: string;
+  setupKind: "stretched_fade" | "trend_continuation";
+  direction: "long" | "short";
+  entry: number;
+  stopLoss: number;
+  takeProfit: number;
+  riskReward: number;
+  confidenceScore: number;
+  qualityGrade: "A" | "B" | "C";
+  thesis: string;
+  postedAt: Date;
+}
+
+/**
+ * Derive a tradeable opportunity from a live VWAP snapshot, using the
+ * regime/bias/slope the Brain has already classified. Two archetypes:
+ *
+ * - stretched_fade: regime=stretched AND |z| >= 1.5 → mean-revert to VWAP
+ * - trend_continuation: regime=trend AND bias+slope+position aligned →
+ *   pullback entry at VWAP, extension target
+ *
+ * postedAt falls back through: most recent matching deviation event →
+ * when the VWAP row was first written. This way the time stamp doesn't
+ * reset on every scan — it only moves when the underlying event shifts.
+ */
+function deriveOpportunity(
+  snap: VwapSnap,
+  eventByKey: Map<string, Date>,
+): DerivedOpportunity | null {
+  const z = snap.zScore;
+  const absZ = Math.abs(z);
+  const price = snap.lastClose;
+  const vwap = snap.vwap;
+
+  if (snap.regime === "stretched" && absZ >= 1.5) {
+    const direction: "long" | "short" | null =
+      snap.position === "below" ? "long" : snap.position === "above" ? "short" : null;
+    if (!direction) return null;
+    const sl = direction === "long" ? snap.lowerBand2 : snap.upperBand2;
+    const tp = vwap;
+    const risk = Math.abs(price - sl);
+    const reward = Math.abs(tp - price);
+    if (risk <= 0 || reward <= 0) return null;
+    const grade: "A" | "B" | "C" = absZ >= 2.5 ? "A" : absZ >= 2.0 ? "B" : "C";
+    return {
+      key: `${snap.id}:stretched`,
+      symbol: snap.symbol,
+      setupKind: "stretched_fade",
+      direction,
+      entry: price,
+      stopLoss: sl,
+      takeProfit: tp,
+      riskReward: reward / risk,
+      confidenceScore: Math.min(95, Math.round(60 + absZ * 10)),
+      qualityGrade: grade,
+      thesis: `Price ${absZ.toFixed(1)}σ ${snap.position} VWAP in stretched regime — mean-revert back to VWAP.`,
+      postedAt: eventByKey.get(`${snap.symbol}:${snap.anchor}`) ?? snap.computedAt,
+    };
+  }
+
+  const trendAligned =
+    snap.regime === "trend" &&
+    absZ < 1.5 &&
+    ((snap.bias === "bullish" && snap.position === "above" && snap.slopeState === "rising") ||
+      (snap.bias === "bearish" && snap.position === "below" && snap.slopeState === "falling"));
+
+  if (trendAligned) {
+    const direction: "long" | "short" = snap.bias === "bullish" ? "long" : "short";
+    const entry = vwap;
+    const sl = direction === "long" ? snap.lowerBand1 : snap.upperBand1;
+    const tp = direction === "long" ? price + 2 * (price - vwap) : price - 2 * (vwap - price);
+    const risk = Math.abs(entry - sl);
+    const reward = Math.abs(tp - entry);
+    if (risk <= 0 || reward <= 0) return null;
+    const rr = reward / risk;
+    const grade: "A" | "B" | "C" = rr >= 2 ? "A" : rr >= 1.5 ? "B" : "C";
+    return {
+      key: `${snap.id}:trend`,
+      symbol: snap.symbol,
+      setupKind: "trend_continuation",
+      direction,
+      entry,
+      stopLoss: sl,
+      takeProfit: tp,
+      riskReward: rr,
+      confidenceScore: Math.min(90, Math.round(55 + rr * 10)),
+      qualityGrade: grade,
+      thesis: `Trend regime · ${snap.bias} bias aligned with ${snap.slopeState} slope — continuation on pullback to VWAP.`,
+      postedAt: eventByKey.get(`${snap.symbol}:${snap.anchor}`) ?? snap.computedAt,
+    };
+  }
+
+  return null;
 }
 
 const BIAS_COLOR: Record<string, string> = {
@@ -64,6 +187,20 @@ export default async function VwapPage() {
 
   const daily = snapshots.filter((s) => s.anchor === "daily");
   const weekly = snapshots.filter((s) => s.anchor === "weekly");
+
+  // Map most recent deviation event per (symbol, anchor) so derived
+  // opportunities can pin their postedAt to the real trigger time instead
+  // of the constantly-upserted snapshot.updatedAt.
+  const eventByKey = new Map<string, Date>();
+  for (const e of events) {
+    const k = `${e.symbol}:${e.anchor}`;
+    if (!eventByKey.has(k)) eventByKey.set(k, e.detectedAt);
+  }
+
+  const opportunities = daily
+    .map((s) => deriveOpportunity(s as VwapSnap, eventByKey))
+    .filter((o): o is DerivedOpportunity => o !== null)
+    .sort((a, b) => b.confidenceScore - a.confidenceScore);
 
   const bullishDaily = daily.filter((s) => s.bias === "bullish").length;
   const bearishDaily = daily.filter((s) => s.bias === "bearish").length;
@@ -226,6 +363,79 @@ export default async function VwapPage() {
         )}
       </div>
 
+      {/* VWAP Trade Opportunities — derived in-flight from the current
+          snapshot state (stretched fade + trend continuation). These are
+          NOT persisted as TradeSetup rows yet; they're what the screen
+          thinks tradeable right now. postedAt uses the most recent
+          matching deviation event so the time doesn't reset every scan. */}
+      <div className="glass-card p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-foreground">VWAP Trade Opportunities</h3>
+          <span className="text-[10px] text-muted">Derived live · {opportunities.length} in play</span>
+        </div>
+        {opportunities.length === 0 ? (
+          <p className="text-xs text-muted py-4 text-center">
+            No actionable VWAP state right now. Opportunities appear when a symbol&apos;s
+            regime is stretched (|z| ≥ 1.5) or in a trend with slope+bias+position aligned.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-muted border-b border-border/30">
+                  <th className="text-left py-2 pr-3">Symbol</th>
+                  <th className="text-left py-2 px-3">Kind</th>
+                  <th className="text-center py-2 px-3">Dir</th>
+                  <th className="text-right py-2 px-3">Entry</th>
+                  <th className="text-right py-2 px-3">SL</th>
+                  <th className="text-right py-2 px-3">TP</th>
+                  <th className="text-right py-2 px-3">R:R</th>
+                  <th className="text-center py-2 px-3">Score</th>
+                  <th className="text-center py-2 px-3">Grade</th>
+                  <th className="text-right py-2 pl-3">Posted</th>
+                </tr>
+              </thead>
+              <tbody>
+                {opportunities.map((o) => (
+                  <tr key={o.key} className="border-b border-border/20 hover:bg-surface-2/50">
+                    <td className="py-2 pr-3 font-semibold text-foreground">{o.symbol}</td>
+                    <td className="py-2 px-3 text-muted">
+                      {o.setupKind === "stretched_fade" ? "Stretched fade" : "Trend continuation"}
+                    </td>
+                    <td className="py-2 px-3 text-center">
+                      <span className={`px-1.5 py-0.5 text-[10px] rounded uppercase tracking-wider border ${o.direction === "long" ? "bg-bull/10 text-bull-light border-bull/30" : "bg-bear/10 text-bear-light border-bear/30"}`}>
+                        {o.direction}
+                      </span>
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono">{o.entry.toFixed(5)}</td>
+                    <td className="py-2 px-3 text-right font-mono text-bear-light">{o.stopLoss.toFixed(5)}</td>
+                    <td className="py-2 px-3 text-right font-mono text-bull-light">{o.takeProfit.toFixed(5)}</td>
+                    <td className="py-2 px-3 text-right font-mono">{o.riskReward.toFixed(2)}</td>
+                    <td className="py-2 px-3 text-center font-semibold">{o.confidenceScore}</td>
+                    <td className="py-2 px-3 text-center">
+                      <span className={`px-1.5 py-0.5 text-[10px] rounded uppercase tracking-wider border ${
+                        o.qualityGrade === "A" ? "bg-bull/10 text-bull-light border-bull/30"
+                          : o.qualityGrade === "B" ? "bg-accent/10 text-accent-light border-accent/30"
+                          : "bg-surface-3 text-muted border-border"
+                      }`}>
+                        {o.qualityGrade}
+                      </span>
+                    </td>
+                    <td className="py-2 pl-3 text-right text-[10px] text-muted">
+                      Posted {timeAgo(o.postedAt)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="mt-3 text-[10px] text-muted italic">
+              Opportunities are derived live from the current snapshot — they become Brain-detected
+              setups (below) when the runtime fires the trigger.
+            </p>
+          </div>
+        )}
+      </div>
+
       {/* VWAP Trade Setups — tradeable signals emitted on reclaim, rejection,
           and band-stretch transitions. These flow through the Brain's
           confluence + execution pipeline just like breakout / pullback
@@ -254,7 +464,7 @@ export default async function VwapPage() {
                   <th className="text-right py-2 px-3">R:R</th>
                   <th className="text-center py-2 px-3">Score</th>
                   <th className="text-center py-2 px-3">Grade</th>
-                  <th className="text-right py-2 pl-3">Created</th>
+                  <th className="text-right py-2 pl-3">Posted</th>
                 </tr>
               </thead>
               <tbody>
@@ -286,7 +496,7 @@ export default async function VwapPage() {
                           {s.qualityGrade}
                         </span>
                       </td>
-                      <td className="py-2 pl-3 text-right text-[10px] text-muted">{timeAgo(s.createdAt)}</td>
+                      <td className="py-2 pl-3 text-right text-[10px] text-muted">Posted {timeAgo(s.createdAt)}</td>
                     </tr>
                   );
                 })}
