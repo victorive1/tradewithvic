@@ -208,12 +208,14 @@ function reconcilePrediction(scan: ScanResult, decimals: number): PersistedPredi
 function formatAgo(ts: number): string {
   const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
   if (s < 30) return "just now";
-  if (s < 60) return `${s}s ago`;
+  if (s < 60) return `${s}${s === 1 ? "sec" : "secs"} ago`;
   const m = Math.round(s / 60);
-  if (m < 60) return `${m}m ago`;
+  if (m < 60) return `${m}${m === 1 ? "min" : "mins"} ago`;
   const h = Math.floor(m / 60);
   const rem = m % 60;
-  return rem === 0 ? `${h}h ago` : `${h}h ${rem}m ago`;
+  const hPart = `${h}${h === 1 ? "hr" : "hrs"}`;
+  if (rem === 0) return `${hPart} ago`;
+  return `${hPart} ${rem}${rem === 1 ? "min" : "mins"} ago`;
 }
 
 
@@ -685,7 +687,7 @@ export default function ScreenerPage() {
                         </span>
                       </td>
                       <td className="px-3 py-3 text-xs text-muted">
-                        {row.grade === "NO_TRADE" ? "—" : formatAgo(row.postedAt)}
+                        {row.grade === "NO_TRADE" ? "—" : `Posted ${formatAgo(row.postedAt)}`}
                       </td>
                     </tr>
                   ))}
