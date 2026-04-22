@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireRole } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -8,6 +9,9 @@ export const revalidate = 0;
  * List every known algo bot with its live DB state + today's routing
  * stats. Used by the Algo Agent page (/dashboard/bot-agents) so the
  * health dashboard reflects the actual DB instead of localStorage.
+ *
+ * Admin-only — bot configs include account logins, strategy filters,
+ * and last-error details that shouldn't leak to non-admin users.
  */
 
 const BOT_DISPLAY: Array<{ botId: string; name: string }> = [
@@ -55,7 +59,10 @@ function statusFor(args: {
   return "healthy";
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const gate = await requireRole(req, "admin");
+  if (gate instanceof NextResponse) return gate;
+
   const configs = await prisma.algoBotConfig.findMany({
     select: {
       botId: true,
