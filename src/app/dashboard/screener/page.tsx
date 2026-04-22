@@ -455,13 +455,16 @@ export default function ScreenerPage() {
                   )}>
                     {scanResult.bias.toUpperCase()}
                   </span>
-                  {scanPostedAt !== null && (
-                    <span className="text-[10px] uppercase tracking-wider text-muted bg-surface-2 px-2 py-0.5 rounded-full border border-border/50">
+                </div>
+                {scanPostedAt !== null && (
+                  <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-accent/10 border border-accent/30">
+                    <span className="w-1.5 h-1.5 rounded-full bg-accent-light" />
+                    <span className="text-xs font-semibold text-accent-light">
                       Posted {formatAgo(scanPostedAt)}
                     </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-4 mt-1 text-sm text-muted">
+                  </div>
+                )}
+                <div className="flex items-center gap-4 mt-2 text-sm text-muted">
                   <span className="capitalize">{scanResult.category}</span>
                   <span>|</span>
                   <span>{scanResult.session} Session</span>
