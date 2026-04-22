@@ -110,6 +110,7 @@ const navItems: NavSection[] = [
   {
     section: "MT4/MT5",
     items: [
+      { label: "EA Bridge", href: "/dashboard/trading/ea-bridge", icon: "liquidity" },
       { label: "Execute Trade", href: "/dashboard/trading/execute", icon: "setups" },
       { label: "Execution History", href: "/dashboard/trading/executions", icon: "screener" },
       { label: "MT4/MT5 Multi Frame", href: "/dashboard/multi-mt5", icon: "radar" },

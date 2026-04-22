@@ -112,15 +112,41 @@ const notConnectedAdapter: ExecutionAdapter = {
   },
 };
 
+/**
+ * The EA-webhook adapter parks the order for a user-side MT4/MT5 EA to pull
+ * via GET /api/mt5/ea/pull. Status stays "submitted" until the EA posts
+ * results back to POST /api/mt5/ea/ack (which writes TradeExecutionResult
+ * and flips the request to filled/rejected/etc.).
+ *
+ * We don't call out to the EA directly — MT4/MT5 terminals run behind the
+ * user's firewall. Pull-based is the only shape that works without any
+ * inbound access.
+ */
+const eaWebhookAdapter: ExecutionAdapter = {
+  kind: "ea_webhook",
+  async submit(order) {
+    return {
+      executionStatus: "pending",
+      rejectionReason: null,
+      adapterResponse: {
+        kind: "ea_webhook",
+        note: "queued for EA pickup",
+        requestId: order.requestId,
+      },
+    };
+  },
+};
+
 export function resolveAdapter(kind: string): ExecutionAdapter {
   switch (kind) {
     case "pending_queue":
       return pendingQueueAdapter;
     case "mock":
       return mockAdapter;
-    case "metaapi":
     case "ea_webhook":
-      // TODO: real adapters land in phase 2
+      return eaWebhookAdapter;
+    case "metaapi":
+      // TODO: wire in metaapi.cloud REST client
       return notConnectedAdapter;
     default:
       return notConnectedAdapter;
