@@ -61,6 +61,7 @@ interface QuickScanRow {
   grade: string;
   price: number;
   changePercent: number;
+  postedAt: number;
 }
 
 type SortKey = "score" | "change" | "symbol";
@@ -115,6 +116,111 @@ function fmt(val: number, dec: number = 2): string {
   return val.toFixed(dec);
 }
 
+/* ---------- Prediction persistence (postedAt + staleness) ----------
+ * The engine recomputes entry/SL/TP from live quotes every refresh. Without
+ * persistence every view would look "just now" — but the user wants to know
+ * when the *current* levels first appeared, and wants predictions that
+ * haven't changed in 4h dropped entirely.
+ *
+ * Compare rounded levels (to instrument decimals) + bias + grade. If all
+ * match the cached entry, keep the original postedAt. Otherwise treat it as
+ * a new posting and stamp Date.now().
+ */
+
+const PREDICTIONS_KEY = "twv_market_predictions_v1";
+const STALE_MS = 4 * 60 * 60 * 1000; // 4 hours
+
+interface PersistedPrediction {
+  symbol: string;
+  bias: "bullish" | "bearish" | "neutral";
+  grade: string;
+  entryLo: number;
+  entryHi: number;
+  stopLoss: number;
+  tp1: number;
+  tp2: number;
+  tp3: number;
+  postedAt: number;
+}
+
+function loadPredictions(): Record<string, PersistedPrediction> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(PREDICTIONS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function savePredictions(next: Record<string, PersistedPrediction>): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PREDICTIONS_KEY, JSON.stringify(next));
+  } catch {
+    /* quota full / disabled — fall back to in-memory behaviour */
+  }
+}
+
+function roundTo(val: number, dec: number): number {
+  const m = 10 ** dec;
+  return Math.round(val * m) / m;
+}
+
+function samePrediction(
+  prev: PersistedPrediction | undefined,
+  candidate: Omit<PersistedPrediction, "postedAt">,
+  dec: number,
+): boolean {
+  if (!prev) return false;
+  if (prev.bias !== candidate.bias) return false;
+  if (prev.grade !== candidate.grade) return false;
+  return (
+    roundTo(prev.entryLo, dec) === roundTo(candidate.entryLo, dec) &&
+    roundTo(prev.entryHi, dec) === roundTo(candidate.entryHi, dec) &&
+    roundTo(prev.stopLoss, dec) === roundTo(candidate.stopLoss, dec) &&
+    roundTo(prev.tp1, dec) === roundTo(candidate.tp1, dec) &&
+    roundTo(prev.tp2, dec) === roundTo(candidate.tp2, dec) &&
+    roundTo(prev.tp3, dec) === roundTo(candidate.tp3, dec)
+  );
+}
+
+function reconcilePrediction(scan: ScanResult, decimals: number): PersistedPrediction {
+  const incoming: Omit<PersistedPrediction, "postedAt"> = {
+    symbol: scan.symbol,
+    bias: scan.bias,
+    grade: scan.grade,
+    entryLo: scan.entryZone[0],
+    entryHi: scan.entryZone[1],
+    stopLoss: scan.stopLoss,
+    tp1: scan.tp1,
+    tp2: scan.tp2,
+    tp3: scan.tp3,
+  };
+  const all = loadPredictions();
+  const prev = all[scan.symbol];
+  if (samePrediction(prev, incoming, decimals)) return prev!;
+  const next: PersistedPrediction = { ...incoming, postedAt: Date.now() };
+  all[scan.symbol] = next;
+  savePredictions(all);
+  return next;
+}
+
+function formatAgo(ts: number): string {
+  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (s < 30) return "just now";
+  if (s < 60) return `${s}s ago`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem === 0 ? `${h}h ago` : `${h}h ${rem}m ago`;
+}
+
+function isStale(postedAt: number): boolean {
+  return Date.now() - postedAt > STALE_MS;
+}
+
 /* ---------- Component ---------- */
 export default function ScreenerPage() {
   const { theme } = useTheme();
@@ -122,6 +228,7 @@ export default function ScreenerPage() {
   const [showDropdown, setShowDropdown] = useState(false);
   const [allQuotes, setAllQuotes] = useState<QuoteData[]>([]);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [scanPostedAt, setScanPostedAt] = useState<number | null>(null);
   const [scanning, setScanning] = useState(false);
   const [quickScanRows, setQuickScanRows] = useState<QuickScanRow[]>([]);
   const [quickScanLoading, setQuickScanLoading] = useState(true);
@@ -159,12 +266,13 @@ export default function ScreenerPage() {
         });
         setAllQuotes(quotes);
         const rows: QuickScanRow[] = quotes.map((q) => {
-          const breakdown = computeBreakdown(q);
-          const score = computeScore(breakdown);
+          const scan = buildScanResult(q);
+          const persisted = reconcilePrediction(scan, q.decimals ?? 2);
           return {
             symbol: q.symbol, displayName: q.displayName, category: q.category,
-            bias: getBias(q.changePercent), score, grade: getGrade(score),
+            bias: scan.bias, score: scan.score, grade: scan.grade,
             price: q.price, changePercent: q.changePercent,
+            postedAt: persisted.postedAt,
           };
         });
         setQuickScanRows(rows);
@@ -174,13 +282,30 @@ export default function ScreenerPage() {
     setQuickScanLoading(false);
   }, []);
 
-  useEffect(() => { fetchAllQuotes(); }, [fetchAllQuotes]);
+  useEffect(() => {
+    fetchAllQuotes();
+    // Refresh every 60s so the postedAt clock and 4h staleness window
+    // have something to measure against. Without this, every view looks
+    // "just posted" because nothing ever reconciles a second time.
+    const id = window.setInterval(() => { fetchAllQuotes(); }, 60_000);
+    return () => window.clearInterval(id);
+  }, [fetchAllQuotes]);
+
+  // Force a re-render every 30s so the "Xm ago" labels on visible
+  // predictions tick forward and anything that just crossed the 4h
+  // threshold drops out of view.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setTick((t) => t + 1), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   async function handleSelectInstrument(symbol: string) {
     setQuery("");
     setShowDropdown(false);
     setScanning(true);
     setScanResult(null);
+    setScanPostedAt(null);
 
     try {
       const res = await fetch("/api/market/quotes");
@@ -200,15 +325,40 @@ export default function ScreenerPage() {
             changePercent: raw.changePercent ?? 0,
             decimals: inst?.decimals ?? 2,
           };
-          setScanResult(buildScanResult(q));
+          const scan = buildScanResult(q);
+          const persisted = reconcilePrediction(scan, q.decimals ?? 2);
+          setScanResult(scan);
+          setScanPostedAt(persisted.postedAt);
         }
       }
     } catch { /* silent */ }
     setScanning(false);
   }
 
+  // When the quick-scan quotes refresh, re-reconcile the currently-shown
+  // main card against the latest quote so scanPostedAt rolls forward on
+  // a real change and stays pinned otherwise.
+  useEffect(() => {
+    if (!scanResult) return;
+    const q = allQuotes.find((x) => x.symbol === scanResult.symbol);
+    if (!q) return;
+    const inst = ALL_INSTRUMENTS.find((i) => i.symbol === scanResult.symbol);
+    const scan = buildScanResult(q);
+    const persisted = reconcilePrediction(scan, inst?.decimals ?? 2);
+    setScanResult(scan);
+    setScanPostedAt(persisted.postedAt);
+  // allQuotes is the refresh trigger; scanResult.symbol is what to follow.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allQuotes, scanResult?.symbol]);
+
+  // Drop rows whose levels haven't shifted in over 4 hours — they're
+  // stale predictions per the user's rule. NO_TRADE rows aren't
+  // predictions to begin with, so keep them on the list even if they've
+  // been "stuck" for hours.
   const sortedQuickScan = useMemo(() => {
-    const rows = [...quickScanRows];
+    const rows = quickScanRows.filter(
+      (r) => r.grade === "NO_TRADE" || !isStale(r.postedAt),
+    );
     rows.sort((a, b) => {
       let cmp = 0;
       if (sortBy === "score") cmp = a.score - b.score;
@@ -218,6 +368,11 @@ export default function ScreenerPage() {
     });
     return rows;
   }, [quickScanRows, sortBy, sortAsc]);
+
+  const staleHiddenCount = useMemo(
+    () => quickScanRows.filter((r) => r.grade !== "NO_TRADE" && isStale(r.postedAt)).length,
+    [quickScanRows],
+  );
 
   function handleSort(key: SortKey) {
     if (sortBy === key) setSortAsc(!sortAsc);
@@ -296,7 +451,19 @@ export default function ScreenerPage() {
       )}
 
       {/* Scan Result */}
-      {scanResult && !scanning && (
+      {scanResult && !scanning && scanPostedAt !== null && isStale(scanPostedAt) && (
+        <div className="glass-card p-6 text-center space-y-2 border border-warn/30 bg-warn/5">
+          <div className="text-3xl">⏳</div>
+          <h3 className="text-sm font-semibold text-warn">Prediction stale</h3>
+          <p className="text-xs text-muted max-w-md mx-auto">
+            The {scanResult.displayName} setup hasn&apos;t produced fresh levels in
+            over 4 hours ({formatAgo(scanPostedAt)}). Hidden per your settings —
+            search again once the market moves.
+          </p>
+        </div>
+      )}
+
+      {scanResult && !scanning && (scanPostedAt === null || !isStale(scanPostedAt)) && (
         <div className="space-y-4">
           {/* Main Card */}
           <div className="glass-card p-6 space-y-5">
@@ -313,6 +480,11 @@ export default function ScreenerPage() {
                   )}>
                     {scanResult.bias.toUpperCase()}
                   </span>
+                  {scanPostedAt !== null && (
+                    <span className="text-[10px] uppercase tracking-wider text-muted bg-surface-2 px-2 py-0.5 rounded-full border border-border/50">
+                      Posted {formatAgo(scanPostedAt)}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-4 mt-1 text-sm text-muted">
                   <span className="capitalize">{scanResult.category}</span>
@@ -448,7 +620,12 @@ export default function ScreenerPage() {
       {/* Quick Scan All */}
       <div>
         <h2 className="text-lg font-bold text-foreground mb-3">Quick Scan All</h2>
-        <p className="text-sm text-muted mb-4">All instruments ranked by prediction score</p>
+        <p className="text-sm text-muted mb-2">All instruments ranked by prediction score</p>
+        {staleHiddenCount > 0 && (
+          <p className="text-xs text-warn mb-4">
+            Hiding {staleHiddenCount} prediction{staleHiddenCount === 1 ? "" : "s"} unchanged for 4+ hours.
+          </p>
+        )}
 
         {quickScanLoading ? (
           <div className="glass-card p-6 animate-pulse space-y-3">
@@ -484,6 +661,7 @@ export default function ScreenerPage() {
                       Score {sortBy === "score" ? (sortAsc ? "^" : "v") : ""}
                     </th>
                     <th className="text-left text-xs text-muted font-medium px-3 py-3">Grade</th>
+                    <th className="text-left text-xs text-muted font-medium px-3 py-3">Posted</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -537,6 +715,9 @@ export default function ScreenerPage() {
                         )}>
                           {row.grade}
                         </span>
+                      </td>
+                      <td className="px-3 py-3 text-xs text-muted">
+                        {row.grade === "NO_TRADE" ? "—" : formatAgo(row.postedAt)}
                       </td>
                     </tr>
                   ))}
