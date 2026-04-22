@@ -128,7 +128,6 @@ function fmt(val: number, dec: number = 2): string {
  */
 
 const PREDICTIONS_KEY = "twv_market_predictions_v1";
-const STALE_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 interface PersistedPrediction {
   symbol: string;
@@ -217,9 +216,6 @@ function formatAgo(ts: number): string {
   return rem === 0 ? `${h}h ago` : `${h}h ${rem}m ago`;
 }
 
-function isStale(postedAt: number): boolean {
-  return Date.now() - postedAt > STALE_MS;
-}
 
 /* ---------- Component ---------- */
 export default function ScreenerPage() {
@@ -351,14 +347,8 @@ export default function ScreenerPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allQuotes, scanResult?.symbol]);
 
-  // Drop rows whose levels haven't shifted in over 4 hours — they're
-  // stale predictions per the user's rule. NO_TRADE rows aren't
-  // predictions to begin with, so keep them on the list even if they've
-  // been "stuck" for hours.
   const sortedQuickScan = useMemo(() => {
-    const rows = quickScanRows.filter(
-      (r) => r.grade === "NO_TRADE" || !isStale(r.postedAt),
-    );
+    const rows = [...quickScanRows];
     rows.sort((a, b) => {
       let cmp = 0;
       if (sortBy === "score") cmp = a.score - b.score;
@@ -368,11 +358,6 @@ export default function ScreenerPage() {
     });
     return rows;
   }, [quickScanRows, sortBy, sortAsc]);
-
-  const staleHiddenCount = useMemo(
-    () => quickScanRows.filter((r) => r.grade !== "NO_TRADE" && isStale(r.postedAt)).length,
-    [quickScanRows],
-  );
 
   function handleSort(key: SortKey) {
     if (sortBy === key) setSortAsc(!sortAsc);
@@ -451,19 +436,7 @@ export default function ScreenerPage() {
       )}
 
       {/* Scan Result */}
-      {scanResult && !scanning && scanPostedAt !== null && isStale(scanPostedAt) && (
-        <div className="glass-card p-6 text-center space-y-2 border border-warn/30 bg-warn/5">
-          <div className="text-3xl">⏳</div>
-          <h3 className="text-sm font-semibold text-warn">Prediction stale</h3>
-          <p className="text-xs text-muted max-w-md mx-auto">
-            The {scanResult.displayName} setup hasn&apos;t produced fresh levels in
-            over 4 hours ({formatAgo(scanPostedAt)}). Hidden per your settings —
-            search again once the market moves.
-          </p>
-        </div>
-      )}
-
-      {scanResult && !scanning && (scanPostedAt === null || !isStale(scanPostedAt)) && (
+      {scanResult && !scanning && (
         <div className="space-y-4">
           {/* Main Card */}
           <div className="glass-card p-6 space-y-5">
@@ -620,12 +593,7 @@ export default function ScreenerPage() {
       {/* Quick Scan All */}
       <div>
         <h2 className="text-lg font-bold text-foreground mb-3">Quick Scan All</h2>
-        <p className="text-sm text-muted mb-2">All instruments ranked by prediction score</p>
-        {staleHiddenCount > 0 && (
-          <p className="text-xs text-warn mb-4">
-            Hiding {staleHiddenCount} prediction{staleHiddenCount === 1 ? "" : "s"} unchanged for 4+ hours.
-          </p>
-        )}
+        <p className="text-sm text-muted mb-4">All instruments ranked by prediction score</p>
 
         {quickScanLoading ? (
           <div className="glass-card p-6 animate-pulse space-y-3">
