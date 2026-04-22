@@ -73,16 +73,37 @@ function loadSettings(): AlertSettings {
 }
 function saveSettings(settings: AlertSettings) { localStorage.setItem("alert_settings", JSON.stringify(settings)); }
 
-// Generate sample notifications from live data
-function generateNotifications(): AlertNotification[] {
-  const now = Date.now();
-  return [
-    { id: "n1", category: "signal", urgency: "high", title: "A+ Setup Detected", message: "XAU/USD bullish breakout setup — confidence 89%, R:R 1.9:1", symbol: "XAUUSD", timestamp: new Date(now - 120000).toISOString(), read: false },
-    { id: "n2", category: "volatility", urgency: "medium", title: "Volatility Expanding", message: "GBP/JPY volatility +38% above average. Breakout conditions forming.", symbol: "GBPJPY", timestamp: new Date(now - 480000).toISOString(), read: false },
-    { id: "n3", category: "macro", urgency: "critical", title: "High-Impact Event", message: "US CPI release in 45 minutes. Expect elevated volatility on USD pairs.", timestamp: new Date(now - 900000).toISOString(), read: true },
-    { id: "n4", category: "sentiment", urgency: "medium", title: "Extreme Sentiment", message: "EUR/USD retail positioning at 78% long. Contrarian fade risk elevated.", symbol: "EURUSD", timestamp: new Date(now - 1800000).toISOString(), read: true },
-    { id: "n5", category: "engine", urgency: "low", title: "Sharp Money Activity", message: "NAS100 sharp money score rose to 76 — elevated institutional interest.", symbol: "NAS100", timestamp: new Date(now - 3600000).toISOString(), read: true },
-  ];
+/**
+ * Build the inbox from real A/A+ setups the Brain has emitted. No more
+ * hardcoded XAU/USD / GBPJPY / NAS100 stubs — every row here is tied to
+ * an actual TradeSetup or Brain signal so the timestamps are honest.
+ *
+ * Extends later to other sources (macro events, volatility spikes) when
+ * those have real feeds; until then they just don't appear rather than
+ * making up rows.
+ */
+function notificationsFromSetups(setups: EliteSetup[]): AlertNotification[] {
+  const read = (() => {
+    try {
+      const raw = typeof window !== "undefined" ? window.localStorage.getItem("alert_read_ids") : null;
+      return raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
+    } catch { return new Set<string>(); }
+  })();
+  return setups
+    .filter((s) => s.qualityGrade === "A+" || s.qualityGrade === "A")
+    .slice(0, 30)
+    .map((s): AlertNotification => ({
+      id: `setup_${s.id}`,
+      ruleId: undefined,
+      ruleName: undefined,
+      category: "signal",
+      urgency: s.qualityGrade === "A+" ? "high" : "medium",
+      title: `${s.qualityGrade} Setup · ${s.displayName}`,
+      message: `${s.direction === "bullish" ? "Bullish" : "Bearish"} ${s.setupType} on ${s.timeframe} — confidence ${s.confidenceScore}%, R:R ${s.riskReward?.toFixed(1) ?? "—"}`,
+      symbol: s.symbol,
+      timestamp: new Date().toISOString(),
+      read: read.has(`setup_${s.id}`),
+    }));
 }
 
 interface EliteSetup {
@@ -129,9 +150,15 @@ export default function AlertsPage() {
 
   useEffect(() => {
     setRules(loadRules());
-    setNotifications(generateNotifications());
     setSettings(loadSettings());
+    // Notifications are derived from real setups (see effect below).
+    // Nothing hardcoded here anymore.
   }, []);
+
+  // Refresh the inbox whenever the setup feed changes.
+  useEffect(() => {
+    setNotifications(notificationsFromSetups(setups));
+  }, [setups]);
 
   useEffect(() => {
     async function fetchSetups() {
