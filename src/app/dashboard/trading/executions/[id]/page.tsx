@@ -195,7 +195,7 @@ export default function ExecutionDetailPage({ params }: { params: Promise<{ id: 
   if (loading) return <div className="page-container"><div className="glass-card p-10 text-center text-muted">Loading order…</div></div>;
   if (!data) return <div className="page-container"><div className="glass-card p-10 text-center text-muted">Order not found.</div></div>;
 
-  const { request: detail, setup, decisionLog, algoExecution } = data;
+  const { request: detail, setup, decisionLog, algoExecution, position, trade, events } = data;
   const result = detail.result;
   const ok = result?.executionStatus === "accepted" || result?.executionStatus === "partial";
   const rejected = result?.executionStatus === "rejected" || result?.executionStatus === "error";
@@ -263,32 +263,197 @@ export default function ExecutionDetailPage({ params }: { params: Promise<{ id: 
         </section>
       )}
 
-      <section className="glass-card p-5 space-y-3">
-        <h2 className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">Audit trail</h2>
-        <ol className="space-y-2">
-          {detail.audit.map((e) => (
-            <li key={e.id} className="flex items-start gap-3 text-xs">
-              <span className={cn(
-                "w-20 shrink-0 font-mono text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-md border text-center",
-                e.eventType === "created" || e.eventType === "submitted" ? "border-accent/40 text-accent-light bg-accent/10" :
-                e.eventType === "fill" || e.eventType === "ack" ? "border-bull/40 text-bull-light bg-bull/10" :
-                e.eventType === "reject" || e.eventType === "error" ? "border-bear/40 text-bear-light bg-bear/10" :
-                "border-border text-muted bg-surface-2"
-              )}>{e.eventType}</span>
-              <div className="flex-1 min-w-0">
-                <div className="text-muted-light">{new Date(e.createdAt).toLocaleString()} · <span className="text-muted">{e.actor}</span></div>
-                {e.payloadJson && (
-                  <pre className="mt-1 text-[10px] font-mono text-muted bg-surface-2/60 border border-border/40 rounded-md p-2 overflow-x-auto whitespace-pre-wrap break-all">
-                    {e.payloadJson}
-                  </pre>
-                )}
-              </div>
-            </li>
-          ))}
-        </ol>
-      </section>
+      <PostTradeOutcome position={position} trade={trade} />
+
+      <LifecycleTimeline audit={detail.audit} events={events} />
     </div>
   );
+}
+
+function PostTradeOutcome({ position, trade }: { position: PositionLite | null; trade: TradeLite | null }) {
+  if (!position && !trade) return null;
+  const closed = position?.status === "closed" || !!trade;
+  const pnl = trade?.realizedPnl ?? position?.realizedPnl ?? position?.unrealizedPnl ?? 0;
+  const pnlTone = pnl > 0 ? "bull" : pnl < 0 ? "bear" : "neutral";
+  return (
+    <section className={cn("glass-card p-5 space-y-3 border-2",
+      closed
+        ? (pnl >= 0 ? "border-bull/40" : "border-bear/40")
+        : "border-accent/30"
+    )}>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h2 className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+          {closed ? "Post-trade outcome" : "Position — live"}
+        </h2>
+        {position && (
+          <span className={cn("badge", closed ? "badge-bear" : "badge-bull")}>
+            {closed ? "closed" : "open"}
+          </span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+        {trade ? (
+          <>
+            <KV label="Realized PnL" value={`$${trade.realizedPnl.toFixed(2)}`} mono tone={pnlTone} />
+            <KV label="PnL %" value={`${trade.pnlPct.toFixed(2)}%`} mono tone={pnlTone} />
+            <KV label="R multiple" value={trade.rMultiple.toFixed(2)} mono tone={pnlTone} />
+            <KV label="Exit reason" value={trade.exitReason} />
+            <KV label="Entry" value={String(trade.entry)} mono />
+            <KV label="Exit" value={String(trade.exit)} mono />
+            <KV label="MFE" value={trade.mfe.toFixed(2)} mono />
+            <KV label="MAE" value={trade.mae.toFixed(2)} mono />
+            <KV label="Opened" value={new Date(trade.openedAt).toLocaleString()} />
+            <KV label="Closed" value={new Date(trade.closedAt).toLocaleString()} />
+            <KV label="Duration" value={formatMinutes(trade.durationMinutes)} />
+          </>
+        ) : position ? (
+          <>
+            <KV
+              label={closed ? "Realized PnL" : "Unrealized PnL"}
+              value={`$${(closed ? position.realizedPnl : position.unrealizedPnl).toFixed(2)}`}
+              mono
+              tone={pnlTone}
+            />
+            <KV label="MFE" value={position.mfe.toFixed(2)} mono />
+            <KV label="MAE" value={position.mae.toFixed(2)} mono />
+            <KV label="Closed %" value={`${position.closedPct.toFixed(0)}%`} mono />
+            <KV label="Entry" value={String(position.entry)} mono />
+            <KV label="Stop (current)" value={String(position.stopLoss)} mono />
+            <KV label="Stop (orig)" value={String(position.originalStopLoss)} mono />
+            <KV label="Size units" value={String(position.sizeUnits)} mono />
+            <KV label="Thesis" value={`${position.thesisScore} · ${position.thesisState}`} tone={thesisTone(position.thesisState)} />
+            <KV label="Moved to BE" value={position.movedToBreakeven ? "yes" : "no"} />
+            <KV label="Opened" value={new Date(position.openedAt).toLocaleString()} />
+            {position.closedAt && <KV label="Closed" value={new Date(position.closedAt).toLocaleString()} />}
+            {position.exitReason && <KV label="Exit reason" value={position.exitReason} />}
+          </>
+        ) : null}
+      </div>
+
+      {position && (
+        <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider pt-2 border-t border-border/30 flex-wrap">
+          <span className="text-muted">Targets:</span>
+          <HitPill label="TP1" hit={position.tp1Hit} />
+          {position.takeProfit2 != null && <HitPill label="TP2" hit={position.tp2Hit} />}
+          {position.takeProfit3 != null && <HitPill label="TP3" hit={position.tp3Hit} />}
+          <HitPill label="SL" hit={(trade?.exitReason === "sl_hit") || position.exitReason === "sl_hit"} bear />
+          <HitPill label="BE moved" hit={position.movedToBreakeven} neutral />
+        </div>
+      )}
+    </section>
+  );
+}
+
+function HitPill({ label, hit, bear, neutral }: { label: string; hit: boolean; bear?: boolean; neutral?: boolean }) {
+  return (
+    <span className={cn(
+      "font-mono px-2 py-0.5 rounded-md border",
+      hit
+        ? (bear ? "border-bear/40 bg-bear/10 text-bear-light"
+          : neutral ? "border-accent/40 bg-accent/10 text-accent-light"
+          : "border-bull/40 bg-bull/10 text-bull-light")
+        : "border-border/40 bg-surface-2 text-muted"
+    )}>
+      {label} {hit ? "✓" : "·"}
+    </span>
+  );
+}
+
+function thesisTone(state: string): Tone {
+  if (state === "strong") return "bull";
+  if (state === "weakening") return "warn";
+  if (state === "damaged" || state === "invalidated") return "bear";
+  return "neutral";
+}
+
+function formatMinutes(m: number) {
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  if (h < 24) return r ? `${h}h ${r}m` : `${h}h`;
+  const d = Math.floor(h / 24);
+  const rh = h % 24;
+  return rh ? `${d}d ${rh}h` : `${d}d`;
+}
+
+interface TimelineEntry {
+  id: string;
+  source: "audit" | "event";
+  eventType: string;
+  createdAt: string;
+  actor: string;
+  detail: string | null;
+}
+
+function LifecycleTimeline({ audit, events }: { audit: AuditEntry[]; events: ExecEvent[] }) {
+  const merged: TimelineEntry[] = [
+    ...audit.map((a) => ({
+      id: `a:${a.id}`,
+      source: "audit" as const,
+      eventType: a.eventType,
+      createdAt: a.createdAt,
+      actor: a.actor,
+      detail: a.payloadJson,
+    })),
+    ...events.map((e) => ({
+      id: `e:${e.id}`,
+      source: "event" as const,
+      eventType: e.eventType,
+      createdAt: e.createdAt,
+      actor: "brain",
+      detail: [
+        e.reason,
+        e.price != null ? `@ ${e.price}` : null,
+        e.fromValue != null || e.toValue != null ? `${e.fromValue ?? "—"} → ${e.toValue ?? "—"}` : null,
+      ].filter(Boolean).join(" · ") || null,
+    })),
+  ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+  return (
+    <section className="glass-card p-5 space-y-3">
+      <h2 className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+        Lifecycle timeline
+      </h2>
+      <ol className="space-y-2">
+        {merged.map((e) => (
+          <li key={e.id} className="flex items-start gap-3 text-xs">
+            <span className={cn(
+              "w-24 shrink-0 font-mono text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-md border text-center",
+              timelineClass(e.eventType)
+            )}>{e.eventType}</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-muted-light">
+                {new Date(e.createdAt).toLocaleString()} ·{" "}
+                <span className="text-muted">{e.source === "audit" ? e.actor : "brain"}</span>
+              </div>
+              {e.detail && (
+                <pre className="mt-1 text-[10px] font-mono text-muted bg-surface-2/60 border border-border/40 rounded-md p-2 overflow-x-auto whitespace-pre-wrap break-all">
+                  {e.detail}
+                </pre>
+              )}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function timelineClass(eventType: string): string {
+  if (eventType === "created" || eventType === "submitted" || eventType === "opened") {
+    return "border-accent/40 text-accent-light bg-accent/10";
+  }
+  if (eventType === "fill" || eventType === "ack" || eventType.startsWith("tp")) {
+    return "border-bull/40 text-bull-light bg-bull/10";
+  }
+  if (eventType === "reject" || eventType === "error" || eventType === "sl_hit" || eventType.startsWith("closed")) {
+    return "border-bear/40 text-bear-light bg-bear/10";
+  }
+  if (eventType.includes("thesis") || eventType.includes("breakeven") || eventType.includes("trail") || eventType.includes("partial")) {
+    return "border-warn/40 text-warn-light bg-warn/10";
+  }
+  return "border-border text-muted bg-surface-2";
 }
 
 function AlgoProvenance({ algo, sourceType }: { algo: AlgoExecLite | null; sourceType: string | null }) {
