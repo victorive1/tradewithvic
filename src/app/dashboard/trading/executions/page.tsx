@@ -17,6 +17,10 @@ interface RequestRow {
   createdAt: string;
   submittedAt: string | null;
   sourceType: string | null;
+  grade: string | null;
+  confidenceScore: number | null;
+  algoBotId: string | null;
+  algoStatus: string | null;
   account: { accountLabel: string | null; accountLogin: string; brokerName: string; platformType: string } | null;
   result: {
     executionStatus: string;
@@ -98,6 +102,8 @@ export default function ExecutionHistoryPage() {
                 <th className="text-left py-2.5 px-3">WHEN</th>
                 <th className="text-left px-2">SYMBOL</th>
                 <th className="text-left px-2">DIR</th>
+                <th className="text-center px-2">GRADE</th>
+                <th className="text-left px-2">ALGO</th>
                 <th className="text-right px-2">VOL</th>
                 <th className="text-right px-2">FILL</th>
                 <th className="text-left px-2">ACCOUNT</th>
@@ -116,6 +122,27 @@ export default function ExecutionHistoryPage() {
                       <span className={cn("font-bold text-[11px]", r.side === "buy" ? "text-bull-light" : "text-bear-light")}>
                         {r.side === "buy" ? "▲ BUY" : "▼ SELL"}
                       </span>
+                    </td>
+                    <td className="px-2 text-center">
+                      {r.grade ? (
+                        <span className={cn(
+                          "font-mono text-[10px] px-1.5 py-0.5 rounded-md border",
+                          r.grade === "A+" || r.grade === "A"
+                            ? "border-bull/40 bg-bull/10 text-bull-light"
+                            : r.grade === "B"
+                            ? "border-warn/40 bg-warn/10 text-warn-light"
+                            : "border-border/40 bg-surface-2 text-muted-light"
+                        )}>{r.grade}</span>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
+                    </td>
+                    <td className="px-2 font-mono text-[11px]">
+                      {r.algoBotId ? (
+                        <span className="text-accent-light">{r.algoBotId}</span>
+                      ) : (
+                        <span className="text-muted">{r.sourceType === "manual" || !r.sourceType ? "manual" : "—"}</span>
+                      )}
                     </td>
                     <td className="px-2 text-right font-mono">{r.requestedVolume}</td>
                     <td className="px-2 text-right font-mono">{r.result?.fillPrice ?? "—"}</td>

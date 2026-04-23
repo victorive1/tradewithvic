@@ -24,5 +24,40 @@ export async function GET(req: NextRequest) {
     take,
   });
 
-  return NextResponse.json({ requests });
+  const setupIds = Array.from(new Set(requests.map((r) => r.sourceRef).filter((v): v is string => !!v)));
+  const requestIds = requests.map((r) => r.id);
+
+  const [setups, algoExecs] = await Promise.all([
+    setupIds.length
+      ? prisma.tradeSetup.findMany({
+          where: { id: { in: setupIds } },
+          select: { id: true, qualityGrade: true, confidenceScore: true },
+        }).catch(() => [])
+      : Promise.resolve([]),
+    requestIds.length
+      ? prisma.algoBotExecution.findMany({
+          where: { tradeRequestId: { in: requestIds } },
+          select: { tradeRequestId: true, botId: true, status: true },
+        }).catch(() => [])
+      : Promise.resolve([]),
+  ]);
+
+  const setupById = new Map(setups.map((s) => [s.id, s]));
+  const algoByRequest = new Map(
+    algoExecs.filter((a) => a.tradeRequestId).map((a) => [a.tradeRequestId as string, a]),
+  );
+
+  const enriched = requests.map((r) => {
+    const setup = r.sourceRef ? setupById.get(r.sourceRef) : undefined;
+    const algo = algoByRequest.get(r.id);
+    return {
+      ...r,
+      grade: setup?.qualityGrade ?? null,
+      confidenceScore: setup?.confidenceScore ?? null,
+      algoBotId: algo?.botId ?? null,
+      algoStatus: algo?.status ?? null,
+    };
+  });
+
+  return NextResponse.json({ requests: enriched });
 }
