@@ -3,7 +3,9 @@ import { runNewsIngest } from "@/lib/news/ingest";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-export const maxDuration = 60;
+// Vercel Pro allows up to 300s; 120 gives the first cold fire room to
+// upsert 50+ events + headlines without flirting with the timeout.
+export const maxDuration = 120;
 
 function isAuthorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
