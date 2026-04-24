@@ -596,6 +596,31 @@ model EventRiskSnapshot {
   @@index([computedAt])
 }
 
+// Unscheduled / breaking market news that can move markets outside the
+// economic calendar — central bank surprises, geopolitical headlines,
+// commodity shocks. Severity drives the top-of-screen alert bar.
+model MarketNewsHeadline {
+  id                  String    @id @default(cuid())
+  publishedAt         DateTime
+  headline            String
+  summary             String?
+  severity            String // red | orange | green
+  category            String    @default("general") // macro | geopolitical | central_bank | commodity | general
+  affectedSymbolsJson String    @default("[]")
+  sourceName          String
+  sourceUrl           String?
+  externalId          String? // upstream id for dedup
+  isActive            Boolean   @default(true) // set false once we've decided the market has absorbed it
+  resolvedAt          DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([sourceName, externalId])
+  @@index([publishedAt])
+  @@index([severity, isActive])
+  @@index([isActive, publishedAt])
+}
+
 // ==================== BILLING & PAYMENTS ====================
 
 model BillingAccount {
