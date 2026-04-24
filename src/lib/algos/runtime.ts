@@ -134,6 +134,31 @@ export async function runAlgoRuntime(): Promise<AlgoRuntimeResult> {
         }
         if (routedThisRun >= budget) break;
 
+        // Event-risk guard: never route a new trade into a known high-risk
+        // macro window. EventRiskSnapshot is refreshed by the brain scan
+        // every 2 minutes; "high" means a high-impact event is within 60
+        // minutes of this symbol's sensitive currencies.
+        const eventRisk = await prisma.eventRiskSnapshot.findUnique({
+          where: { symbol: setup.symbol },
+        });
+        if (eventRisk?.riskLevel === "high") {
+          await prisma.algoBotExecution.create({
+            data: {
+              algoBotConfigId: bot.id,
+              botId: bot.botId,
+              setupId: setup.id,
+              symbol: setup.symbol,
+              direction: setup.direction,
+              grade: setup.qualityGrade,
+              accountLogin: csvToSet(bot.selectedAccounts).values().next().value ?? "",
+              status: "filtered",
+              rejectReason: `event_risk_high: ${eventRisk.nearestEventName ?? "imminent event"} in ${eventRisk.minutesToEvent ?? "?"}m`,
+            },
+          }).catch(() => { /* dedup unique */ });
+          result.filtered++;
+          continue;
+        }
+
         // Load the admin's linked MT accounts selected for this bot.
         const accountLogins = [...csvToSet(bot.selectedAccounts)];
         if (accountLogins.length === 0) {

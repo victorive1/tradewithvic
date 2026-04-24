@@ -78,15 +78,21 @@ export async function applyAdaptiveProtection(): Promise<{
   const account = await prisma.executionAccount.findUnique({ where: { name: "paper-default" } });
   if (!account) return { processed: 0, actionsTaken: [], totalRealizedFromPartials: 0 };
 
-  const mode = (account.smartExitMode as SmartExitMode) ?? "balanced";
-  const rule = RULES[mode];
-  if (mode === "off") return { processed: 0, actionsTaken: [], totalRealizedFromPartials: 0 };
-
+  const baseMode = (account.smartExitMode as SmartExitMode) ?? "balanced";
   const positions = await prisma.executionPosition.findMany({ where: { accountId: account.id, status: "open" } });
+  // Per-position effective mode: during a high event-risk window, bump
+  // the mode up to at least "conservative" for that symbol so open trades
+  // start tightening before the release. Aggressive stays aggressive;
+  // off → stays off (user explicitly turned protection off).
+  const eventRiskBySymbol = await loadEventRiskForSymbols(positions.map((p) => p.symbol));
   const actionsTaken: PositionAction[] = [];
   let totalRealized = 0;
 
   for (const pos of positions) {
+    const mode = effectiveMode(baseMode, eventRiskBySymbol.get(pos.symbol) ?? "none");
+    if (mode === "off") continue;
+    const rule = RULES[mode];
+
     const action: PositionAction = {
       positionId: pos.id,
       actions: [],
@@ -271,4 +277,27 @@ export async function applyAdaptiveProtection(): Promise<{
   }
 
   return { processed: positions.length, actionsTaken, totalRealizedFromPartials: totalRealized };
+}
+
+async function loadEventRiskForSymbols(symbols: string[]): Promise<Map<string, string>> {
+  if (symbols.length === 0) return new Map();
+  const unique = Array.from(new Set(symbols));
+  const rows = await prisma.eventRiskSnapshot.findMany({
+    where: { symbol: { in: unique } },
+    select: { symbol: true, riskLevel: true },
+  });
+  return new Map(rows.map((r: { symbol: string; riskLevel: string }) => [r.symbol, r.riskLevel]));
+}
+
+function effectiveMode(base: SmartExitMode, riskLevel: string): SmartExitMode {
+  // Off = user explicitly disabled protection. Respect it, don't override.
+  if (base === "off") return "off";
+  // During a high event-risk window, step up one tier. Aggressive stays
+  // aggressive (already at the top). The user's chosen baseline is
+  // restored automatically next cycle when riskLevel falls back.
+  if (riskLevel === "high") {
+    if (base === "conservative") return "balanced";
+    if (base === "balanced") return "aggressive";
+  }
+  return base;
 }
