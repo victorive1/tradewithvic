@@ -1,4 +1,8 @@
 -- CreateTable
+-- stripeCustomerId was originally added by an earlier migration
+-- (20260418122949_add_stripe_customer_id) but the schema creation
+-- order put that ALTER before this CREATE. Folded in here so a clean
+-- shadow-DB replay ends with the same column set as production.
 CREATE TABLE "BillingAccount" (
     "id" TEXT NOT NULL,
     "userKey" TEXT NOT NULL,
@@ -6,6 +10,7 @@ CREATE TABLE "BillingAccount" (
     "availableBalance" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "pendingBalance" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "lockedBalance" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "stripeCustomerId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -144,6 +149,9 @@ CREATE TABLE "BillingAdminSetting" (
 
 -- CreateIndex
 CREATE UNIQUE INDEX "BillingAccount_userKey_key" ON "BillingAccount"("userKey");
+
+-- CreateIndex
+CREATE UNIQUE INDEX IF NOT EXISTS "BillingAccount_stripeCustomerId_key" ON "BillingAccount"("stripeCustomerId");
 
 -- CreateIndex
 CREATE INDEX "BillingAccount_createdAt_idx" ON "BillingAccount"("createdAt");
