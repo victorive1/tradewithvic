@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { detectInverseFVG } from "@/lib/brain/strategies/inverse-fvg";
 import { detectOrderBlock } from "@/lib/brain/strategies/order-block";
+import { detectBreakerBlock } from "@/lib/brain/strategies/breaker-block";
 import type { DetectedSetup } from "@/lib/brain/strategies-types";
 
 export type { DetectedSetup };
@@ -310,6 +311,7 @@ export async function detectStrategies(
     detectSweepReversal,
     detectInverseFVG,
     detectOrderBlock,
+    detectBreakerBlock,
   ];
   const detected: DetectedSetup[] = [];
   for (const d of detectors) {

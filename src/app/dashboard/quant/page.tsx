@@ -22,6 +22,11 @@ const QUANT_STRATEGIES: Array<{ key: string; label: string; description: string 
     label: "Order Block",
     description: "Last opposing candle before a strong displacement break, retested for institutional defence.",
   },
+  {
+    key: "breaker_block",
+    label: "Breaker Block",
+    description: "Failed order block — broken through and retested as flipped support/resistance.",
+  },
 ];
 
 const QUANT_KEYS = QUANT_STRATEGIES.map((s) => s.key);
