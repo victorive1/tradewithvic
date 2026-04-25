@@ -15,4 +15,10 @@ export interface DetectedSetup {
   explanation: string;
   invalidation: string;
   validHours: number;
+  // Trade Thesis Monitor (Blueprint § 13). Optional — detectors that
+  // don't supply them get sensible defaults at persist time so the
+  // existing engines keep working without touching every file.
+  originalThesis?: string;
+  requiredConditions?: string[];
+  invalidationConditions?: string[];
 }

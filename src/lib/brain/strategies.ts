@@ -24,6 +24,37 @@ interface StrategyContext {
   atr: number | null;
 }
 
+// Sensible default thesis conditions for detectors that don't supply
+// their own — covers the legacy breakout/pullback/sweep_reversal trio
+// without forcing each to be edited. Per Blueprint § 13, every trade
+// needs a living thesis with required + invalidation conditions; these
+// defaults give the smart-exit + thesis monitor something concrete to
+// check each cycle even when the detector hasn't been ported yet.
+function defaultRequired(s: DetectedSetup): string[] {
+  if (s.direction === "bullish") {
+    return [
+      `Price remains above stop loss ${s.stopLoss.toFixed(5)}`,
+      `Bullish structure on ${s.setupType} timeframe`,
+      `Spread remains normal`,
+    ];
+  }
+  return [
+    `Price remains below stop loss ${s.stopLoss.toFixed(5)}`,
+    `Bearish structure on ${s.setupType} timeframe`,
+    `Spread remains normal`,
+  ];
+}
+
+function defaultInvalidation(s: DetectedSetup): string[] {
+  const opposite = s.direction === "bullish" ? "bearish" : "bullish";
+  return [
+    `${opposite.charAt(0).toUpperCase() + opposite.slice(1)} CHoCH after entry`,
+    `Opposite A+ signal appears`,
+    `Volatility spike invalidates SL distance`,
+    s.invalidation,
+  ];
+}
+
 function gradeFromScore(score: number): string {
   if (score >= 90) return "A+";
   if (score >= 80) return "A";
@@ -331,6 +362,9 @@ export async function detectStrategies(
       qualityGrade: s.qualityGrade,
       explanation: s.explanation,
       invalidation: s.invalidation,
+      originalThesis: s.originalThesis ?? s.explanation,
+      requiredConditionsJson: JSON.stringify(s.requiredConditions ?? defaultRequired(s)),
+      invalidationConditionsJson: JSON.stringify(s.invalidationConditions ?? defaultInvalidation(s)),
       status: "active",
       validUntil: new Date(validUntilBase + s.validHours * 60 * 60 * 1000),
     })),

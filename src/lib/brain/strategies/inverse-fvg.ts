@@ -214,6 +214,21 @@ function evaluateInverseSell(ctx: IFVGContext, fvg: FVGZone): DetectedSetup | nu
       `1H bullish reclaim of the inverse FVG (close above ${fvg.high.toFixed(5)}) invalidates the thesis. ` +
       `Bullish CHoCH after entry is also a hard invalidation.`,
     validHours: 6,
+    originalThesis:
+      `Sell from inverse FVG after bullish FVG violation at ${fvg.low.toFixed(5)}. ` +
+      `The FVG flipped from demand to supply on the displacement break.`,
+    requiredConditions: [
+      `Price remains below inverse FVG low ${fvg.low.toFixed(5)}`,
+      `${ctx.timeframe} structure remains bearish`,
+      `No bullish CHoCH forms`,
+      `Spread remains normal`,
+    ],
+    invalidationConditions: [
+      `${ctx.timeframe} candle closes above inverse FVG high ${fvg.high.toFixed(5)}`,
+      `Bullish CHoCH forms after entry`,
+      `Opposite A+ signal appears`,
+      `Volatility spike invalidates SL logic`,
+    ],
   };
 }
 
@@ -292,6 +307,21 @@ function evaluateInverseBuy(ctx: IFVGContext, fvg: FVGZone): DetectedSetup | nul
       `1H bearish reclaim of the inverse FVG (close below ${fvg.low.toFixed(5)}) invalidates the thesis. ` +
       `Bearish CHoCH after entry is also a hard invalidation.`,
     validHours: 6,
+    originalThesis:
+      `Buy from inverse FVG after bearish FVG violation at ${fvg.high.toFixed(5)}. ` +
+      `The FVG flipped from supply to demand on the displacement break.`,
+    requiredConditions: [
+      `Price remains above inverse FVG high ${fvg.high.toFixed(5)}`,
+      `${ctx.timeframe} structure remains bullish`,
+      `No bearish CHoCH forms`,
+      `Spread remains normal`,
+    ],
+    invalidationConditions: [
+      `${ctx.timeframe} candle closes below inverse FVG low ${fvg.low.toFixed(5)}`,
+      `Bearish CHoCH forms after entry`,
+      `Opposite A+ signal appears`,
+      `Volatility spike invalidates SL logic`,
+    ],
   };
 }
 

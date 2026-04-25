@@ -1187,6 +1187,12 @@ model TradeSetup {
   qualityGrade    String
   explanation     String?
   invalidation    String?
+  // Trade Thesis Monitor — Quant Engine Blueprint § 13. Stored as JSON
+  // arrays of strings so the smart-exit / thesis monitor can iterate
+  // them per cycle and report which condition flipped.
+  originalThesis            String?
+  requiredConditionsJson    String   @default("[]")
+  invalidationConditionsJson String  @default("[]")
   status          String    @default("active")
   validUntil      DateTime?
   createdAt       DateTime  @default(now())

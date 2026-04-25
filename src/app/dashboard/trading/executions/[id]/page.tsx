@@ -82,6 +82,9 @@ interface SetupLite {
   qualityGrade: string;
   explanation: string | null;
   invalidation: string | null;
+  originalThesis?: string | null;
+  requiredConditionsJson?: string | null;
+  invalidationConditionsJson?: string | null;
 }
 interface DecisionLogLite {
   id: string;
@@ -249,6 +252,8 @@ export default function ExecutionDetailPage({ params }: { params: Promise<{ id: 
       <AlgoProvenance algo={algoExecution} sourceType={detail.sourceType} />
 
       <SetupRatings setup={setup} decisionLog={decisionLog} />
+
+      <TradeThesis setup={setup} />
 
       {result && (
         <section className={cn("glass-card p-5 space-y-3 border-2",
@@ -464,6 +469,47 @@ function timelineClass(eventType: string): string {
     return "border-warn/40 text-warn-light bg-warn/10";
   }
   return "border-border text-muted bg-surface-2";
+}
+
+function TradeThesis({ setup }: { setup: SetupLite | null }) {
+  if (!setup) return null;
+  const required = safeParse(setup.requiredConditionsJson);
+  const invalidation = safeParse(setup.invalidationConditionsJson);
+  if (!setup.originalThesis && required.length === 0 && invalidation.length === 0) return null;
+  return (
+    <section className="glass-card p-5 space-y-3">
+      <h2 className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">Trade thesis</h2>
+      {setup.originalThesis && (
+        <p className="text-xs text-foreground leading-relaxed">{setup.originalThesis}</p>
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {required.length > 0 && (
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-bull-light mb-1.5">Required conditions</div>
+            <ul className="space-y-1 text-[11px] text-muted-light">
+              {required.map((c, i) => <li key={i} className="flex items-start gap-2"><span className="text-bull-light/60 mt-0.5">✓</span><span>{c}</span></li>)}
+            </ul>
+          </div>
+        )}
+        {invalidation.length > 0 && (
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-bear-light mb-1.5">Invalidation triggers</div>
+            <ul className="space-y-1 text-[11px] text-muted-light">
+              {invalidation.map((c, i) => <li key={i} className="flex items-start gap-2"><span className="text-bear-light/60 mt-0.5">✕</span><span>{c}</span></li>)}
+            </ul>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function safeParse(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string" && v.length > 0) : [];
+  } catch { return []; }
 }
 
 function AlgoProvenance({ algo, sourceType }: { algo: AlgoExecLite | null; sourceType: string | null }) {
