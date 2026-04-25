@@ -5,21 +5,31 @@ import { cn } from "@/lib/utils";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
 import { computeLotSize } from "@/lib/trading/lot-sizing";
 
+type RiskMode = "percent" | "dollar";
+
 export default function RiskPage() {
   const [symbol, setSymbol] = useState("EURUSD");
   const [balance, setBalance] = useState("10000");
+  const [riskMode, setRiskMode] = useState<RiskMode>("percent");
   const [riskPercent, setRiskPercent] = useState("1");
+  const [riskDollar, setRiskDollar] = useState("100");
   const [entry, setEntry] = useState("1.0840");
   const [stopLoss, setStopLoss] = useState("1.0800");
   const [takeProfit, setTakeProfit] = useState("1.0920");
 
   const bal = parseFloat(balance) || 0;
-  const risk = parseFloat(riskPercent) || 0;
   const ent = parseFloat(entry) || 0;
   const sl = parseFloat(stopLoss) || 0;
   const tp = parseFloat(takeProfit) || 0;
 
-  const dollarRisk = bal * (risk / 100);
+  // Risk amount comes from whichever input the user is currently driving;
+  // the derived value of the other lane is shown alongside so they can see
+  // the equivalent at a glance.
+  const dollarRisk = riskMode === "percent"
+    ? bal * ((parseFloat(riskPercent) || 0) / 100)
+    : (parseFloat(riskDollar) || 0);
+  const effectivePercent = bal > 0 ? (dollarRisk / bal) * 100 : 0;
+  const risk = effectivePercent;
 
   const result = useMemo(
     () => computeLotSize({ symbol, entry: ent, stopLoss: sl, riskUSD: dollarRisk }),
@@ -87,17 +97,84 @@ export default function RiskPage() {
               className="w-full px-4 py-3 rounded-xl bg-surface-2 border border-border focus:border-accent focus:outline-none text-sm text-foreground" />
           </div>
           <div>
-            <label className="text-xs text-muted-light mb-1.5 block">Risk Per Trade (%)</label>
-            <input type="number" step="0.1" value={riskPercent} onChange={(e) => setRiskPercent(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl bg-surface-2 border border-border focus:border-accent focus:outline-none text-sm text-foreground" />
-            <div className="flex gap-2 mt-2">
-              {["0.25", "0.5", "1", "2"].map((v) => (
-                <button key={v} onClick={() => setRiskPercent(v)}
-                  className={cn("px-3 py-1 rounded-lg text-xs transition-smooth", riskPercent === v ? "bg-accent text-white" : "bg-surface-2 text-muted-light border border-border/50")}>
-                  {v}%
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs text-muted-light">Risk Per Trade</label>
+              <div className="inline-flex rounded-lg border border-border/50 bg-surface-2 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setRiskMode("percent")}
+                  className={cn(
+                    "px-2.5 py-0.5 rounded-md text-[11px] font-semibold transition-smooth",
+                    riskMode === "percent" ? "bg-accent text-white" : "text-muted-light hover:text-foreground"
+                  )}
+                >
+                  %
                 </button>
-              ))}
+                <button
+                  type="button"
+                  onClick={() => setRiskMode("dollar")}
+                  className={cn(
+                    "px-2.5 py-0.5 rounded-md text-[11px] font-semibold transition-smooth",
+                    riskMode === "dollar" ? "bg-accent text-white" : "text-muted-light hover:text-foreground"
+                  )}
+                >
+                  $
+                </button>
+              </div>
             </div>
+
+            {riskMode === "percent" ? (
+              <>
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={riskPercent}
+                    onChange={(e) => setRiskPercent(e.target.value)}
+                    className="w-full px-4 py-3 pr-10 rounded-xl bg-surface-2 border border-border focus:border-accent focus:outline-none text-sm text-foreground"
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-muted">%</span>
+                </div>
+                <div className="flex gap-2 mt-2">
+                  {["0.25", "0.5", "1", "2"].map((v) => (
+                    <button key={v} onClick={() => setRiskPercent(v)}
+                      className={cn("px-3 py-1 rounded-lg text-xs transition-smooth", riskPercent === v ? "bg-accent text-white" : "bg-surface-2 text-muted-light border border-border/50")}>
+                      {v}%
+                    </button>
+                  ))}
+                </div>
+                <div className="text-[11px] text-muted mt-2">
+                  ≈ <span className="text-foreground font-mono">${dollarRisk.toFixed(2)}</span> at this account size
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xs text-muted">$</span>
+                  <input
+                    type="number"
+                    step="1"
+                    value={riskDollar}
+                    onChange={(e) => setRiskDollar(e.target.value)}
+                    className="w-full pl-8 pr-4 py-3 rounded-xl bg-surface-2 border border-border focus:border-accent focus:outline-none text-sm text-foreground"
+                  />
+                </div>
+                <div className="flex gap-2 mt-2">
+                  {["25", "50", "100", "250", "500"].map((v) => (
+                    <button key={v} onClick={() => setRiskDollar(v)}
+                      className={cn("px-3 py-1 rounded-lg text-xs transition-smooth", riskDollar === v ? "bg-accent text-white" : "bg-surface-2 text-muted-light border border-border/50")}>
+                      ${v}
+                    </button>
+                  ))}
+                </div>
+                <div className="text-[11px] text-muted mt-2">
+                  ≈ <span className={cn("font-mono", effectivePercent > 5 ? "text-bear-light font-semibold" : effectivePercent > 2 ? "text-warn" : "text-foreground")}>
+                    {effectivePercent.toFixed(2)}%
+                  </span> of account balance
+                  {effectivePercent > 5 && <span className="text-bear-light"> · over 5% risk is aggressive</span>}
+                </div>
+              </>
+            )}
           </div>
           <div>
             <label className="text-xs text-muted-light mb-1.5 block">Entry Price</label>
@@ -191,7 +268,7 @@ export default function RiskPage() {
               <div className="flex justify-between"><span className="text-muted">Symbol</span><span className="text-foreground font-mono">{symbol} ({ALL_INSTRUMENTS.find((i) => i.symbol === symbol)?.category})</span></div>
               <div className="flex justify-between"><span className="text-muted">Contract Size</span><span className="text-foreground font-mono">{formatNum(result.contractSize, 0)} units / lot</span></div>
               <div className="flex justify-between"><span className="text-muted">{result.pipUnitLabel === "pip" ? "Pip" : result.pipUnitLabel === "point" ? "Point" : "Step"} Size</span><span className="text-foreground font-mono">{result.pipDecimal}</span></div>
-              <div className="flex justify-between"><span className="text-muted">Max Loss</span><span className="text-bear-light font-mono">${dollarRisk.toFixed(2)} ({risk}%)</span></div>
+              <div className="flex justify-between"><span className="text-muted">Max Loss</span><span className="text-bear-light font-mono">${dollarRisk.toFixed(2)} ({risk.toFixed(2)}%)</span></div>
               <div className="flex justify-between"><span className="text-muted">Max Profit</span><span className="text-bull-light font-mono">${potentialProfit.toFixed(2)} ({(risk * rr).toFixed(2)}%)</span></div>
               <div className="flex justify-between"><span className="text-muted">Account After Loss</span><span className="text-foreground font-mono">${(bal - dollarRisk).toFixed(2)}</span></div>
               <div className="flex justify-between"><span className="text-muted">Account After Win</span><span className="text-bull-light font-mono">${(bal + potentialProfit).toFixed(2)}</span></div>
