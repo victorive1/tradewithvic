@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { mapSymbolForBroker } from "@/lib/trading/symbol-mapping";
 import { computeExposure, wouldExceedLimit } from "@/lib/brain/exposure";
+import { strategyPolicyFor, isStrategyAllowed } from "@/lib/brain/regime-policy";
 
 // Currency-exposure caps applied to every algo route. The % cap pulls
 // from ExecutionAccount.maxCurrencyExposurePct (already in the schema);
@@ -148,6 +149,38 @@ export async function runAlgoRuntime(): Promise<AlgoRuntimeResult> {
         const eventRisk = await prisma.eventRiskSnapshot.findUnique({
           where: { symbol: setup.symbol },
         });
+        // Market-regime gate — Blueprint § 6. Skip the setup if the
+        // current regime explicitly disallows its setupType (e.g. don't
+        // route a breakout in a ranging regime).
+        const regimeSnap = await prisma.regimeSnapshot.findUnique({
+          where: { symbol_timeframe: { symbol: setup.symbol, timeframe: setup.timeframe } },
+        });
+        if (regimeSnap) {
+          const policy = strategyPolicyFor({
+            structureRegime: regimeSnap.structureRegime,
+            directionalBias: regimeSnap.directionalBias,
+            volatilityRegime: regimeSnap.volatilityRegime,
+            trendStrength: regimeSnap.trendStrength,
+          });
+          if (!isStrategyAllowed(setup.setupType, policy)) {
+            await prisma.algoBotExecution.create({
+              data: {
+                algoBotConfigId: bot.id,
+                botId: bot.botId,
+                setupId: setup.id,
+                symbol: setup.symbol,
+                direction: setup.direction,
+                grade: setup.qualityGrade,
+                accountLogin: csvToSet(bot.selectedAccounts).values().next().value ?? "",
+                status: "filtered",
+                rejectReason: `regime_blocked: ${setup.setupType} not allowed in ${policy.regimeLabel} regime`,
+              },
+            }).catch(() => { /* dedup */ });
+            result.filtered++;
+            continue;
+          }
+        }
+
         if (eventRisk?.riskLevel === "high") {
           await prisma.algoBotExecution.create({
             data: {
