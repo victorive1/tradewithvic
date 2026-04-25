@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
 import { ShowcaseView } from "./ShowcaseView";
 import { computeOneR } from "@/lib/setups/one-r";
+import { computeExposure } from "@/lib/brain/exposure";
 
 type ViewMode = "operator" | "showcase";
 const VIEW_MODE_KEY = "tradewithvic.brain.viewMode";
@@ -978,7 +979,69 @@ function PositionTable({ positions }: { positions: any[] }) {
 
 function PositionsTab({ positions }: { positions: any[] }) {
   if (positions.length === 0) return <div className="glass-card p-12 text-center text-muted">No open positions.</div>;
-  return <div className="glass-card p-5"><PositionTable positions={positions} /></div>;
+  return (
+    <div className="space-y-3">
+      <CurrencyExposureCard positions={positions} />
+      <div className="glass-card p-5"><PositionTable positions={positions} /></div>
+    </div>
+  );
+}
+
+function CurrencyExposureCard({ positions }: { positions: any[] }) {
+  const snapshot = computeExposure(
+    positions.map((p) => ({ symbol: p.symbol, direction: p.direction, riskAmount: p.riskAmount ?? 0 })),
+  );
+  const rows = Object.values(snapshot.byCurrency).sort((a, b) => Math.abs(b.posCount) - Math.abs(a.posCount));
+  const maxAbsRisk = Math.max(1, ...rows.map((r) => Math.abs(r.riskUSD)));
+
+  if (rows.length === 0) return null;
+
+  return (
+    <section className="glass-card p-5">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h2 className="text-sm font-semibold uppercase tracking-wide">Currency Exposure</h2>
+        <span className="text-[11px] text-muted">
+          Net per-currency risk across all open positions. Long EURUSD adds +EUR & -USD.
+        </span>
+      </div>
+      <ul className="space-y-2">
+        {rows.map((r) => {
+          const direction = r.posCount > 0 ? "LONG" : r.posCount < 0 ? "SHORT" : "FLAT";
+          const dirClass =
+            r.posCount > 0 ? "text-bull-light" :
+            r.posCount < 0 ? "text-bear-light" :
+            "text-muted";
+          const widthPct = (Math.abs(r.riskUSD) / maxAbsRisk) * 100;
+          const barClass = r.posCount > 0 ? "bg-bull/70" : r.posCount < 0 ? "bg-bear/70" : "bg-surface-3";
+          const isOverloaded = Math.abs(r.posCount) >= 4;
+          return (
+            <li key={r.currency} className="flex items-center gap-3 text-xs">
+              <div className="w-12 font-mono font-bold">{r.currency}</div>
+              <div className={cn("w-16 text-[10px] uppercase tracking-wider font-bold", dirClass)}>
+                {direction} {Math.abs(r.posCount)}
+              </div>
+              <div className="flex-1 h-2 bg-surface-2 rounded-full overflow-hidden">
+                <div className={cn("h-full rounded-full", barClass)} style={{ width: `${widthPct}%` }} />
+              </div>
+              <div className="w-24 text-right font-mono text-muted-light">
+                ${Math.abs(r.riskUSD).toFixed(0)} {r.posCount > 0 ? "long" : r.posCount < 0 ? "short" : ""}
+              </div>
+              {isOverloaded && (
+                <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-bear/20 text-bear-light border border-bear/40">
+                  CAP
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <p className="text-[10px] text-muted mt-3">
+        Algo runtime rejects new trades that would push net same-direction
+        count past 4 on any single currency, or net % risk past the
+        account&rsquo;s currency-exposure cap.
+      </p>
+    </section>
+  );
 }
 
 function TradesTab({ trades }: { trades: any[] }) {

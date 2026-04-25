@@ -1,5 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { mapSymbolForBroker } from "@/lib/trading/symbol-mapping";
+import { computeExposure, wouldExceedLimit } from "@/lib/brain/exposure";
+
+// Currency-exposure caps applied to every algo route. The % cap pulls
+// from ExecutionAccount.maxCurrencyExposurePct (already in the schema);
+// the count cap is hard-coded for v1 and can be lifted to a per-bot or
+// per-account field later if needed.
+const MAX_NET_SAME_DIRECTION_PER_CURRENCY = 4;
 import { validateOrderTicket } from "@/lib/trading/validation";
 import { resolveAdapter, type NormalizedOrder } from "@/lib/trading/adapter";
 
@@ -157,6 +164,53 @@ export async function runAlgoRuntime(): Promise<AlgoRuntimeResult> {
           }).catch(() => { /* dedup unique */ });
           result.filtered++;
           continue;
+        }
+
+        // Currency-exposure guard (Blueprint § 11): forex risk isn't
+        // isolated by pair. Long EURUSD + GBPUSD + AUDUSD + short USDCHF
+        // is one big anti-USD position, not four uncorrelated trades.
+        // Open positions live on the brain's paper ExecutionAccount;
+        // for v1 we use the canonical "paper-default" account as the
+        // shared book — the real-money MT accounts mirror its routing.
+        const paperAccount = await prisma.executionAccount.findUnique({
+          where: { name: "paper-default" },
+          select: { id: true, currentBalance: true, maxCurrencyExposurePct: true },
+        });
+        if (paperAccount) {
+          const openPositions = await prisma.executionPosition.findMany({
+            where: { accountId: paperAccount.id, status: "open" },
+            select: { symbol: true, direction: true, riskAmount: true },
+          });
+          const snapshot = computeExposure(openPositions);
+          const candidateRisk = bot.sizingMode === "risk_percent"
+            ? paperAccount.currentBalance * (bot.riskPercent / 100)
+            : paperAccount.currentBalance * 0.005; // ~0.5% rough guess for fixed_lots
+          const check = wouldExceedLimit(
+            snapshot,
+            { symbol: setup.symbol, direction: setup.direction, riskAmount: candidateRisk },
+            {
+              maxNetSameDirectionPerCurrency: MAX_NET_SAME_DIRECTION_PER_CURRENCY,
+              maxRiskPctPerCurrency: paperAccount.maxCurrencyExposurePct,
+              accountBalance: paperAccount.currentBalance,
+            },
+          );
+          if (!check.allowed && check.triggered) {
+            await prisma.algoBotExecution.create({
+              data: {
+                algoBotConfigId: bot.id,
+                botId: bot.botId,
+                setupId: setup.id,
+                symbol: setup.symbol,
+                direction: setup.direction,
+                grade: setup.qualityGrade,
+                accountLogin: csvToSet(bot.selectedAccounts).values().next().value ?? "",
+                status: "filtered",
+                rejectReason: `currency_exposure_overload: net ${check.triggered.afterCount} ${check.triggered.currency} positions would exceed cap (${check.reason})`,
+              },
+            }).catch(() => { /* dedup unique */ });
+            result.filtered++;
+            continue;
+          }
         }
 
         // Load the admin's linked MT accounts selected for this bot.
