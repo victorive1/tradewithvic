@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
 import { TradingViewWidget } from "@/components/charts/TradingViewWidget";
 import { useTheme } from "@/components/ui/ThemeProvider";
+import { computeOneR } from "@/lib/setups/one-r";
 import {
   computeBreakdown,
   computeScore,
@@ -530,6 +531,12 @@ export default function ScreenerPage() {
                     <div className="text-xs text-muted mb-1">Stop Loss</div>
                     <div className="text-sm font-mono text-bear-light">
                       {fmt(scanResult.stopLoss, ALL_INSTRUMENTS.find(i => i.symbol === scanResult.symbol)?.decimals ?? 2)}
+                    </div>
+                  </div>
+                  <div className="bg-surface-2 rounded-lg p-3">
+                    <div className="text-xs text-muted mb-1">1R Target</div>
+                    <div className="text-sm font-mono text-accent-light">
+                      {fmt(computeOneR(scanResult.price, scanResult.stopLoss, scanResult.bias), ALL_INSTRUMENTS.find(i => i.symbol === scanResult.symbol)?.decimals ?? 2)}
                     </div>
                   </div>
                   <div className="bg-surface-2 rounded-lg p-3">

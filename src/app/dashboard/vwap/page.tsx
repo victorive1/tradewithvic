@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { LiveRefresh } from "@/components/dashboard/LiveRefresh";
+import { computeOneR } from "@/lib/setups/one-r";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -388,6 +389,7 @@ export default async function VwapPage() {
                   <th className="text-center py-2 px-3">Dir</th>
                   <th className="text-right py-2 px-3">Entry</th>
                   <th className="text-right py-2 px-3">SL</th>
+                  <th className="text-right py-2 px-3">1R</th>
                   <th className="text-right py-2 px-3">TP</th>
                   <th className="text-right py-2 px-3">R:R</th>
                   <th className="text-center py-2 px-3">Score</th>
@@ -409,6 +411,7 @@ export default async function VwapPage() {
                     </td>
                     <td className="py-2 px-3 text-right font-mono">{o.entry.toFixed(5)}</td>
                     <td className="py-2 px-3 text-right font-mono text-bear-light">{o.stopLoss.toFixed(5)}</td>
+                    <td className="py-2 px-3 text-right font-mono text-accent-light">{computeOneR(o.entry, o.stopLoss, o.direction).toFixed(5)}</td>
                     <td className="py-2 px-3 text-right font-mono text-bull-light">{o.takeProfit.toFixed(5)}</td>
                     <td className="py-2 px-3 text-right font-mono">{o.riskReward.toFixed(2)}</td>
                     <td className="py-2 px-3 text-center font-semibold">{o.confidenceScore}</td>
@@ -460,6 +463,7 @@ export default async function VwapPage() {
                   <th className="text-center py-2 px-3">Dir</th>
                   <th className="text-right py-2 px-3">Entry</th>
                   <th className="text-right py-2 px-3">SL</th>
+                  <th className="text-right py-2 px-3">1R</th>
                   <th className="text-right py-2 px-3">TP1</th>
                   <th className="text-right py-2 px-3">R:R</th>
                   <th className="text-center py-2 px-3">Score</th>
@@ -483,6 +487,7 @@ export default async function VwapPage() {
                       </td>
                       <td className="py-2 px-3 text-right font-mono">{s.entry.toFixed(5)}</td>
                       <td className="py-2 px-3 text-right font-mono text-bear-light">{s.stopLoss.toFixed(5)}</td>
+                      <td className="py-2 px-3 text-right font-mono text-accent-light">{computeOneR(s.entry, s.stopLoss, s.direction).toFixed(5)}</td>
                       <td className="py-2 px-3 text-right font-mono text-bull-light">{s.takeProfit1.toFixed(5)}</td>
                       <td className="py-2 px-3 text-right font-mono">{s.riskReward.toFixed(2)}</td>
                       <td className="py-2 px-3 text-center font-semibold">{s.confidenceScore}</td>

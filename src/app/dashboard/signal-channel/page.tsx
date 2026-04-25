@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import type { TradeSetup } from "@/lib/setup-engine";
 import { TimeframeFilter, type TimeframeValue, matchesTimeframe, buildTimeframeCounts } from "@/components/dashboard/TimeframeFilter";
+import { computeOneR } from "@/lib/setups/one-r";
 
 // ==================== 13 STRATEGY FRAMEWORK ====================
 const STRATEGIES = [
@@ -225,9 +226,10 @@ export default function SignalChannelPage() {
                 </div>
 
                 {/* Levels */}
-                <div className="grid grid-cols-4 gap-2 mb-3">
+                <div className="grid grid-cols-5 gap-2 mb-3">
                   <div className="bg-surface-2 rounded-lg p-2 text-center"><div className="text-[9px] text-accent-light uppercase">Entry</div><div className="text-xs font-bold font-mono">{signal.entry}</div></div>
                   <div className="bg-surface-2 rounded-lg p-2 text-center"><div className="text-[9px] text-bear-light uppercase">SL</div><div className="text-xs font-bold font-mono text-bear-light">{signal.stopLoss}</div></div>
+                  <div className="bg-surface-2 rounded-lg p-2 text-center"><div className="text-[9px] text-accent-light uppercase">1R</div><div className="text-xs font-bold font-mono text-accent-light">{computeOneR(signal.entry, signal.stopLoss, signal.direction).toFixed(5)}</div></div>
                   <div className="bg-surface-2 rounded-lg p-2 text-center"><div className="text-[9px] text-bull-light uppercase">TP1</div><div className="text-xs font-bold font-mono text-bull-light">{signal.takeProfit1}</div></div>
                   <div className="bg-surface-2 rounded-lg p-2 text-center"><div className="text-[9px] text-muted uppercase">R:R</div><div className="text-xs font-bold font-mono">{signal.riskReward}:1</div></div>
                 </div>

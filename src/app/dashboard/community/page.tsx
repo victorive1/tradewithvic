@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { computeOneR } from "@/lib/setups/one-r";
 
 type FeedTab = "foryou" | "following" | "trending" | "ideas" | "live";
 
@@ -366,9 +367,12 @@ function PostCard({ post, myReactions, onReact }: { post: Post; myReactions: str
       <p className="text-sm text-foreground whitespace-pre-wrap break-words">{post.body}</p>
 
       {(post.entry !== null || post.stopLoss !== null || post.takeProfit1 !== null) && (
-        <div className="mt-3 flex items-center gap-3 text-xs font-mono bg-surface-2 rounded-lg p-2">
+        <div className="mt-3 flex items-center gap-3 text-xs font-mono bg-surface-2 rounded-lg p-2 flex-wrap">
           {post.entry !== null && <span>Entry <span className="text-foreground">{post.entry}</span></span>}
           {post.stopLoss !== null && <span>SL <span className="text-bear-light">{post.stopLoss}</span></span>}
+          {post.entry !== null && post.stopLoss !== null && post.direction && (
+            <span>1R <span className="text-accent-light">{computeOneR(post.entry, post.stopLoss, post.direction).toFixed(5)}</span></span>
+          )}
           {post.takeProfit1 !== null && <span>TP1 <span className="text-bull-light">{post.takeProfit1}</span></span>}
         </div>
       )}

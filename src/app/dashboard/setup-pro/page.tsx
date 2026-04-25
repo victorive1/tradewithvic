@@ -7,6 +7,7 @@ import { useTheme } from "@/components/ui/ThemeProvider";
 import type { TradeSetup } from "@/lib/setup-engine";
 import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
 import { TimeframeFilter, type TimeframeValue, matchesTimeframe, buildTimeframeCounts } from "@/components/dashboard/TimeframeFilter";
+import { computeOneR } from "@/lib/setups/one-r";
 
 function ProSetupCard({ setup, onViewChart }: { setup: TradeSetup; onViewChart: (symbol: string) => void }) {
   const [expanded, setExpanded] = useState(false);
@@ -42,7 +43,7 @@ function ProSetupCard({ setup, onViewChart }: { setup: TradeSetup; onViewChart: 
         </div>
 
         {/* Trade levels */}
-        <div className="grid grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-5 gap-3 mb-4">
           <div className="bg-surface-2 rounded-lg p-3 text-center">
             <div className="text-[10px] text-accent-light uppercase tracking-wider mb-1">Entry</div>
             <div className="text-sm font-bold text-foreground font-mono">{setup.entry}</div>
@@ -50,6 +51,10 @@ function ProSetupCard({ setup, onViewChart }: { setup: TradeSetup; onViewChart: 
           <div className="bg-surface-2 rounded-lg p-3 text-center">
             <div className="text-[10px] text-bear-light uppercase tracking-wider mb-1">Stop</div>
             <div className="text-sm font-bold text-bear-light font-mono">{setup.stopLoss}</div>
+          </div>
+          <div className="bg-surface-2 rounded-lg p-3 text-center">
+            <div className="text-[10px] text-accent-light uppercase tracking-wider mb-1">1R</div>
+            <div className="text-sm font-bold text-accent-light font-mono">{computeOneR(setup.entry, setup.stopLoss, setup.direction).toFixed(5)}</div>
           </div>
           <div className="bg-surface-2 rounded-lg p-3 text-center">
             <div className="text-[10px] text-bull-light uppercase tracking-wider mb-1">TP1</div>

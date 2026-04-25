@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
+import { computeOneR } from "@/lib/setups/one-r";
 
 type RadarView = "dashboard" | "events" | "watchlist";
 type ActivityLevel = "high" | "elevated" | "moderate" | "low";
@@ -191,7 +192,7 @@ function RadarTradeSetup({ d }: { d: RadarData }) {
           RR {setup.riskReward.toFixed(2)} · Score {d.radarScore} · Conf {d.confidence}%
         </span>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px] font-mono">
         <div className="rounded-lg bg-surface-3/40 border border-border/30 p-2 text-center">
           <div className="text-[9px] uppercase text-muted mb-0.5">Entry</div>
           <div className="text-foreground">{fmt(setup.entryLow, d.decimals)} – {fmt(setup.entryHigh, d.decimals)}</div>
@@ -199,6 +200,10 @@ function RadarTradeSetup({ d }: { d: RadarData }) {
         <div className="rounded-lg bg-bear/5 border border-bear/20 p-2 text-center">
           <div className="text-[9px] uppercase text-bear-light mb-0.5">Stop</div>
           <div className="text-bear-light">{fmt(setup.stopLoss, d.decimals)}</div>
+        </div>
+        <div className="rounded-lg bg-accent/5 border border-accent/20 p-2 text-center">
+          <div className="text-[9px] uppercase text-accent-light mb-0.5">1R</div>
+          <div className="text-accent-light">{fmt(computeOneR((setup.entryLow + setup.entryHigh) / 2, setup.stopLoss, setup.side), d.decimals)}</div>
         </div>
         <div className="rounded-lg bg-bull/5 border border-bull/20 p-2 text-center">
           <div className="text-[9px] uppercase text-bull-light mb-0.5">TP1</div>

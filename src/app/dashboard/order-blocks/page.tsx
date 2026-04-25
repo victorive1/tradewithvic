@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
 import { TimeframeFilter, type TimeframeValue, matchesTimeframe, buildTimeframeCounts } from "@/components/dashboard/TimeframeFilter";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
+import { computeOneR } from "@/lib/setups/one-r";
 
 type OBStatus = "fresh" | "tested" | "mitigated";
 
@@ -240,7 +241,7 @@ export default function OrderBlocksPage() {
                         RR {ob.riskReward.toFixed(2)}
                       </span>
                     </div>
-                    <div className="grid grid-cols-4 gap-1.5 text-[10px] font-mono">
+                    <div className="grid grid-cols-5 gap-1.5 text-[10px] font-mono">
                       <div className="rounded-lg bg-surface-3/40 border border-border/30 p-1.5 text-center">
                         <div className="text-[9px] uppercase text-muted">Entry</div>
                         <div className="text-foreground">{fmt((ob.entryLow + ob.entryHigh) / 2, decimals)}</div>
@@ -248,6 +249,10 @@ export default function OrderBlocksPage() {
                       <div className="rounded-lg bg-bear/5 border border-bear/20 p-1.5 text-center">
                         <div className="text-[9px] uppercase text-bear-light">Stop</div>
                         <div className="text-bear-light">{fmt(ob.stopLoss, decimals)}</div>
+                      </div>
+                      <div className="rounded-lg bg-accent/5 border border-accent/20 p-1.5 text-center">
+                        <div className="text-[9px] uppercase text-accent-light">1R</div>
+                        <div className="text-accent-light">{fmt(computeOneR((ob.entryLow + ob.entryHigh) / 2, ob.stopLoss, isBull ? "buy" : "sell"), decimals)}</div>
                       </div>
                       <div className="rounded-lg bg-bull/5 border border-bull/20 p-1.5 text-center">
                         <div className="text-[9px] uppercase text-bull-light">TP1</div>

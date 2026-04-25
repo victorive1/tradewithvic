@@ -5,6 +5,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
+import { computeOneR } from "@/lib/setups/one-r";
 
 interface Signal {
   id: string;
@@ -298,7 +299,7 @@ function IflowTradeSetup({ signal }: { signal: Signal }) {
           RR {rr.toFixed(2)} · {signal.classification}
         </span>
       </div>
-      <div className="grid grid-cols-4 gap-1.5 text-[10px] font-mono">
+      <div className="grid grid-cols-5 gap-1.5 text-[10px] font-mono">
         <div className="rounded-lg bg-surface-3/40 border border-border/30 p-1.5 text-center">
           <div className="text-[9px] uppercase text-muted">Entry</div>
           <div className="text-foreground">{fmt(entry)}</div>
@@ -306,6 +307,10 @@ function IflowTradeSetup({ signal }: { signal: Signal }) {
         <div className="rounded-lg bg-bear/5 border border-bear/20 p-1.5 text-center">
           <div className="text-[9px] uppercase text-bear-light">Stop</div>
           <div className="text-bear-light">{fmt(stopLoss)}</div>
+        </div>
+        <div className="rounded-lg bg-accent/5 border border-accent/20 p-1.5 text-center">
+          <div className="text-[9px] uppercase text-accent-light">1R</div>
+          <div className="text-accent-light">{fmt(computeOneR(entry, stopLoss, isLong ? "long" : "short"))}</div>
         </div>
         <div className="rounded-lg bg-bull/5 border border-bull/20 p-1.5 text-center">
           <div className="text-[9px] uppercase text-bull-light">TP1</div>

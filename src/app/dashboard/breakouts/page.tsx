@@ -6,6 +6,7 @@ import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
 import { TimeframeFilter, type TimeframeValue, matchesTimeframe, buildTimeframeCounts } from "@/components/dashboard/TimeframeFilter";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
 import type { MarketQuote } from "@/lib/market-data";
+import { computeOneR } from "@/lib/setups/one-r";
 
 const breakoutTypes = ["All", "Structure", "Momentum", "Range", "Retest", "FVG"] as const;
 type BreakoutType = (typeof breakoutTypes)[number];
@@ -248,7 +249,7 @@ export default function BreakoutsPage() {
                         RR {computeRR(b).toFixed(2)} · {b.type} · {b.timeframe}
                       </span>
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px] font-mono">
                       <div className="rounded-lg bg-surface-3/40 border border-border/30 p-2 text-center">
                         <div className="text-[9px] uppercase text-muted mb-0.5">Entry</div>
                         <div className="text-foreground">{fmt(b.entryLow, b.decimals)} – {fmt(b.entryHigh, b.decimals)}</div>
@@ -256,6 +257,10 @@ export default function BreakoutsPage() {
                       <div className="rounded-lg bg-bear/5 border border-bear/20 p-2 text-center">
                         <div className="text-[9px] uppercase text-bear-light mb-0.5">Stop</div>
                         <div className="text-bear-light">{fmt(b.stopLoss, b.decimals)}</div>
+                      </div>
+                      <div className="rounded-lg bg-accent/5 border border-accent/20 p-2 text-center">
+                        <div className="text-[9px] uppercase text-accent-light mb-0.5">1R</div>
+                        <div className="text-accent-light">{fmt(computeOneR((b.entryLow + b.entryHigh) / 2, b.stopLoss, isBull ? "buy" : "sell"), b.decimals)}</div>
                       </div>
                       <div className="rounded-lg bg-bull/5 border border-bull/20 p-2 text-center">
                         <div className="text-[9px] uppercase text-bull-light mb-0.5">TP1</div>
