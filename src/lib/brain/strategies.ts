@@ -1,4 +1,8 @@
 import { prisma } from "@/lib/prisma";
+import { detectInverseFVG } from "@/lib/brain/strategies/inverse-fvg";
+import type { DetectedSetup } from "@/lib/brain/strategies-types";
+
+export type { DetectedSetup };
 
 interface CandleRow {
   openTime: Date;
@@ -18,22 +22,6 @@ interface StrategyContext {
   recentSweeps: any[];
   activeLevels: any[];
   atr: number | null;
-}
-
-export interface DetectedSetup {
-  setupType: string;
-  direction: "bullish" | "bearish";
-  entry: number;
-  stopLoss: number;
-  takeProfit1: number;
-  takeProfit2?: number;
-  takeProfit3?: number;
-  riskReward: number;
-  confidenceScore: number;
-  qualityGrade: string;
-  explanation: string;
-  invalidation: string;
-  validHours: number;
 }
 
 function gradeFromScore(score: number): string {
@@ -284,7 +272,12 @@ export async function detectStrategies(
     atr: indicators?.atr14 ?? null,
   };
 
-  const detectors = [detectBreakout, detectPullback, detectSweepReversal];
+  const detectors: Array<(c: StrategyContext) => DetectedSetup | null> = [
+    detectBreakout,
+    detectPullback,
+    detectSweepReversal,
+    detectInverseFVG,
+  ];
   const detected: DetectedSetup[] = [];
   for (const d of detectors) {
     const result = d(ctx);
