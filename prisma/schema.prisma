@@ -348,6 +348,7 @@ model ExecutionAccount {
   weeklyPnl                  Float     @default(0)
   weeklyPnlResetAt           DateTime?
   smartExitMode              String    @default("balanced") // off | conservative | balanced | aggressive
+  riskProfile                String    @default("balanced") // off | conservative | balanced | aggressive — Blueprint § 10 preset that drives risk %, max positions, daily loss, and allowed grades
   requireMarketPredictionAlignment Boolean @default(false) // if true, veto setups whose direction doesn't match the Market Prediction engine's bias
   minConfidenceScore         Int       @default(65)
   minRiskReward              Float     @default(1.2)
