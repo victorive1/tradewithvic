@@ -160,6 +160,7 @@ const navItems: NavSection[] = [
       { label: "Institutional Flow", href: "/dashboard/institutional-flow", icon: "radar" },
       { label: "MTF Analyzer", href: "/dashboard/mtf", icon: "radar" },
       { label: "Order Block Signals", href: "/dashboard/order-blocks", icon: "liquidity" },
+      { label: "Quant Signals", href: "/dashboard/quant", icon: "radar" },
       { label: "Signal Channel", href: "/dashboard/signal-channel", icon: "alerts" },
     ],
   },
