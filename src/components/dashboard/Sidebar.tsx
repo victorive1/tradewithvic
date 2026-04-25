@@ -162,6 +162,7 @@ const navItems: NavSection[] = [
       { label: "Order Block Signals", href: "/dashboard/order-blocks", icon: "liquidity" },
       { label: "Quant Signals", href: "/dashboard/quant", icon: "radar" },
       { label: "Signal Channel", href: "/dashboard/signal-channel", icon: "alerts" },
+      { label: "System Health", href: "/dashboard/system-health", icon: "alerts" },
     ],
   },
   {
