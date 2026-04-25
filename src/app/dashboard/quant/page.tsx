@@ -27,6 +27,11 @@ const QUANT_STRATEGIES: Array<{ key: string; label: string; description: string 
     label: "Breaker Block",
     description: "Failed order block — broken through and retested as flipped support/resistance.",
   },
+  {
+    key: "fvg_continuation",
+    label: "FVG Continuation",
+    description: "Original FVG respected on retest — continuation entry on the defended imbalance.",
+  },
 ];
 
 const QUANT_KEYS = QUANT_STRATEGIES.map((s) => s.key);
