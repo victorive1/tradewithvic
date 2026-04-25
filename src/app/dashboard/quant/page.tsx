@@ -17,6 +17,11 @@ const QUANT_STRATEGIES: Array<{ key: string; label: string; description: string 
     label: "Inverse FVG",
     description: "Bullish FVG violated, retested as resistance, rejected. Or the bearish mirror.",
   },
+  {
+    key: "order_block",
+    label: "Order Block",
+    description: "Last opposing candle before a strong displacement break, retested for institutional defence.",
+  },
 ];
 
 const QUANT_KEYS = QUANT_STRATEGIES.map((s) => s.key);
