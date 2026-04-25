@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
+import { ALL_INSTRUMENTS } from "@/lib/constants";
+import { computeLotSize } from "@/lib/trading/lot-sizing";
 
 export default function RiskPage() {
+  const [symbol, setSymbol] = useState("EURUSD");
   const [balance, setBalance] = useState("10000");
   const [riskPercent, setRiskPercent] = useState("1");
   const [entry, setEntry] = useState("1.0840");
@@ -17,24 +20,66 @@ export default function RiskPage() {
   const tp = parseFloat(takeProfit) || 0;
 
   const dollarRisk = bal * (risk / 100);
-  const slPips = Math.abs(ent - sl) * 10000;
-  const tpPips = Math.abs(tp - ent) * 10000;
-  const pipValue = slPips > 0 ? dollarRisk / slPips : 0;
-  const lotSize = pipValue / 10;
-  const rr = slPips > 0 ? tpPips / slPips : 0;
+
+  const result = useMemo(
+    () => computeLotSize({ symbol, entry: ent, stopLoss: sl, riskUSD: dollarRisk }),
+    [symbol, ent, sl, dollarRisk],
+  );
+
+  const tpDistance = Math.abs(tp - ent);
+  const tpUnits = result.pipDecimal > 0 ? tpDistance / result.pipDecimal : 0;
+  const rr = result.slPips > 0 ? tpUnits / result.slPips : 0;
   const potentialProfit = dollarRisk * rr;
+  const dollarPerUnit = result.pipDecimal > 0 ? result.pipValue / 1 : 0;
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Position Risk Calculator</h1>
-        <p className="text-sm text-muted mt-1">Calculate lot size, risk, and reward for any trade setup</p>
+        <p className="text-sm text-muted mt-1">
+          Symbol-aware lot sizing — picks the right pip math for forex, metals, indices, crypto, and oil.
+        </p>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Input */}
         <div className="glass-card p-6 space-y-5">
           <h3 className="text-sm font-semibold text-foreground">Trade Parameters</h3>
+
+          <div>
+            <label className="text-xs text-muted-light mb-1.5 block">Instrument</label>
+            <select
+              value={symbol}
+              onChange={(e) => setSymbol(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl bg-surface-2 border border-border focus:border-accent focus:outline-none text-sm text-foreground font-mono"
+            >
+              <optgroup label="Forex">
+                {ALL_INSTRUMENTS.filter((i) => i.category === "forex").map((i) => (
+                  <option key={i.symbol} value={i.symbol}>{i.displayName}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Metals">
+                {ALL_INSTRUMENTS.filter((i) => i.category === "metals").map((i) => (
+                  <option key={i.symbol} value={i.symbol}>{i.displayName}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Indices">
+                {ALL_INSTRUMENTS.filter((i) => i.category === "indices").map((i) => (
+                  <option key={i.symbol} value={i.symbol}>{i.displayName}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Energy">
+                {ALL_INSTRUMENTS.filter((i) => i.category === "energy").map((i) => (
+                  <option key={i.symbol} value={i.symbol}>{i.displayName}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Crypto">
+                {ALL_INSTRUMENTS.filter((i) => i.category === "crypto").map((i) => (
+                  <option key={i.symbol} value={i.symbol}>{i.displayName}</option>
+                ))}
+              </optgroup>
+            </select>
+          </div>
 
           <div>
             <label className="text-xs text-muted-light mb-1.5 block">Account Balance ($)</label>
@@ -46,7 +91,7 @@ export default function RiskPage() {
             <input type="number" step="0.1" value={riskPercent} onChange={(e) => setRiskPercent(e.target.value)}
               className="w-full px-4 py-3 rounded-xl bg-surface-2 border border-border focus:border-accent focus:outline-none text-sm text-foreground" />
             <div className="flex gap-2 mt-2">
-              {["0.5", "1", "1.5", "2"].map((v) => (
+              {["0.25", "0.5", "1", "2"].map((v) => (
                 <button key={v} onClick={() => setRiskPercent(v)}
                   className={cn("px-3 py-1 rounded-lg text-xs transition-smooth", riskPercent === v ? "bg-accent text-white" : "bg-surface-2 text-muted-light border border-border/50")}>
                   {v}%
@@ -56,41 +101,68 @@ export default function RiskPage() {
           </div>
           <div>
             <label className="text-xs text-muted-light mb-1.5 block">Entry Price</label>
-            <input type="number" step="0.0001" value={entry} onChange={(e) => setEntry(e.target.value)}
+            <input type="number" step="any" value={entry} onChange={(e) => setEntry(e.target.value)}
               className="w-full px-4 py-3 rounded-xl bg-surface-2 border border-border focus:border-accent focus:outline-none text-sm text-foreground font-mono" />
           </div>
           <div>
             <label className="text-xs text-bear-light mb-1.5 block">Stop Loss</label>
-            <input type="number" step="0.0001" value={stopLoss} onChange={(e) => setStopLoss(e.target.value)}
+            <input type="number" step="any" value={stopLoss} onChange={(e) => setStopLoss(e.target.value)}
               className="w-full px-4 py-3 rounded-xl bg-surface-2 border border-bear/20 focus:border-bear focus:outline-none text-sm text-foreground font-mono" />
           </div>
           <div>
             <label className="text-xs text-bull-light mb-1.5 block">Take Profit</label>
-            <input type="number" step="0.0001" value={takeProfit} onChange={(e) => setTakeProfit(e.target.value)}
+            <input type="number" step="any" value={takeProfit} onChange={(e) => setTakeProfit(e.target.value)}
               className="w-full px-4 py-3 rounded-xl bg-surface-2 border border-bull/20 focus:border-bull focus:outline-none text-sm text-foreground font-mono" />
           </div>
         </div>
 
         {/* Results */}
         <div className="space-y-4">
+          {/* HERO: lot size — the answer the user actually wants */}
+          <div className="glass-card p-6 border-2 border-accent/30">
+            <h3 className="text-sm font-semibold text-foreground mb-4">Position Size</h3>
+            <div className="text-center mb-4">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-muted">Standard Lots</div>
+              <div className="text-5xl font-black text-accent-light mt-1">
+                {result.lotSize >= 0.01 ? result.lotSize.toFixed(2) : result.lotSize.toExponential(2)}
+              </div>
+              <div className="text-xs text-muted mt-1">
+                = {formatNum(result.miniLots, 2)} mini · {formatNum(result.microLots, 0)} micro · {formatNum(result.units, result.units < 1 ? 4 : 0)} {symbol === "XAUUSD" ? "oz" : symbol === "XAGUSD" ? "oz" : (symbol.startsWith("BTC") || symbol.startsWith("ETH") || symbol.startsWith("SOL") || symbol.startsWith("XRP")) ? "coins" : symbol === "USOIL" ? "barrels" : ALL_INSTRUMENTS.find((i) => i.symbol === symbol)?.category === "indices" ? "contracts" : "units"}
+              </div>
+            </div>
+            {result.warnings.length > 0 && (
+              <div className="text-[11px] text-bear-light bg-bear/5 border border-bear/30 rounded-lg p-2 mt-2 space-y-0.5">
+                {result.warnings.map((w, i) => <div key={i}>⚠ {w}</div>)}
+              </div>
+            )}
+            {result.notes.length > 0 && (
+              <p className="text-[10px] text-muted mt-2">
+                {result.notes.join(" · ")}
+              </p>
+            )}
+          </div>
+
           <div className="glass-card p-6">
-            <h3 className="text-sm font-semibold text-foreground mb-4">Calculation Results</h3>
+            <h3 className="text-sm font-semibold text-foreground mb-4">Risk Breakdown</h3>
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-surface-2 rounded-xl p-4 text-center">
                 <div className="text-xs text-muted mb-1">Dollar Risk</div>
                 <div className="text-xl font-bold text-bear-light">${dollarRisk.toFixed(2)}</div>
               </div>
               <div className="bg-surface-2 rounded-xl p-4 text-center">
-                <div className="text-xs text-muted mb-1">Lot Size</div>
-                <div className="text-xl font-bold text-accent-light">{lotSize.toFixed(2)}</div>
+                <div className="text-xs text-muted mb-1">Pip Value</div>
+                <div className="text-xl font-bold text-foreground">${result.pipValue.toFixed(2)}</div>
+                <div className="text-[10px] text-muted">per {result.pipUnitLabel} per std lot</div>
               </div>
               <div className="bg-surface-2 rounded-xl p-4 text-center">
                 <div className="text-xs text-muted mb-1">Stop Distance</div>
-                <div className="text-xl font-bold text-foreground">{slPips.toFixed(1)} pips</div>
+                <div className="text-xl font-bold text-foreground">{result.slPips.toFixed(1)}</div>
+                <div className="text-[10px] text-muted">{result.pipUnitLabel}s</div>
               </div>
               <div className="bg-surface-2 rounded-xl p-4 text-center">
                 <div className="text-xs text-muted mb-1">Target Distance</div>
-                <div className="text-xl font-bold text-foreground">{tpPips.toFixed(1)} pips</div>
+                <div className="text-xl font-bold text-foreground">{tpUnits.toFixed(1)}</div>
+                <div className="text-[10px] text-muted">{result.pipUnitLabel}s</div>
               </div>
             </div>
           </div>
@@ -99,7 +171,7 @@ export default function RiskPage() {
             <h3 className="text-sm font-semibold text-foreground mb-4">Risk/Reward</h3>
             <div className="text-center mb-4">
               <div className={cn("text-4xl font-black", rr >= 2 ? "text-bull-light" : rr >= 1.5 ? "text-warn" : "text-bear-light")}>
-                1:{rr.toFixed(1)}
+                1:{rr.toFixed(2)}
               </div>
               <div className="text-xs text-muted mt-1">Risk to Reward Ratio</div>
             </div>
@@ -116,9 +188,11 @@ export default function RiskPage() {
           <div className="glass-card p-6">
             <h3 className="text-sm font-semibold text-foreground mb-3">Summary</h3>
             <div className="space-y-2 text-xs">
-              <div className="flex justify-between"><span className="text-muted">Pip Value</span><span className="text-foreground font-mono">${pipValue.toFixed(2)}</span></div>
+              <div className="flex justify-between"><span className="text-muted">Symbol</span><span className="text-foreground font-mono">{symbol} ({ALL_INSTRUMENTS.find((i) => i.symbol === symbol)?.category})</span></div>
+              <div className="flex justify-between"><span className="text-muted">Contract Size</span><span className="text-foreground font-mono">{formatNum(result.contractSize, 0)} units / lot</span></div>
+              <div className="flex justify-between"><span className="text-muted">{result.pipUnitLabel === "pip" ? "Pip" : result.pipUnitLabel === "point" ? "Point" : "Step"} Size</span><span className="text-foreground font-mono">{result.pipDecimal}</span></div>
               <div className="flex justify-between"><span className="text-muted">Max Loss</span><span className="text-bear-light font-mono">${dollarRisk.toFixed(2)} ({risk}%)</span></div>
-              <div className="flex justify-between"><span className="text-muted">Max Profit</span><span className="text-bull-light font-mono">${potentialProfit.toFixed(2)} ({(risk * rr).toFixed(1)}%)</span></div>
+              <div className="flex justify-between"><span className="text-muted">Max Profit</span><span className="text-bull-light font-mono">${potentialProfit.toFixed(2)} ({(risk * rr).toFixed(2)}%)</span></div>
               <div className="flex justify-between"><span className="text-muted">Account After Loss</span><span className="text-foreground font-mono">${(bal - dollarRisk).toFixed(2)}</span></div>
               <div className="flex justify-between"><span className="text-muted">Account After Win</span><span className="text-bull-light font-mono">${(bal + potentialProfit).toFixed(2)}</span></div>
             </div>
@@ -127,4 +201,9 @@ export default function RiskPage() {
       </div>
     </div>
   );
+}
+
+function formatNum(n: number, decimals: number): string {
+  if (!Number.isFinite(n)) return "—";
+  return n.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
