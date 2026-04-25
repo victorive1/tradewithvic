@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { TimeframeFilter, type TimeframeValue, matchesTimeframe, buildTimeframeCounts } from "@/components/dashboard/TimeframeFilter";
+import { computeOneR } from "@/lib/setups/one-r";
 
 interface BrainSetup {
   id: string;
@@ -61,6 +62,7 @@ export function ActiveSetupsFilter({ setups }: { setups: BrainSetup[] }) {
                 <div className="mt-2 space-y-0.5 text-[11px] font-mono">
                   <div className="flex justify-between"><span className="text-muted">Entry</span><span>{s.entry.toFixed(5)}</span></div>
                   <div className="flex justify-between"><span className="text-muted">SL</span><span className="text-red-400">{s.stopLoss.toFixed(5)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted">1R</span><span className="text-blue-300">{computeOneR(s.entry, s.stopLoss, s.direction).toFixed(5)}</span></div>
                   <div className="flex justify-between"><span className="text-muted">TP1</span><span className="text-green-400">{s.takeProfit1.toFixed(5)}</span></div>
                   <div className="flex justify-between"><span className="text-muted">RR</span><span>{s.riskReward.toFixed(2)}x · {s.confidenceScore}/100</span></div>
                 </div>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
+import { computeOneR } from "@/lib/setups/one-r";
 
 type AlertView = "inbox" | "setups" | "rules" | "history" | "settings";
 type AlertCategory = "price" | "signal" | "volatility" | "macro" | "sentiment" | "engine" | "custom";
@@ -519,6 +520,7 @@ export default function AlertsPage() {
                     <div className="space-y-1 text-[11px] font-mono bg-background/30 rounded-lg p-2.5">
                       <Row label="Entry" value={fmtPrice(setup.entry)} />
                       <Row label="SL" value={fmtPrice(setup.stopLoss)} valueClass="text-bear-light" />
+                      <Row label="1R Target" value={fmtPrice(computeOneR(setup.entry, setup.stopLoss, setup.direction))} valueClass="text-accent-light" />
                       <Row label="TP1" value={fmtPrice(setup.takeProfit1)} valueClass="text-bull-light" />
                       {setup.takeProfit2 !== undefined && setup.takeProfit2 !== null && <Row label="TP2" value={fmtPrice(setup.takeProfit2)} valueClass="text-bull-light/70" />}
                       {setup.takeProfit3 !== undefined && setup.takeProfit3 !== null && <Row label="TP3" value={fmtPrice(setup.takeProfit3)} valueClass="text-bull-light/50" />}

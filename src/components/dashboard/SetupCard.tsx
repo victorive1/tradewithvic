@@ -4,6 +4,7 @@ import { useState } from "react";
 import { cn, formatPrice } from "@/lib/utils";
 import type { TradeSetup } from "@/lib/setup-engine";
 import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
+import { computeOneR } from "@/lib/setups/one-r";
 
 export function SetupCard({ setup }: { setup: TradeSetup }) {
   const [expanded, setExpanded] = useState(false);
@@ -55,6 +56,14 @@ export function SetupCard({ setup }: { setup: TradeSetup }) {
             <div className="text-[10px] text-bull-light uppercase tracking-wider mb-1">TP1</div>
             <div className="text-sm font-bold text-bull-light">{setup.takeProfit1}</div>
           </div>
+        </div>
+
+        {/* 1R Target — added layer, doesn't replace TP1/2/3 */}
+        <div className="flex items-center justify-between text-[11px] mb-3 px-1">
+          <span className="text-muted uppercase tracking-wider">1R Target</span>
+          <span className="font-mono text-accent-light">
+            {formatPrice(computeOneR(setup.entry, setup.stopLoss, setup.direction), 5)}
+          </span>
         </div>
 
         {/* RR + Confidence bar */}

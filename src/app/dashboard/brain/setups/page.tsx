@@ -6,6 +6,7 @@ import { BrainTabs } from "../BrainTabs";
 import { ManualTickets } from "../ManualTickets";
 import { ActiveSetupsFilter } from "../ActiveSetupsFilter";
 import { LiveRefresh } from "@/components/dashboard/LiveRefresh";
+import { computeOneR } from "@/lib/setups/one-r";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -122,6 +123,7 @@ export default async function BrainSetupsPage() {
                   <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px] font-mono">
                     <div className="flex justify-between"><span className="text-muted">Entry</span><span>{p.entry.toFixed(priceDigits)}</span></div>
                     <div className="flex justify-between"><span className="text-muted">SL</span><span className={p.movedToBreakeven ? "text-blue-400" : "text-red-400"}>{p.stopLoss.toFixed(priceDigits)}</span></div>
+                    <div className="flex justify-between"><span className="text-muted">1R</span><span className="text-blue-300">{computeOneR(p.entry, p.stopLoss, isLong ? "long" : "short").toFixed(priceDigits)}</span></div>
                     <div className="flex justify-between"><span className="text-muted">TP1</span><span className={p.tp1Hit ? "text-green-400/50 line-through" : "text-green-400"}>{p.takeProfit1.toFixed(priceDigits)}</span></div>
                     {p.takeProfit2 != null && (
                       <div className="flex justify-between"><span className="text-muted">TP2</span><span className={p.tp2Hit ? "text-green-400/50 line-through" : "text-green-400"}>{p.takeProfit2.toFixed(priceDigits)}</span></div>

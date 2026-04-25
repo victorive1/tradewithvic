@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { computeOneR } from "@/lib/setups/one-r";
 
 interface ShowcaseProps {
   state: any;
@@ -193,6 +194,8 @@ export function ShowcaseView({ state, mtAccounts = [] }: ShowcaseProps) {
                 <MiniStat label="Entry" value={formatPrice(focusPosition.entry)} />
                 <div className="h-6 w-px bg-border/60" />
                 <MiniStat label="SL" value={formatPrice(focusPosition.stopLoss)} valueClass="text-bear-light" />
+                <div className="h-6 w-px bg-border/60" />
+                <MiniStat label="1R" value={formatPrice(computeOneR(focusPosition.entry, focusPosition.stopLoss, focusPosition.direction))} valueClass="text-accent-light" />
                 <div className="h-6 w-px bg-border/60" />
                 <MiniStat label="TP1" value={formatPrice(focusPosition.takeProfit1)} valueClass="text-bull-light" />
                 <div className="h-6 w-px bg-border/60" />

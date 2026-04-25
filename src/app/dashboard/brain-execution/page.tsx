@@ -5,6 +5,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
 import { ShowcaseView } from "./ShowcaseView";
+import { computeOneR } from "@/lib/setups/one-r";
 
 type ViewMode = "operator" | "showcase";
 const VIEW_MODE_KEY = "tradewithvic.brain.viewMode";
@@ -507,6 +508,7 @@ function SignalLogTab({ signals, loading }: { signals: any[]; loading: boolean }
               <th className="text-left px-3">DIR</th>
               <th className="text-right px-3">ENTRY</th>
               <th className="text-right px-3">SL</th>
+              <th className="text-right px-3">1R</th>
               <th className="text-right px-3">TP1</th>
               <th className="text-right px-3">CONF</th>
               <th className="text-left px-3">ACTION / STATUS</th>
@@ -514,7 +516,7 @@ function SignalLogTab({ signals, loading }: { signals: any[]; loading: boolean }
           </thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={11} className="text-center py-12 text-muted">No signals match this filter.</td></tr>
+              <tr><td colSpan={12} className="text-center py-12 text-muted">No signals match this filter.</td></tr>
             ) : filtered.map((s) => (
               <tr key={s.id} className="border-b border-border/20 last:border-0 hover:bg-surface-2/30 transition-smooth">
                 <td className="py-3 px-4 font-mono text-muted-light">{new Date(s.time).toLocaleString()}</td>
@@ -533,6 +535,9 @@ function SignalLogTab({ signals, loading }: { signals: any[]; loading: boolean }
                 </td>
                 <td className="text-right px-3 font-mono">{s.entry ? s.entry.toFixed(s.entry > 100 ? 2 : 4) : "—"}</td>
                 <td className="text-right px-3 font-mono text-bear-light/80">{s.stopLoss?.toFixed(s.stopLoss > 100 ? 2 : 4)}</td>
+                <td className="text-right px-3 font-mono text-accent-light/90">
+                  {s.entry != null && s.stopLoss != null ? computeOneR(s.entry, s.stopLoss, s.direction).toFixed(s.entry > 100 ? 2 : 4) : "—"}
+                </td>
                 <td className="text-right px-3 font-mono text-bull-light/80">{s.takeProfit1?.toFixed(s.takeProfit1 > 100 ? 2 : 4)}</td>
                 <td className="text-right px-3 font-mono">
                   <span className={cn(
@@ -778,6 +783,7 @@ function PendingOrdersPanel({ orders }: { orders: any[] }) {
               <th className="text-left px-2">TYPE</th>
               <th className="text-right px-2">ENTRY</th>
               <th className="text-right px-2">SL</th>
+              <th className="text-right px-2">1R</th>
               <th className="text-right px-2">TP1</th>
               <th className="text-right px-2">RISK</th>
               <th className="text-right px-2">EXPIRES</th>
@@ -797,6 +803,9 @@ function PendingOrdersPanel({ orders }: { orders: any[] }) {
                 <td className="px-2 uppercase text-muted text-[10px]">{o.orderType?.replace(/_/g, " ")}</td>
                 <td className="text-right px-2 font-mono">{o.entry?.toFixed(o.entry > 100 ? 2 : 5)}</td>
                 <td className="text-right px-2 font-mono text-bear-light/80">{o.stopLoss?.toFixed(o.stopLoss > 100 ? 2 : 5)}</td>
+                <td className="text-right px-2 font-mono text-accent-light/90">
+                  {o.entry != null && o.stopLoss != null ? computeOneR(o.entry, o.stopLoss, o.direction).toFixed(o.entry > 100 ? 2 : 5) : "—"}
+                </td>
                 <td className="text-right px-2 font-mono text-bull-light/80">{o.takeProfit1?.toFixed(o.takeProfit1 > 100 ? 2 : 5)}</td>
                 <td className="text-right px-2 font-mono">${o.riskAmount?.toFixed(2)}</td>
                 <td className="text-right px-2 font-mono text-muted">
@@ -920,6 +929,7 @@ function PositionTable({ positions }: { positions: any[] }) {
             <th className="text-left px-2">Dir · Grade</th>
             <th className="text-right px-2">Entry</th>
             <th className="text-right px-2">SL</th>
+            <th className="text-right px-2">1R</th>
             <th className="text-right px-2">TP1</th>
             <th className="text-right px-2">Size</th>
             <th className="text-right px-2">Risk</th>
@@ -948,6 +958,7 @@ function PositionTable({ positions }: { positions: any[] }) {
                 </td>
                 <td className="text-right px-2 font-mono">{p.entry.toFixed(5)}</td>
                 <td className="text-right px-2 font-mono text-bear-light/80">{p.stopLoss.toFixed(5)}</td>
+                <td className="text-right px-2 font-mono text-accent-light/90">{computeOneR(p.entry, p.stopLoss, p.direction).toFixed(5)}</td>
                 <td className="text-right px-2 font-mono text-bull-light/80">{p.takeProfit1.toFixed(5)}</td>
                 <td className="text-right px-2 font-mono">{p.sizeUnits.toFixed(2)}</td>
                 <td className="text-right px-2 font-mono">${p.riskAmount.toFixed(2)}</td>

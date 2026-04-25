@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { cn } from "@/lib/utils";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
+import { computeOneR } from "@/lib/setups/one-r";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -281,7 +282,7 @@ export default async function EngulfingPage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-4 gap-3 mb-4">
+                  <div className="grid grid-cols-5 gap-3 mb-4">
                     <div className="bg-surface-2 rounded-lg p-3 text-center">
                       <div className="text-[10px] text-accent-light uppercase mb-1">Entry</div>
                       <div className="text-sm font-bold font-mono">{fmt(setup.entry, setup.decimals)}</div>
@@ -289,6 +290,10 @@ export default async function EngulfingPage() {
                     <div className="bg-surface-2 rounded-lg p-3 text-center">
                       <div className="text-[10px] text-bear-light uppercase mb-1">Stop</div>
                       <div className="text-sm font-bold font-mono text-bear-light">{fmt(setup.stopLoss, setup.decimals)}</div>
+                    </div>
+                    <div className="bg-surface-2 rounded-lg p-3 text-center">
+                      <div className="text-[10px] text-accent-light uppercase mb-1">1R Target</div>
+                      <div className="text-sm font-bold font-mono text-accent-light">{fmt(computeOneR(setup.entry, setup.stopLoss, setup.direction), setup.decimals)}</div>
                     </div>
                     <div className="bg-surface-2 rounded-lg p-3 text-center">
                       <div className="text-[10px] text-bull-light uppercase mb-1">Target</div>

@@ -4,6 +4,7 @@ import { use, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { getOrCreateUserKey } from "@/lib/trading/user-key-client";
+import { computeOneR } from "@/lib/setups/one-r";
 
 interface DetailPayload {
   request: RequestDetail;
@@ -224,6 +225,15 @@ export default function ExecutionDetailPage({ params }: { params: Promise<{ id: 
           <KV label="Symbol (broker)" value={detail.brokerSymbol ?? "—"} mono />
           <KV label="Entry" value={detail.entryPrice != null ? String(detail.entryPrice) : "Market"} mono />
           <KV label="Stop" value={detail.stopLoss != null ? String(detail.stopLoss) : "—"} mono />
+          <KV
+            label="1R Target"
+            value={
+              detail.entryPrice != null && detail.stopLoss != null
+                ? computeOneR(detail.entryPrice, detail.stopLoss, detail.side).toFixed(5)
+                : "—"
+            }
+            mono
+          />
           <KV label="TP1" value={setup?.takeProfit1 != null ? String(setup.takeProfit1) : (detail.takeProfit != null ? String(detail.takeProfit) : "—")} mono />
           <KV label="TP2" value={setup?.takeProfit2 != null ? String(setup.takeProfit2) : "—"} mono />
           <KV label="TP3" value={setup?.takeProfit3 != null ? String(setup.takeProfit3) : "—"} mono />
