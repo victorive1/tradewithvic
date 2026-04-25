@@ -106,7 +106,7 @@ function AdminPortalBody() {
 
   const counts = (users ?? []).reduce<Record<Role, number>>(
     (acc, u) => { acc[u.role] = (acc[u.role] ?? 0) + 1; return acc; },
-    { user: 0, agent: 0, algo_investor: 0, admin: 0 },
+    { user: 0, agent: 0, algo_investor: 0, investor: 0, admin: 0 },
   );
 
   return (

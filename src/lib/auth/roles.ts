@@ -12,17 +12,21 @@
  * hasAccess(role, tag) resolves whether the role grants the tag.
  */
 
-export const ROLES = ["user", "agent", "algo_investor", "admin"] as const;
+// "investor" is the Quant Engine Blueprint § 22 read-only investor
+// role — sees performance, exposure, and live positions, but cannot
+// route trades, edit configs, or trigger admin actions.
+export const ROLES = ["user", "agent", "algo_investor", "investor", "admin"] as const;
 export type Role = (typeof ROLES)[number];
 
-export const ACCESS_TAGS = ["user", "agent", "algo_investor", "admin"] as const;
+export const ACCESS_TAGS = ["user", "agent", "algo_investor", "investor", "admin"] as const;
 export type AccessTag = (typeof ACCESS_TAGS)[number];
 
 const ROLE_TAGS: Record<Role, ReadonlyArray<AccessTag>> = {
   user: ["user"],
   agent: ["user", "agent"],
   algo_investor: ["user", "algo_investor"],
-  admin: ["user", "agent", "algo_investor", "admin"],
+  investor: ["user", "investor"], // read-only — no admin/agent
+  admin: ["user", "agent", "algo_investor", "investor", "admin"],
 };
 
 export function isRole(value: unknown): value is Role {
@@ -49,5 +53,6 @@ export const ROLE_LABELS: Record<Role, string> = {
   user: "User",
   agent: "Agent User",
   algo_investor: "Algo Investor",
+  investor: "Investor (Read-Only)",
   admin: "Admin",
 };
