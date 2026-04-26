@@ -85,6 +85,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ botId: str
   csvFromArr("symbolFilter");
   str("sizingMode", (v) => v === "fixed_lot" || v === "risk_percent");
   num("fixedLotSize"); num("riskPercent");
+  bool("closeAt1R"); bool("autoLotSizingEnabled"); num("autoLotSizingAmount");
   intn("minScore"); num("minRiskReward");
   intn("maxOpenPositions"); intn("maxPerPair"); intn("maxSamePairInRow");
   num("dailyDrawdownPercent"); intn("pauseAfterLosses");

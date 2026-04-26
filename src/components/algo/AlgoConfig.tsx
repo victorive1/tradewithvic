@@ -257,6 +257,10 @@ export interface AlgoSettings {
   riskPercent: number;
   perPairLots: Record<string, number>;
   usePerPairLots: boolean;
+  // Auto Lot Sizing — opt-in extra layer
+  closeAt1R: boolean;
+  autoLotSizingEnabled: boolean;
+  autoLotSizingAmount: number;
   // Quality filters
   minScore: number;
   minRiskReward: number;
@@ -292,6 +296,9 @@ const defaultSettings: AlgoSettings = {
   riskPercent: 1.0,
   perPairLots: {},
   usePerPairLots: false,
+  closeAt1R: false,
+  autoLotSizingEnabled: false,
+  autoLotSizingAmount: 0,
   minScore: 75,
   minRiskReward: 1.5,
   maxOpenPositions: 3,
@@ -355,6 +362,9 @@ export function useAlgoConfig(botId: string) {
             sizingMode: cfg.sizingMode ?? prev.sizingMode,
             fixedLotSize: cfg.fixedLotSize ?? prev.fixedLotSize,
             riskPercent: cfg.riskPercent ?? prev.riskPercent,
+            closeAt1R: cfg.closeAt1R ?? prev.closeAt1R,
+            autoLotSizingEnabled: cfg.autoLotSizingEnabled ?? prev.autoLotSizingEnabled,
+            autoLotSizingAmount: cfg.autoLotSizingAmount ?? prev.autoLotSizingAmount,
             minScore: cfg.minScore ?? prev.minScore,
             minRiskReward: cfg.minRiskReward ?? prev.minRiskReward,
             maxOpenPositions: cfg.maxOpenPositions ?? prev.maxOpenPositions,
@@ -395,6 +405,9 @@ export function useAlgoConfig(botId: string) {
           sizingMode: next.sizingMode,
           fixedLotSize: next.fixedLotSize,
           riskPercent: next.riskPercent,
+          closeAt1R: next.closeAt1R,
+          autoLotSizingEnabled: next.autoLotSizingEnabled,
+          autoLotSizingAmount: next.autoLotSizingAmount,
           minScore: next.minScore,
           minRiskReward: next.minRiskReward,
           maxOpenPositions: next.maxOpenPositions,
@@ -577,6 +590,104 @@ export function AlgoConfigPanel({
         </div>
       </div>
 
+      {/* Auto Lot Sizing — opt-in layer that overrides TP and/or sizing */}
+      <div className="glass-card p-5">
+        <div className="flex items-center justify-between mb-1">
+          <h4 className="text-sm font-semibold text-foreground">Auto Lot Sizing</h4>
+          <span className="text-[10px] text-muted">Optional · off by default</span>
+        </div>
+        <p className="text-[11px] text-muted mb-4">
+          Two extra layers you can stack on top of normal sizing. Both default off — when off, the algo uses the lot size or risk % above and the setup&apos;s natural TP.
+        </p>
+
+        {/* Toggle: Close at 1:1 RR */}
+        <div className="flex items-start justify-between gap-3 bg-surface-2 rounded-xl p-3 mb-3">
+          <div className="min-w-0">
+            <div className="text-xs font-medium text-foreground">Close at 1:1 RR</div>
+            <div className="text-[10px] text-muted mt-0.5">
+              Override the setup&apos;s TP and exit at +1R from entry, regardless of the original target.
+            </div>
+          </div>
+          <button
+            onClick={() => updateSettings({ closeAt1R: !settings.closeAt1R })}
+            disabled={settings.autoLotSizingEnabled}
+            className={cn(
+              "w-10 h-5 rounded-full relative transition-smooth shrink-0",
+              settings.closeAt1R || settings.autoLotSizingEnabled ? "bg-accent" : "bg-surface-3",
+              settings.autoLotSizingEnabled && "opacity-60 cursor-not-allowed",
+            )}
+            aria-label="Close at 1:1 RR"
+          >
+            <div className={cn(
+              "absolute top-0.5 w-4 h-4 rounded-full bg-white transition-smooth",
+              settings.closeAt1R || settings.autoLotSizingEnabled ? "left-5" : "left-0.5",
+            )} />
+          </button>
+        </div>
+        {settings.autoLotSizingEnabled && (
+          <div className="text-[10px] text-muted -mt-2 mb-3 ml-1">
+            Forced on while Auto Lot Sizing is enabled — that mode always exits at the dollar target (= 1R).
+          </div>
+        )}
+
+        {/* Toggle: Auto-sized to a $ target */}
+        <div className="flex items-start justify-between gap-3 bg-surface-2 rounded-xl p-3">
+          <div className="min-w-0">
+            <div className="text-xs font-medium text-foreground">Auto-sized to a $ target</div>
+            <div className="text-[10px] text-muted mt-0.5">
+              Sizes each trade so that hitting SL = -${settings.autoLotSizingAmount.toLocaleString()} and hitting 1R = +${settings.autoLotSizingAmount.toLocaleString()}. Closes at the target. Per-pair lot is computed automatically.
+            </div>
+          </div>
+          <button
+            onClick={() => updateSettings({ autoLotSizingEnabled: !settings.autoLotSizingEnabled })}
+            className={cn(
+              "w-10 h-5 rounded-full relative transition-smooth shrink-0",
+              settings.autoLotSizingEnabled ? "bg-accent" : "bg-surface-3",
+            )}
+            aria-label="Auto-sized to a dollar target"
+          >
+            <div className={cn(
+              "absolute top-0.5 w-4 h-4 rounded-full bg-white transition-smooth",
+              settings.autoLotSizingEnabled ? "left-5" : "left-0.5",
+            )} />
+          </button>
+        </div>
+
+        {settings.autoLotSizingEnabled && (
+          <div className="mt-3">
+            <label className="text-xs text-muted-light mb-1.5 block">Risk / target per trade ($)</label>
+            <div className="flex gap-2 mb-2 flex-wrap">
+              {[100, 250, 500, 1000, 2500, 5000].map((amt) => (
+                <button
+                  key={amt}
+                  onClick={() => updateSettings({ autoLotSizingAmount: amt })}
+                  className={cn(
+                    "px-3 py-2 rounded-lg text-xs transition-smooth",
+                    settings.autoLotSizingAmount === amt ? "bg-accent text-white" : "bg-surface-2 text-muted-light border border-border/50",
+                  )}
+                >
+                  ${amt.toLocaleString()}
+                </button>
+              ))}
+            </div>
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xs text-muted">$</span>
+              <input
+                type="number"
+                min="0"
+                step="50"
+                value={settings.autoLotSizingAmount}
+                onChange={(e) => updateSettings({ autoLotSizingAmount: parseFloat(e.target.value) || 0 })}
+                className="w-full pl-8 pr-4 py-2.5 rounded-xl bg-surface-2 border border-border focus:border-accent focus:outline-none text-sm text-foreground font-mono"
+              />
+            </div>
+            <div className="text-[10px] text-muted mt-2">
+              Lot size for each trade is solved from this amount, the SL distance, and the pair&apos;s pip value. EURUSD with a 20-pip SL needs a different lot than XAGUSD with a $0.40 SL — handled automatically.
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Quality & Risk Filters */}
       <div className="glass-card p-5">
         <h4 className="text-sm font-semibold text-foreground mb-3">Quality & Risk Filters</h4>
@@ -670,7 +781,8 @@ export function AlgoConfigPanel({
         <h4 className="text-sm font-semibold text-foreground mb-2">{botName} — Config Summary</h4>
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div className="flex justify-between"><span className="text-muted">Pairs</span><span className="text-foreground">{settings.selectedPairs.length}</span></div>
-          <div className="flex justify-between"><span className="text-muted">Sizing</span><span className="text-foreground">{settings.sizingMode === "fixed_lot" ? `${settings.fixedLotSize} lots` : `${settings.riskPercent}% risk`}</span></div>
+          <div className="flex justify-between"><span className="text-muted">Sizing</span><span className="text-foreground">{settings.autoLotSizingEnabled ? `auto · $${settings.autoLotSizingAmount.toLocaleString()}` : settings.sizingMode === "fixed_lot" ? `${settings.fixedLotSize} lots` : `${settings.riskPercent}% risk`}</span></div>
+          <div className="flex justify-between"><span className="text-muted">Exit Override</span><span className={settings.closeAt1R || settings.autoLotSizingEnabled ? "text-accent-light" : "text-muted"}>{settings.closeAt1R || settings.autoLotSizingEnabled ? "Close at 1R" : "Natural TP"}</span></div>
           <div className="flex justify-between"><span className="text-muted">Min Score</span><span className="text-foreground">{settings.minScore}</span></div>
           <div className="flex justify-between"><span className="text-muted">Min R:R</span><span className="text-foreground">{settings.minRiskReward}:1</span></div>
           <div className="flex justify-between"><span className="text-muted">Max Open</span><span className="text-foreground">{settings.maxOpenPositions}</span></div>

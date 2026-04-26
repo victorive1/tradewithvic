@@ -35,6 +35,51 @@ export async function mapSymbolForBroker(params: {
 }
 
 /**
+ * Account-aware variant of mapSymbolForBroker. Looks up the global
+ * SymbolMappingRule (for digits / contract size / volume limits used by the
+ * validator), then layers per-account overrides on top:
+ *
+ *   1. If account.brokerSymbolRenames has the internal symbol, use that as
+ *      the base (this handles e.g. USOIL → WTI on JustMarkets ECN).
+ *      Otherwise use the global rule's brokerSymbol, falling back to
+ *      internalSymbol.
+ *   2. Append account.brokerSymbolSuffix (e.g. ".ecn"). Suffix is always
+ *      appended last — rename values must be bare.
+ *
+ * Returns the same shape as mapSymbolForBroker so call sites can swap one
+ * for the other.
+ */
+export async function mapSymbolForAccount(params: {
+  internalSymbol: string;
+  account: {
+    brokerName: string;
+    platformType: string;
+    brokerSymbolSuffix: string;
+    brokerSymbolRenames: string;
+  };
+}): Promise<{ brokerSymbol: string; rule: any | null }> {
+  const { internalSymbol, account } = params;
+
+  const { rule } = await mapSymbolForBroker({
+    internalSymbol,
+    brokerName: account.brokerName,
+    platformType: account.platformType as "MT4" | "MT5",
+  });
+
+  let renames: Record<string, string> = {};
+  try {
+    const parsed = JSON.parse(account.brokerSymbolRenames || "{}");
+    if (parsed && typeof parsed === "object") renames = parsed;
+  } catch {
+    // malformed JSON — treat as empty map; suffix still applies
+  }
+
+  const base = renames[internalSymbol] ?? rule?.brokerSymbol ?? internalSymbol;
+  const brokerSymbol = base + (account.brokerSymbolSuffix || "");
+  return { brokerSymbol, rule };
+}
+
+/**
  * Seed reasonable default mappings on first use so users don't hit an empty
  * symbol-mapping table. Idempotent.
  */

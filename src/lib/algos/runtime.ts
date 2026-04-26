@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { mapSymbolForBroker } from "@/lib/trading/symbol-mapping";
+import { mapSymbolForAccount } from "@/lib/trading/symbol-mapping";
 import { computeExposure, wouldExceedLimit } from "@/lib/brain/exposure";
 import { strategyPolicyFor, isStrategyAllowed } from "@/lib/brain/regime-policy";
 
@@ -10,6 +10,7 @@ import { strategyPolicyFor, isStrategyAllowed } from "@/lib/brain/regime-policy"
 const MAX_NET_SAME_DIRECTION_PER_CURRENCY = 4;
 import { validateOrderTicket } from "@/lib/trading/validation";
 import { resolveAdapter, type NormalizedOrder } from "@/lib/trading/adapter";
+import { computeLotSize } from "@/lib/trading/lot-sizing";
 
 /**
  * Server-side algo runtime — the thing that actually routes trades.
@@ -321,13 +322,48 @@ async function routeOne(
 
   // Idempotency: (bot, setup, account) is unique. If another runtime
   // pass already inserted, this throws — treat as not routed, not an error.
-  const mapping = await mapSymbolForBroker({
+  const mapping = await mapSymbolForAccount({
     internalSymbol: setup.symbol,
-    brokerName: account.brokerName,
-    platformType: account.platformType as "MT4" | "MT5",
+    account: {
+      brokerName: account.brokerName,
+      platformType: account.platformType,
+      brokerSymbolSuffix: account.brokerSymbolSuffix ?? "",
+      brokerSymbolRenames: account.brokerSymbolRenames ?? "{}",
+    },
   });
 
   const side = setup.direction === "long" ? "buy" : "sell";
+
+  // Auto Lot Sizing layer (opt-in). Two toggles:
+  //   - closeAt1R: cap the TP at +1R from entry, regardless of the setup's
+  //     natural target. Sizing stays as configured.
+  //   - autoLotSizingEnabled: solve lot size so SL = -$amount and 1R = +$amount,
+  //     using the per-pair pip math in lot-sizing.ts. Implies closeAt1R because
+  //     the dollar target is by construction the 1R level.
+  // If math fails (missing entry/SL, zero amount), fall back to fixed lot
+  // and the setup's natural TP — matches the documented escape hatch.
+  const useAutoSize = !!bot.autoLotSizingEnabled
+    && bot.autoLotSizingAmount > 0
+    && setup.entry > 0
+    && setup.stopLoss > 0
+    && setup.entry !== setup.stopLoss;
+  const useCloseAt1R = !!bot.closeAt1R || useAutoSize;
+
+  let effectiveLot = bot.fixedLotSize;
+  if (useAutoSize) {
+    const lot = computeLotSize({
+      symbol: setup.symbol,
+      entry: setup.entry,
+      stopLoss: setup.stopLoss,
+      riskUSD: bot.autoLotSizingAmount,
+    });
+    if (lot.lotSize > 0 && Number.isFinite(lot.lotSize)) {
+      effectiveLot = lot.lotSize;
+    }
+  }
+
+  const tp1R = setup.entry + (setup.entry - setup.stopLoss);
+  const effectiveTakeProfit = useCloseAt1R ? tp1R : (setup.takeProfit1 ?? null);
 
   const validation = validateOrderTicket(
     {
@@ -335,11 +371,11 @@ async function routeOne(
       internalSymbol: setup.symbol,
       side: side as "buy" | "sell",
       orderType: "market",
-      requestedVolume: bot.fixedLotSize,
+      requestedVolume: effectiveLot,
       sizingMode: "fixed_lots",
       entryPrice: null,
       stopLoss: setup.stopLoss ?? null,
-      takeProfit: setup.takeProfit1 ?? null,
+      takeProfit: effectiveTakeProfit,
       timeInForce: "gtc",
       slippagePips: null,
       currentPrice: null,
@@ -379,12 +415,12 @@ async function routeOne(
       brokerSymbol: mapping.brokerSymbol,
       side,
       orderType: "market",
-      requestedVolume: bot.fixedLotSize,
+      requestedVolume: effectiveLot,
       sizingMode: "fixed_lots",
       riskPercent: null,
       entryPrice: null,
       stopLoss: setup.stopLoss ?? null,
-      takeProfit: setup.takeProfit1 ?? null,
+      takeProfit: effectiveTakeProfit,
       timeInForce: "gtc",
       slippagePips: null,
       comment: `algo:${bot.botId}:${setup.id.slice(0, 8)}`,
@@ -401,10 +437,10 @@ async function routeOne(
     brokerSymbol: mapping.brokerSymbol,
     side,
     orderType: "market",
-    volume: bot.fixedLotSize,
+    volume: effectiveLot,
     entryPrice: null,
     stopLoss: setup.stopLoss ?? null,
-    takeProfit: setup.takeProfit1 ?? null,
+    takeProfit: effectiveTakeProfit,
     timeInForce: "gtc",
     expiresAt: null,
     slippagePips: null,

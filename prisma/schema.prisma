@@ -1014,6 +1014,14 @@ model AlgoBotConfig {
   fixedLotSize           Float    @default(0.10)
   riskPercent            Float    @default(1.0)
 
+  // Auto Lot Sizing — opt-in extra layer.
+  // closeAt1R: override the setup's TP and exit at +1R from entry.
+  // autoLotSizingEnabled: size each trade so SL = -$amount and 1R = +$amount;
+  //   implies closeAt1R because the dollar target equals the 1R level.
+  closeAt1R              Boolean  @default(false)
+  autoLotSizingEnabled   Boolean  @default(false)
+  autoLotSizingAmount    Float    @default(0)
+
   // Quality + risk gates
   minScore               Int      @default(75)
   minRiskReward          Float    @default(1.5)
@@ -1622,6 +1630,15 @@ model LinkedTradingAccount {
   lastConnectedAt   DateTime?
   adapterKind       String    @default("pending_queue") // pending_queue | metaapi | ea_webhook | mock
   adapterConfigJson String? // JSON — adapter-specific config (API key ref, webhook URL, etc.)
+
+  // Per-account broker symbol overrides — applied at order routing time.
+  // brokerSymbolSuffix is appended to every symbol (e.g. ".ecn" on JustMarkets ECN).
+  // brokerSymbolRenames is a JSON map of internal → broker name where the symbol
+  //   is renamed beyond a suffix (e.g. {"USOIL":"WTI","NAS100":"US100"}). The
+  //   rename value is bare; the suffix is appended after the rename.
+  brokerSymbolSuffix  String  @default("")
+  brokerSymbolRenames String  @default("{}")
+
   isActive          Boolean   @default(true)
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
