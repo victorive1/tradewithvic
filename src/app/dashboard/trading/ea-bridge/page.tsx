@@ -15,6 +15,8 @@ interface Account {
   connectionStatus: string;
   adapterKind: string;
   lastConnectedAt: string | null;
+  brokerSymbolSuffix?: string;
+  brokerSymbolRenames?: string;
 }
 
 interface Endpoints {
@@ -79,7 +81,6 @@ export default function EaBridgePage() {
   const [loading, setLoading] = useState(true);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [provisioned, setProvisioned] = useState<Record<string, ProvisionResult>>({});
-  const [endpointsCache, setEndpointsCache] = useState<Record<string, Endpoints>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const userKey = typeof window !== "undefined" ? getOrCreateUserKey() : "";
@@ -106,18 +107,6 @@ export default function EaBridgePage() {
     return () => window.clearInterval(id);
   }, [loadAccounts]);
 
-  async function fetchEndpoints(accountId: string) {
-    try {
-      const res = await fetch(`/api/trading/accounts/${accountId}/ea`, {
-        headers: userKey ? { "x-trading-user-key": userKey } : undefined,
-        cache: "no-store",
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      setEndpointsCache((prev) => ({ ...prev, [accountId]: data.endpoints }));
-    } catch { /* ignore */ }
-  }
-
   async function provision(account: Account, rotate: boolean) {
     setBusyId(account.id);
     try {
@@ -132,7 +121,6 @@ export default function EaBridgePage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `http_${res.status}`);
       setProvisioned((prev) => ({ ...prev, [account.id]: data }));
-      setEndpointsCache((prev) => ({ ...prev, [account.id]: data.endpoints }));
       loadAccounts();
     } catch (e) {
       alert(`Failed: ${(e as Error).message}`);
@@ -188,7 +176,6 @@ export default function EaBridgePage() {
         <div className="space-y-4">
           {accounts.map((a) => {
             const p = provisioned[a.id];
-            const endpoints = endpointsCache[a.id];
             const isEa = a.adapterKind === "ea_webhook";
             const heartbeatFresh = a.lastConnectedAt
               ? Date.now() - new Date(a.lastConnectedAt).getTime() < 3 * 60 * 1000
@@ -250,10 +237,11 @@ export default function EaBridgePage() {
                     {isEa && (
                       <>
                         <button
-                          onClick={() => { if (!endpoints) fetchEndpoints(a.id); }}
-                          className="px-3 py-2 rounded-xl bg-surface-2 border border-border text-xs font-medium transition-smooth hover:border-border-light"
+                          onClick={() => provision(a, false)}
+                          disabled={busyId === a.id}
+                          className="px-3 py-2 rounded-xl bg-accent text-white text-xs font-semibold transition-smooth disabled:opacity-50"
                         >
-                          Show URLs
+                          {busyId === a.id ? "…" : "Show setup info"}
                         </button>
                         <button
                           onClick={() => {
@@ -274,36 +262,60 @@ export default function EaBridgePage() {
                 {p && (
                   <div className="space-y-3 pt-2 border-t border-border/40">
                     <div className="glass-card p-3 text-xs text-accent-light bg-accent/5 border border-accent/30">
-                      ✓ Provisioned. The secret below is shown <strong>once</strong> — copy it into
-                      the EA inputs now. You can rotate it later but you can&apos;t retrieve it.
+                      ✓ EA Bridge ready. Paste the values below into the EA inputs in MT5.
+                      Rotate the secret if you suspect it&apos;s been exposed.
                     </div>
                     <CopyField label="WebhookSecret (paste into EA)" value={p.webhookSecret} mask />
                     <CopyField label="AccountLogin" value={p.account.accountLogin} />
                     <CopyField label="ServerUrl (for EA input)" value={new URL(p.endpoints.pull).origin} />
-                    <div className="grid sm:grid-cols-3 gap-3 pt-1">
-                      <CopyField label="Pull endpoint" value={p.endpoints.pull} />
-                      <CopyField label="Ack endpoint" value={p.endpoints.ack} />
-                      <CopyField label="Ping endpoint" value={p.endpoints.ping} />
-                    </div>
-                    <div className="text-xs text-muted bg-surface-2 p-3 rounded-lg">
-                      <p className="font-semibold text-foreground mb-1">Required MT5 setup</p>
-                      In MetaEditor, open <code className="text-accent-light">TradeWithVicBridge.mq5</code>,
-                      compile (F7), drag onto any chart. In the EA inputs panel, paste the
-                      WebhookSecret, AccountLogin, and ServerUrl above. Then in
-                      MT5 → Tools → Options → Expert Advisors, tick &quot;Allow WebRequest&quot;
-                      and add <code className="text-accent-light">{new URL(p.endpoints.pull).origin}</code> to
-                      the allowed URL list. Enable AutoTrading (Ctrl+E).
+                    {(a.brokerSymbolSuffix || (a.brokerSymbolRenames && a.brokerSymbolRenames !== "{}")) && (
+                      <div className="text-xs text-muted bg-surface-2 p-3 rounded-lg">
+                        <p className="font-semibold text-foreground mb-1">Broker symbol mapping (auto-applied)</p>
+                        {a.brokerSymbolSuffix && (
+                          <div>Suffix appended to every symbol: <code className="text-accent-light">{a.brokerSymbolSuffix}</code></div>
+                        )}
+                        {a.brokerSymbolRenames && a.brokerSymbolRenames !== "{}" && (
+                          <div className="mt-1">Renames: <code className="text-accent-light">{a.brokerSymbolRenames}</code></div>
+                        )}
+                      </div>
+                    )}
+                    <details className="text-xs text-muted bg-surface-2 p-3 rounded-lg">
+                      <summary className="cursor-pointer font-semibold text-foreground">Endpoints (advanced)</summary>
+                      <div className="grid sm:grid-cols-3 gap-3 mt-3">
+                        <CopyField label="Pull endpoint" value={p.endpoints.pull} />
+                        <CopyField label="Ack endpoint" value={p.endpoints.ack} />
+                        <CopyField label="Ping endpoint" value={p.endpoints.ping} />
+                      </div>
+                    </details>
+                    <div className="text-xs text-muted bg-surface-2 p-3 rounded-lg space-y-2">
+                      <p className="font-semibold text-foreground">MT5 setup steps for this account</p>
+                      <ol className="list-decimal list-inside space-y-1 ml-1">
+                        <li>
+                          On your VPS, install (or copy) MT5 into a folder dedicated to this
+                          account: <code className="text-accent-light">C:\{a.brokerName}_{a.accountLogin}</code>.
+                          One MT5 instance can only be logged into one account at a time.
+                        </li>
+                        <li>Log into MT5 with login <code className="text-accent-light">{a.accountLogin}</code> on server <code className="text-accent-light">{a.serverName}</code>.</li>
+                        <li>
+                          Open MetaEditor (F4), open <code className="text-accent-light">TradeWithVicBridge.mq5</code>,
+                          compile (F7).
+                        </li>
+                        <li>Drag the EA from Navigator onto any chart on this account.</li>
+                        <li>
+                          In the EA inputs, paste the <strong>WebhookSecret</strong> and the
+                          <strong> AccountLogin</strong> shown above. Leave <strong>ServerUrl</strong> at
+                          its default.
+                        </li>
+                        <li>
+                          MT5 → Tools → Options → Expert Advisors → tick &quot;Allow WebRequest for
+                          listed URL&quot; and add <code className="text-accent-light">{new URL(p.endpoints.pull).origin}</code>.
+                        </li>
+                        <li>Enable AutoTrading (Ctrl+E or the Algo Trading button).</li>
+                      </ol>
                     </div>
                   </div>
                 )}
 
-                {isEa && !p && endpoints && (
-                  <div className="grid sm:grid-cols-3 gap-3 pt-2 border-t border-border/40">
-                    <CopyField label="Pull endpoint" value={endpoints.pull} />
-                    <CopyField label="Ack endpoint" value={endpoints.ack} />
-                    <CopyField label="Ping endpoint" value={endpoints.ping} />
-                  </div>
-                )}
               </div>
             );
           })}

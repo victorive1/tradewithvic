@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { readUserKey } from "@/lib/trading/user-key";
+import { applyBrokerTemplate } from "@/lib/trading/broker-templates";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -41,10 +42,14 @@ export async function POST(req: NextRequest) {
     where: { userKey, platformType, accountLogin, serverName },
   });
 
-  // Default to "mock" so the execute flow completes end-to-end with
-  // simulated fills; users upgrade to metaapi or ea_webhook once they
-  // install a real MT bridge.
-  const adapterKind = typeof body.adapterKind === "string" ? body.adapterKind : "mock";
+  // For known brokers (e.g. JustMarkets) we apply a template so the row is
+  // born wired for ea_webhook with the right symbol overrides and a fresh
+  // secret. Anything the caller passes in adapterKind/adapterConfigJson
+  // wins, so a UI that wants explicit control still can.
+  const template = !existing ? applyBrokerTemplate(brokerName) : null;
+  const adapterKind = typeof body.adapterKind === "string"
+    ? body.adapterKind
+    : template?.adapterKind ?? "mock";
 
   const account = existing
     ? await prisma.linkedTradingAccount.update({
@@ -72,7 +77,9 @@ export async function POST(req: NextRequest) {
           leverage: body.leverage ?? null,
           connectionStatus: body.connectionStatus ?? "linked",
           adapterKind,
-          adapterConfigJson: body.adapterConfigJson ?? null,
+          adapterConfigJson: body.adapterConfigJson ?? template?.adapterConfigJson ?? null,
+          brokerSymbolSuffix: template?.brokerSymbolSuffix ?? "",
+          brokerSymbolRenames: template?.brokerSymbolRenames ?? "{}",
         },
       });
 

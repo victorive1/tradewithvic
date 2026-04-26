@@ -3,6 +3,7 @@ import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { readUserKey } from "@/lib/trading/user-key";
 import { parseEaConfig, type EaAdapterConfig } from "@/lib/trading/ea-auth";
+import { findBrokerTemplate } from "@/lib/trading/broker-templates";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -50,11 +51,27 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
       : randomBytes(24).toString("base64url");
 
   const nextConfig: EaAdapterConfig = { ...existing, webhookSecret };
+
+  // Also apply the broker's symbol-mapping template if this account hasn't
+  // been customized yet. Lets a legacy "mock" account upgraded via the
+  // Enable EA Bridge button get the .ecn suffix + renames in the same step
+  // instead of needing a separate manual update.
+  const template = findBrokerTemplate(account.brokerName);
+  const shouldApplyTemplate = !!template
+    && account.brokerSymbolSuffix === ""
+    && account.brokerSymbolRenames === "{}";
+
   const updated = await prisma.linkedTradingAccount.update({
     where: { id: account.id },
     data: {
       adapterKind: "ea_webhook",
       adapterConfigJson: JSON.stringify(nextConfig),
+      ...(shouldApplyTemplate && template
+        ? {
+            brokerSymbolSuffix: template.brokerSymbolSuffix,
+            brokerSymbolRenames: JSON.stringify(template.brokerSymbolRenames),
+          }
+        : {}),
     },
   });
 
