@@ -23,6 +23,7 @@ const BOT_DISPLAY: Array<{ botId: string; name: string }> = [
   { botId: "metals", name: "Silver & Gold Algo" },
   { botId: "hub", name: "Algo Trading Hub" },
   { botId: "vic", name: "Algo Vic" },
+  { botId: "quant", name: "Quant Algo" },
 ];
 
 interface BotStatusRow {

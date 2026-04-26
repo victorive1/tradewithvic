@@ -33,6 +33,7 @@ const ENGINE_BY_HREF: Record<string, string> = {
   "/dashboard/admin/algos/us30": "market-core-brain",
   "/dashboard/admin/algos/metals": "market-core-brain",
   "/dashboard/admin/algos/vic": "market-core-brain",
+  "/dashboard/admin/algos/quant": "market-core-brain",
   "/dashboard/custom-bot": "market-radar",
   "/dashboard/bot-agents": "market-radar",
 };
@@ -178,6 +179,7 @@ const navItems: NavSection[] = [
           { label: "FX Strength Algo", href: "/dashboard/admin/algos/fx-strength", icon: "setups" },
           { label: "Market Direction Algo", href: "/dashboard/admin/algos/md", icon: "screener" },
           { label: "Order Block Algo", href: "/dashboard/admin/algos/ob", icon: "liquidity" },
+          { label: "Quant Algo", href: "/dashboard/admin/algos/quant", icon: "radar" },
           { label: "Silver & Gold Algo", href: "/dashboard/admin/algos/metals", icon: "strength" },
           { label: "US30 Algo", href: "/dashboard/admin/algos/us30", icon: "radar" },
         ],

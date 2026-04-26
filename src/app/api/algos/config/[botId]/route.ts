@@ -16,7 +16,7 @@ export const revalidate = 0;
  */
 
 const VALID_BOT_IDS = new Set([
-  "breakout", "md", "us30", "metals", "ob", "fx-strength", "vic", "hub",
+  "breakout", "md", "us30", "metals", "ob", "fx-strength", "vic", "hub", "quant",
 ]);
 
 const DEFAULT_STRATEGY_FILTER: Record<string, string> = {
@@ -28,6 +28,9 @@ const DEFAULT_STRATEGY_FILTER: Record<string, string> = {
   "fx-strength": "trend_pullback",
   vic: "breakout,sweep_reversal,vwap_reclaim,vwap_rejection",
   hub: "breakout,trend_pullback,sweep_reversal,vwap_reclaim,vwap_rejection,vwap_stretch",
+  // Trades the four Blueprint § 7 Quant Engine strategies, mirroring
+  // exactly what the /dashboard/quant page surfaces.
+  quant: "inverse_fvg,order_block,breaker_block,fvg_continuation",
 };
 
 const DEFAULT_SYMBOL_FILTER: Record<string, string> = {
