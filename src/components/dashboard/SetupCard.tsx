@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { cn, formatPrice } from "@/lib/utils";
 import type { TradeSetup } from "@/lib/setup-engine";
+import { AdminLotSizeForCard } from "@/components/admin/AdminRiskTarget";
 import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
 import { computeOneR } from "@/lib/setups/one-r";
 
@@ -64,6 +65,10 @@ export function SetupCard({ setup }: { setup: TradeSetup }) {
           <span className="font-mono text-accent-light">
             {formatPrice(computeOneR(setup.entry, setup.stopLoss, setup.direction), 5)}
           </span>
+        </div>
+
+        <div className="mb-3 px-1">
+          <AdminLotSizeForCard symbol={setup.symbol} entry={setup.entry} stopLoss={setup.stopLoss} />
         </div>
 
         {/* RR + Confidence bar */}

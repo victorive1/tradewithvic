@@ -5,6 +5,7 @@ import { SetupCard } from "@/components/dashboard/SetupCard";
 import type { TradeSetup } from "@/lib/setup-engine";
 import { MARKET_CATEGORIES } from "@/lib/constants";
 import { TimeframeFilter, type TimeframeValue, matchesTimeframe, buildTimeframeCounts } from "@/components/dashboard/TimeframeFilter";
+import { AdminRiskTargetBar } from "@/components/admin/AdminRiskTarget";
 
 const setupFilters = [
   { id: "all", label: "All Setups" },
@@ -51,6 +52,7 @@ export function SetupsClient({ initialSetups, lastUpdated }: { initialSetups: Tr
 
   return (
     <div className="space-y-6">
+      <AdminRiskTargetBar />
       <div>
         <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-2xl font-bold text-foreground">Trade Setups</h1>
