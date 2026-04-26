@@ -19,6 +19,8 @@ export const INSTRUMENTS = {
   energy: [
     { symbol: "USOIL", displayName: "US Oil (WTI)", category: "energy", decimals: 2 },
   ],
+  // Indices are temporarily offline — Twelve Data does not carry US cash indices.
+  // Kept here so they can be re-enabled (alongside ALL_INSTRUMENTS / MARKET_CATEGORIES) once a data source is wired up.
   indices: [
     { symbol: "NAS100", displayName: "NAS100", category: "indices", decimals: 1 },
     { symbol: "US30", displayName: "US30 (Dow)", category: "indices", decimals: 1 },
@@ -37,7 +39,6 @@ export const ALL_INSTRUMENTS = [
   ...INSTRUMENTS.forex,
   ...INSTRUMENTS.metals,
   ...INSTRUMENTS.energy,
-  ...INSTRUMENTS.indices,
   ...INSTRUMENTS.crypto,
 ];
 
@@ -46,7 +47,6 @@ export const MARKET_CATEGORIES = [
   { id: "forex", label: "Forex" },
   { id: "metals", label: "Metals" },
   { id: "energy", label: "Energy" },
-  { id: "indices", label: "Indices" },
   { id: "crypto", label: "Crypto" },
 ] as const;
 

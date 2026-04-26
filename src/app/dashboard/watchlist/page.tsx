@@ -7,7 +7,6 @@ import { ALL_INSTRUMENTS } from "@/lib/constants";
 const watchlistItems = [
   { symbol: "XAUUSD", displayName: "XAU/USD", category: "metals", price: "3,284.50", change: "+1.42%", trend: "Bullish", alert: true },
   { symbol: "EURUSD", displayName: "EUR/USD", category: "forex", price: "1.0842", change: "-0.32%", trend: "Bearish", alert: false },
-  { symbol: "NAS100", displayName: "NAS100", category: "indices", price: "19,432.1", change: "+0.85%", trend: "Bullish", alert: true },
   { symbol: "BTCUSD", displayName: "BTC/USD", category: "crypto", price: "84,215", change: "+0.21%", trend: "Range", alert: false },
   { symbol: "GBPJPY", displayName: "GBP/JPY", category: "forex", price: "191.42", change: "-0.68%", trend: "Bearish", alert: false },
   { symbol: "USOIL", displayName: "US Oil", category: "energy", price: "62.40", change: "+1.15%", trend: "Bullish", alert: true },

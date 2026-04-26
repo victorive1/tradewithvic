@@ -13,7 +13,7 @@ interface Quote {
 const categories = [
   { key: "forex", label: "Forex", accent: "text-accent-light" },
   { key: "metals", label: "Metals", accent: "text-warn" },
-  { key: "indices", label: "Indices", accent: "text-bull-light" },
+  { key: "energy", label: "Energy", accent: "text-bull-light" },
   { key: "crypto", label: "Crypto", accent: "text-muted-light" },
 ];
 
@@ -23,9 +23,7 @@ const fallback: Quote[] = [
   { symbol: "USDJPY", displayName: "USD/JPY", price: 151.24, changePercent: 0.31, category: "forex" },
   { symbol: "XAUUSD", displayName: "XAU/USD", price: 2384.50, changePercent: 0.64, category: "metals" },
   { symbol: "XAGUSD", displayName: "XAG/USD", price: 28.42, changePercent: -0.22, category: "metals" },
-  { symbol: "NAS100", displayName: "NAS 100", price: 18734.2, changePercent: 0.41, category: "indices" },
-  { symbol: "US30", displayName: "US 30", price: 39420.1, changePercent: -0.18, category: "indices" },
-  { symbol: "SPX500", displayName: "S&P 500", price: 5287.3, changePercent: 0.26, category: "indices" },
+  { symbol: "USOIL", displayName: "US Oil (WTI)", price: 78.42, changePercent: 0.55, category: "energy" },
   { symbol: "BTCUSD", displayName: "BTC/USD", price: 67240.5, changePercent: 1.42, category: "crypto" },
   { symbol: "ETHUSD", displayName: "ETH/USD", price: 3284.1, changePercent: 0.88, category: "crypto" },
   { symbol: "SOLUSD", displayName: "SOL/USD", price: 184.3, changePercent: -0.64, category: "crypto" },
@@ -114,7 +112,7 @@ export function MarketStrip() {
               <span className={`w-1 h-1 rounded-full ${
                 c.key === "forex" ? "bg-accent-light" :
                 c.key === "metals" ? "bg-warn" :
-                c.key === "indices" ? "bg-bull-light" :
+                c.key === "energy" ? "bg-bull-light" :
                 "bg-muted-light"
               }`} />
               <span className="text-[11px] font-medium text-muted-light">{c.label}</span>

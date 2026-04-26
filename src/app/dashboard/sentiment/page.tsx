@@ -197,7 +197,7 @@ export default function SentimentPage() {
           <button key={v.id} onClick={() => setView(v.id)} className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-smooth", view === v.id ? "bg-accent text-white" : "bg-surface-2 text-muted-light border border-border/50")}>{v.l}</button>
         ))}
         <div className="w-px h-5 bg-border mx-1" />
-        {["all", "forex", "metals", "crypto", "indices"].map((c) => (
+        {["all", "forex", "metals", "crypto", "energy"].map((c) => (
           <button key={c} onClick={() => setCategoryFilter(c)} className={cn("px-2.5 py-1 rounded-lg text-[10px] capitalize transition-smooth", categoryFilter === c ? "bg-surface-3 text-foreground border border-border-light" : "text-muted hover:text-muted-light")}>{c === "all" ? "All" : c}</button>
         ))}
       </div>

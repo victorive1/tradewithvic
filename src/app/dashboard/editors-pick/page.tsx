@@ -145,7 +145,7 @@ export default function EditorsPickPage() {
 
       {/* Filters */}
       <div className="flex gap-2 flex-wrap">
-        {["all", "forex", "metals", "crypto", "indices", "energy"].map((cat) => (
+        {["all", "forex", "metals", "crypto", "energy"].map((cat) => (
           <button key={cat} onClick={() => setFilterCategory(cat)} className={cn("px-3 py-1.5 rounded-lg text-xs capitalize transition-smooth", filterCategory === cat ? "bg-accent text-white" : "bg-surface-2 text-muted-light border border-border/50")}>{cat === "all" ? "All Markets" : cat}</button>
         ))}
       </div>

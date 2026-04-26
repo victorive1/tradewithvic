@@ -73,11 +73,6 @@ export default function RiskPage() {
                   <option key={i.symbol} value={i.symbol}>{i.displayName}</option>
                 ))}
               </optgroup>
-              <optgroup label="Indices">
-                {ALL_INSTRUMENTS.filter((i) => i.category === "indices").map((i) => (
-                  <option key={i.symbol} value={i.symbol}>{i.displayName}</option>
-                ))}
-              </optgroup>
               <optgroup label="Energy">
                 {ALL_INSTRUMENTS.filter((i) => i.category === "energy").map((i) => (
                   <option key={i.symbol} value={i.symbol}>{i.displayName}</option>
@@ -204,7 +199,7 @@ export default function RiskPage() {
                 {result.lotSize >= 0.01 ? result.lotSize.toFixed(2) : result.lotSize.toExponential(2)}
               </div>
               <div className="text-xs text-muted mt-1">
-                = {formatNum(result.miniLots, 2)} mini · {formatNum(result.microLots, 0)} micro · {formatNum(result.units, result.units < 1 ? 4 : 0)} {symbol === "XAUUSD" ? "oz" : symbol === "XAGUSD" ? "oz" : (symbol.startsWith("BTC") || symbol.startsWith("ETH") || symbol.startsWith("SOL") || symbol.startsWith("XRP")) ? "coins" : symbol === "USOIL" ? "barrels" : ALL_INSTRUMENTS.find((i) => i.symbol === symbol)?.category === "indices" ? "contracts" : "units"}
+                = {formatNum(result.miniLots, 2)} mini · {formatNum(result.microLots, 0)} micro · {formatNum(result.units, result.units < 1 ? 4 : 0)} {symbol === "XAUUSD" ? "oz" : symbol === "XAGUSD" ? "oz" : (symbol.startsWith("BTC") || symbol.startsWith("ETH") || symbol.startsWith("SOL") || symbol.startsWith("XRP")) ? "coins" : symbol === "USOIL" ? "barrels" : "units"}
               </div>
             </div>
             {result.warnings.length > 0 && (

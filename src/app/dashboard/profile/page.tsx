@@ -106,7 +106,7 @@ export default function ProfilePage() {
     { id: "settings", label: "Settings" },
   ];
 
-  const allMarkets = ["forex", "metals", "energy", "indices", "crypto"];
+  const allMarkets = ["forex", "metals", "energy", "crypto"];
   const allTimeframes = ["5m", "15m", "1h", "4h", "1d"];
   const strategyStyles = ["Smart Money", "Price Action", "Scalping", "Swing Trading", "Breakout", "Trend Following", "Reversal", "Order Flow"];
   const riskLevels = ["Conservative", "Moderate", "Aggressive"];

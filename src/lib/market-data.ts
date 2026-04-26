@@ -29,6 +29,7 @@ function toTwelveDataSymbol(symbol: string): string {
     AUDUSD: "AUD/USD", NZDUSD: "NZD/USD", USDCAD: "USD/CAD", EURJPY: "EUR/JPY",
     GBPJPY: "GBP/JPY", EURGBP: "EUR/GBP", AUDJPY: "AUD/JPY",
     XAUUSD: "XAU/USD", XAGUSD: "XAG/USD",
+    USOIL: "WTI/USD",
     BTCUSD: "BTC/USD", ETHUSD: "ETH/USD", SOLUSD: "SOL/USD", XRPUSD: "XRP/USD",
   };
   return map[symbol] || symbol;
@@ -105,7 +106,7 @@ export async function fetchAllQuotes(): Promise<MarketQuote[]> {
 
   // Priority symbols first (most important for the platform)
   const prioritySymbols = ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "BTCUSD", "GBPJPY", "AUDUSD", "ETHUSD"];
-  const secondarySymbols = ["USDCHF", "NZDUSD", "USDCAD", "EURJPY", "EURGBP", "XAGUSD", "AUDJPY"];
+  const secondarySymbols = ["USDCHF", "NZDUSD", "USDCAD", "EURJPY", "EURGBP", "XAGUSD", "AUDJPY", "USOIL"];
 
   // Fetch priority first, secondary after
   const batch1 = await fetchBatch(prioritySymbols);

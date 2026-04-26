@@ -258,7 +258,7 @@ export default function MTFPage() {
     return { aligned, conflicting, total: instruments.length };
   }, [instruments]);
 
-  const categories = ["all", "forex", "metals", "crypto", "indices", "energy"];
+  const categories = ["all", "forex", "metals", "crypto", "energy"];
   const timeframeKeys = ["5m", "15m", "1h", "4h"] as const;
 
   return (
