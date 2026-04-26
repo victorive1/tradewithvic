@@ -9,6 +9,8 @@ export default function SignUpPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [consentLegal, setConsentLegal] = useState(false);
+  const [consentRisk, setConsentRisk] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -23,6 +25,16 @@ export default function SignUpPage() {
 
     if (password !== confirm) {
       setError("Passwords do not match");
+      setLoading(false);
+      return;
+    }
+    if (!consentLegal) {
+      setError("Please confirm you've read the Privacy Policy and Terms of Service.");
+      setLoading(false);
+      return;
+    }
+    if (!consentRisk) {
+      setError("Please acknowledge the trading-risk disclosure.");
       setLoading(false);
       return;
     }
@@ -163,10 +175,45 @@ export default function SignUpPage() {
                     />
                   </div>
 
+                  <div className="space-y-2.5 pt-1">
+                    <label className="flex items-start gap-2.5 cursor-pointer text-xs text-muted-light leading-relaxed">
+                      <input
+                        type="checkbox"
+                        checked={consentLegal}
+                        onChange={(e) => setConsentLegal(e.target.checked)}
+                        className="mt-0.5 w-4 h-4 rounded border-border bg-surface-2 text-accent focus:ring-1 focus:ring-accent accent-accent shrink-0"
+                      />
+                      <span>
+                        I have read and agree to the{" "}
+                        <Link href="/privacy" target="_blank" className="text-accent-light hover:text-accent underline">
+                          Privacy Policy
+                        </Link>{" "}
+                        and{" "}
+                        <Link href="/terms" target="_blank" className="text-accent-light hover:text-accent underline">
+                          Terms of Service
+                        </Link>.
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-2.5 cursor-pointer text-xs text-muted-light leading-relaxed">
+                      <input
+                        type="checkbox"
+                        checked={consentRisk}
+                        onChange={(e) => setConsentRisk(e.target.checked)}
+                        className="mt-0.5 w-4 h-4 rounded border-border bg-surface-2 text-accent focus:ring-1 focus:ring-accent accent-accent shrink-0"
+                      />
+                      <span>
+                        I understand that trading leveraged products involves substantial risk
+                        and that nothing on TradeWithVic is investment advice. Signals,
+                        scores, and automated routing are decision-support tools only — I am
+                        responsible for trades I authorize.
+                      </span>
+                    </label>
+                  </div>
+
                   <button
                     type="submit"
-                    disabled={loading}
-                    className="w-full py-3.5 rounded-xl bg-accent hover:bg-accent-light text-white font-semibold text-sm transition-smooth disabled:opacity-50 glow-accent"
+                    disabled={loading || !consentLegal || !consentRisk}
+                    className="w-full py-3.5 rounded-xl bg-accent hover:bg-accent-light text-white font-semibold text-sm transition-smooth disabled:opacity-50 disabled:cursor-not-allowed glow-accent"
                   >
                     {loading ? "Creating account..." : "Create Account"}
                   </button>
