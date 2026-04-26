@@ -1,8 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { computeOneR } from "@/lib/setups/one-r";
 import { LiveRefresh } from "@/components/dashboard/LiveRefresh";
+import { QuantSetupGrid, type SetupRow } from "./QuantSetupGrid";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -36,26 +35,6 @@ const QUANT_STRATEGIES: Array<{ key: string; label: string; description: string 
 
 const QUANT_KEYS = QUANT_STRATEGIES.map((s) => s.key);
 
-interface SetupRow {
-  id: string;
-  symbol: string;
-  direction: string;
-  setupType: string;
-  timeframe: string;
-  entry: number;
-  stopLoss: number;
-  takeProfit1: number;
-  takeProfit2: number | null;
-  takeProfit3: number | null;
-  riskReward: number;
-  confidenceScore: number;
-  qualityGrade: string;
-  explanation: string | null;
-  invalidation: string | null;
-  validUntil: Date | null;
-  createdAt: Date;
-}
-
 export default async function QuantPage() {
   const setups = (await prisma.tradeSetup.findMany({
     where: {
@@ -64,6 +43,23 @@ export default async function QuantPage() {
     },
     orderBy: [{ confidenceScore: "desc" }, { createdAt: "desc" }],
     take: 50,
+    select: {
+      id: true,
+      symbol: true,
+      direction: true,
+      setupType: true,
+      timeframe: true,
+      entry: true,
+      stopLoss: true,
+      takeProfit1: true,
+      takeProfit2: true,
+      takeProfit3: true,
+      riskReward: true,
+      confidenceScore: true,
+      qualityGrade: true,
+      explanation: true,
+      invalidation: true,
+    },
   })) as SetupRow[];
 
   const counts = QUANT_STRATEGIES.map((s) => ({
@@ -111,95 +107,11 @@ export default async function QuantPage() {
 
       <section>
         <h2 className="text-sm font-semibold text-foreground mb-3">Live Quant Setups</h2>
-        {setups.length === 0 ? (
-          <div className="glass-card p-10 text-center space-y-3">
-            <div className="text-3xl opacity-40">∅</div>
-            <p className="text-fluid-sm text-muted">
-              No active Quant setups right now. The brain scans every 2 minutes;
-              setups appear here when a Blueprint-tier strategy detects a valid
-              pattern in the live candle stream.
-            </p>
-            <p className="text-[11px] text-muted-light max-w-lg mx-auto">
-              The Inverse FVG engine is the first one wired up — Order Block,
-              Breaker Block, and FVG Continuation engines are on the build queue.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            {setups.map((s) => <QuantSetupCard key={s.id} setup={s} />)}
-          </div>
-        )}
+        <QuantSetupGrid
+          setups={setups}
+          strategies={QUANT_STRATEGIES.map(({ key, label }) => ({ key, label }))}
+        />
       </section>
     </div>
-  );
-}
-
-function QuantSetupCard({ setup }: { setup: SetupRow }) {
-  const isLong = setup.direction === "bullish" || setup.direction === "long" || setup.direction === "buy";
-  const grade = setup.qualityGrade;
-  const gradeClass =
-    grade === "A+" ? "bg-bull/15 text-bull-light border-bull/40" :
-    grade === "A" ? "bg-bull/10 text-bull-light border-bull/30" :
-    grade === "B" ? "bg-warn/10 text-warn-light border-warn/30" :
-    "bg-surface-2 text-muted border-border/40";
-  const oneR = computeOneR(setup.entry, setup.stopLoss, setup.direction);
-  const strategyLabel = QUANT_STRATEGIES.find((q) => q.key === setup.setupType)?.label ?? setup.setupType.replace(/_/g, " ");
-
-  return (
-    <Link
-      href={`/dashboard/brain/decision/${setup.id}`}
-      className="glass-card glass-card-hover overflow-hidden block"
-    >
-      <div className={cn("h-1", isLong ? "bg-bull" : "bg-bear")} />
-      <div className="p-4 space-y-3">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="font-mono font-bold text-sm">{setup.symbol}</span>
-            <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-surface-2 text-muted">
-              {setup.timeframe}
-            </span>
-            <span className={cn(
-              "text-[10px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded",
-              isLong ? "text-bull-light" : "text-bear-light",
-            )}>
-              {isLong ? "▲ LONG" : "▼ SHORT"}
-            </span>
-          </div>
-          <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded border", gradeClass)}>
-            {grade}
-          </span>
-        </div>
-
-        <div className="text-[11px] uppercase tracking-wider text-accent-light font-semibold">
-          {strategyLabel}
-        </div>
-
-        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px] font-mono">
-          <div className="flex justify-between"><span className="text-muted">Entry</span><span>{setup.entry.toFixed(5)}</span></div>
-          <div className="flex justify-between"><span className="text-muted">SL</span><span className="text-bear-light">{setup.stopLoss.toFixed(5)}</span></div>
-          <div className="flex justify-between"><span className="text-muted">1R</span><span className="text-blue-300">{oneR.toFixed(5)}</span></div>
-          <div className="flex justify-between"><span className="text-muted">TP1</span><span className="text-green-400">{setup.takeProfit1.toFixed(5)}</span></div>
-          {setup.takeProfit2 != null && (
-            <div className="flex justify-between"><span className="text-muted">TP2</span><span className="text-green-400/80">{setup.takeProfit2.toFixed(5)}</span></div>
-          )}
-          {setup.takeProfit3 != null && (
-            <div className="flex justify-between"><span className="text-muted">TP3</span><span className="text-green-400/60">{setup.takeProfit3.toFixed(5)}</span></div>
-          )}
-          <div className="flex justify-between col-span-2 border-t border-border/30 pt-1 mt-1">
-            <span className="text-muted">RR · Score</span>
-            <span>{setup.riskReward.toFixed(2)}× · {setup.confidenceScore}/100</span>
-          </div>
-        </div>
-
-        {setup.explanation && (
-          <p className="text-[11px] text-muted-light leading-relaxed">{setup.explanation}</p>
-        )}
-        {setup.invalidation && (
-          <p className="text-[10px] text-muted">
-            <span className="uppercase tracking-wider text-[9px]">Invalidated if:</span> {setup.invalidation}
-          </p>
-        )}
-      </div>
-    </Link>
   );
 }

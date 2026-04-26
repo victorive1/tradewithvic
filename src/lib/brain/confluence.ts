@@ -1,5 +1,30 @@
 import { prisma } from "@/lib/prisma";
 
+// Strip any trailing " Confluences: ...", " Conflicts: ...", or
+// " DISQUALIFIED: ..." block that earlier qualification runs appended, plus
+// any orphan repeated fragments left over from prior buggy strip passes.
+//
+// Without this, every requalification cycle concatenates a fresh
+// "Confluences:" suffix on top of the previous one, producing the runaway
+// "Confluences: . MACD up. Confluences: MACD up..." text on the Quant
+// Signals cards. We chop at the first keyword and discard the rest, then
+// dedupe consecutive identical sentences in case an earlier strip left
+// fragmented tails like "3150; MACD up.3150; MACD up...".
+function stripPriorAnnotations(explanation: string | null | undefined): string {
+  if (!explanation) return "";
+  let cleaned = explanation;
+  for (const k of [" Confluences:", " Conflicts:", " DISQUALIFIED:"]) {
+    const idx = cleaned.indexOf(k);
+    if (idx >= 0) cleaned = cleaned.slice(0, idx);
+  }
+  const parts = cleaned.split(/\.\s*/).map((s) => s.trim()).filter(Boolean);
+  const unique: string[] = [];
+  for (const p of parts) {
+    if (unique[unique.length - 1] !== p) unique.push(p);
+  }
+  return unique.length > 0 ? unique.join(". ") + "." : "";
+}
+
 export interface ConfluenceBreakdown {
   trendAlignment: number;      // 0-15
   structureQuality: number;    // 0-20
@@ -284,7 +309,8 @@ export async function scoreSetupConfluence(
       confidenceScore: Math.round(effectiveScore),
       qualityGrade: visibleGrade,
       status: status === "ignored" ? "expired" : setup.status,
-      explanation: setup.explanation + ` Confluences: ${confluences.slice(0, 3).join("; ")}.` +
+      explanation: stripPriorAnnotations(setup.explanation) +
+        ` Confluences: ${confluences.slice(0, 3).join("; ")}.` +
         (conflicts.length ? ` Conflicts: ${conflicts.slice(0, 2).join("; ")}.` : "") +
         (disqualifiers.length ? ` DISQUALIFIED: ${disqualifiers.join("; ")}.` : ""),
     },
