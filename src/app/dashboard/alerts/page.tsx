@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
 import { computeOneR } from "@/lib/setups/one-r";
+import { AdminRiskTargetBar, AdminLotSizeForCard } from "@/components/admin/AdminRiskTarget";
 
 type AlertView = "inbox" | "setups" | "rules" | "history" | "settings";
 type AlertCategory = "price" | "signal" | "volatility" | "macro" | "sentiment" | "engine" | "custom";
@@ -331,6 +332,8 @@ export default function AlertsPage() {
         <button onClick={() => setShowBuilder(!showBuilder)} className="px-4 py-2 rounded-xl bg-accent text-white text-xs font-medium">+ New Alert Rule</button>
       </div>
 
+      <AdminRiskTargetBar />
+
       {/* Tabs */}
       <div className="flex gap-2 flex-wrap">
         {[
@@ -535,6 +538,11 @@ export default function AlertsPage() {
                         </span>
                       </div>
                     </div>
+                    <AdminLotSizeForCard
+                      symbol={setup.symbol}
+                      entry={setup.entry}
+                      stopLoss={setup.stopLoss}
+                    />
                     {setup.explanation && (
                       <p className="text-[10px] text-muted leading-relaxed line-clamp-2">{setup.explanation}</p>
                     )}

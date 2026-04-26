@@ -6,6 +6,7 @@ import { ALL_INSTRUMENTS } from "@/lib/constants";
 import { TradingViewWidget } from "@/components/charts/TradingViewWidget";
 import { useTheme } from "@/components/ui/ThemeProvider";
 import { computeOneR } from "@/lib/setups/one-r";
+import { AdminRiskTargetBar, AdminLotSizeForCard } from "@/components/admin/AdminRiskTarget";
 import {
   computeBreakdown,
   computeScore,
@@ -389,6 +390,8 @@ export default function ScreenerPage() {
         {lastUpdated && <p className="text-xs text-muted mt-1">Live data -- last updated {lastUpdated}</p>}
       </div>
 
+      <AdminRiskTargetBar />
+
       {/* Search Bar */}
       <div className="relative max-w-lg">
         <div className="glass-card flex items-center px-4 py-3 gap-3">
@@ -554,6 +557,12 @@ export default function ScreenerPage() {
                     <div className="text-sm font-mono text-accent-light">1 : {scanResult.riskReward}</div>
                   </div>
                 </div>
+
+                <AdminLotSizeForCard
+                  symbol={scanResult.symbol}
+                  entry={scanResult.price}
+                  stopLoss={scanResult.stopLoss}
+                />
 
                 {/* Event Risk */}
                 <div className="bg-surface-2 rounded-lg p-3">
