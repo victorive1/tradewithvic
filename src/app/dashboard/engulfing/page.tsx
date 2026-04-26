@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { cn } from "@/lib/utils";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
 import { computeOneR } from "@/lib/setups/one-r";
+import { AdminRiskTargetBar, AdminLotSizeForCard } from "@/components/admin/AdminRiskTarget";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -222,6 +223,7 @@ export default async function EngulfingPage() {
 
   return (
     <div className="space-y-6">
+      <AdminRiskTargetBar />
       <div>
         <h1 className="text-2xl font-bold text-foreground">Engulfing Candle Detector</h1>
         <p className="text-sm text-muted mt-1">
@@ -303,6 +305,10 @@ export default async function EngulfingPage() {
                       <div className="text-[10px] text-muted uppercase mb-1">R:R</div>
                       <div className="text-sm font-bold font-mono">{setup.rr.toFixed(1)}</div>
                     </div>
+                  </div>
+
+                  <div className="mb-2">
+                    <AdminLotSizeForCard symbol={setup.symbol} entry={setup.entry} stopLoss={setup.stopLoss} />
                   </div>
 
                   <p className="text-xs text-muted-light leading-relaxed mb-4">{setup.reason}</p>

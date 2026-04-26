@@ -5,6 +5,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { computeOneR } from "@/lib/setups/one-r";
 import { QuantCardNotes } from "./QuantCardNotes";
+import { AdminLotSizeForCard } from "@/components/admin/AdminRiskTarget";
 
 export interface SetupRow {
   id: string;
@@ -202,6 +203,9 @@ function QuantSetupCard({ setup, strategies }: { setup: SetupRow; strategies: St
           <div className="flex justify-between col-span-2 border-t border-border/30 pt-1 mt-1">
             <span className="text-muted">RR · Score</span>
             <span>{setup.riskReward.toFixed(2)}× · {setup.confidenceScore}/100</span>
+          </div>
+          <div className="col-span-2">
+            <AdminLotSizeForCard symbol={setup.symbol} entry={setup.entry} stopLoss={setup.stopLoss} />
           </div>
         </div>
 

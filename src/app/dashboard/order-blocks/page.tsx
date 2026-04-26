@@ -6,6 +6,7 @@ import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
 import { TimeframeFilter, type TimeframeValue, matchesTimeframe, buildTimeframeCounts } from "@/components/dashboard/TimeframeFilter";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
 import { computeOneR } from "@/lib/setups/one-r";
+import { AdminRiskTargetBar, AdminLotSizeForCard } from "@/components/admin/AdminRiskTarget";
 
 type OBStatus = "fresh" | "tested" | "mitigated";
 
@@ -92,6 +93,7 @@ export default function OrderBlocksPage() {
 
   return (
     <div className="space-y-6">
+      <AdminRiskTargetBar />
       <div className="flex items-center gap-3 flex-wrap">
         <h1 className="text-2xl font-bold text-foreground">Order Block Signals</h1>
         <span className="text-xs bg-bull/10 text-bull-light px-2 py-0.5 rounded-full border border-bull/20 pulse-live">Live</span>
@@ -263,6 +265,11 @@ export default function OrderBlocksPage() {
                         <div className="text-bull-light">{fmt(ob.takeProfit2, decimals)}</div>
                       </div>
                     </div>
+                    <AdminLotSizeForCard
+                      symbol={ob.symbol}
+                      entry={(ob.entryLow + ob.entryHigh) / 2}
+                      stopLoss={ob.stopLoss}
+                    />
                     <p className="text-[10px] text-muted-light leading-relaxed">
                       {isBull
                         ? `Bullish BOS above ${fmt(ob.breakLevel, decimals)} confirmed ${ob.barsSinceBos} bar(s) ago. Entry sits inside the originating bearish candle; stop below the OB low. Targets stepped 1.5R / 2.5R.`

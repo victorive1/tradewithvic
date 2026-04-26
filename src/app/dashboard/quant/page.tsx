@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { cn } from "@/lib/utils";
 import { LiveRefresh } from "@/components/dashboard/LiveRefresh";
 import { QuantSetupGrid, type SetupRow } from "./QuantSetupGrid";
+import { AdminRiskTargetBar } from "@/components/admin/AdminRiskTarget";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -72,6 +73,8 @@ export default async function QuantPage() {
   return (
     <div className="page-container space-y-5">
       <LiveRefresh serverTimestamp={Date.now()} intervalMs={120_000} />
+
+      <AdminRiskTargetBar />
 
       <header className="flex items-center justify-between flex-wrap gap-3">
         <div>

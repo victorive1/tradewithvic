@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
 import { computeOneR } from "@/lib/setups/one-r";
+import { AdminRiskTargetBar, AdminLotSizeForCard } from "@/components/admin/AdminRiskTarget";
 
 type RadarView = "dashboard" | "events" | "watchlist";
 type ActivityLevel = "high" | "elevated" | "moderate" | "low";
@@ -214,6 +215,11 @@ function RadarTradeSetup({ d }: { d: RadarData }) {
           <div className="text-bull-light">{fmt(setup.takeProfit2, d.decimals)}</div>
         </div>
       </div>
+      <AdminLotSizeForCard
+        symbol={d.symbol}
+        entry={(setup.entryLow + setup.entryHigh) / 2}
+        stopLoss={setup.stopLoss}
+      />
       <p className="text-[10px] text-muted-light">
         Aligned with the radar read: {d.direction} pressure at {d.activity === "high" ? "high" : "elevated"} interest on the {d.category} side.
         Stop sits just beyond the session {isBuy ? "low" : "high"}; targets scale 1.5R / 2.5R off the measured risk.
@@ -300,6 +306,7 @@ export default function SharpMoneyPage() {
 
   return (
     <div className="space-y-6">
+      <AdminRiskTargetBar />
       <div>
         <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-2xl font-bold text-foreground">Sharp Money Radar</h1>

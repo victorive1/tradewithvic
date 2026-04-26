@@ -7,6 +7,7 @@ import { TimeframeFilter, type TimeframeValue, matchesTimeframe, buildTimeframeC
 import { ALL_INSTRUMENTS } from "@/lib/constants";
 import type { MarketQuote } from "@/lib/market-data";
 import { computeOneR } from "@/lib/setups/one-r";
+import { AdminRiskTargetBar, AdminLotSizeForCard } from "@/components/admin/AdminRiskTarget";
 
 const breakoutTypes = ["All", "Structure", "Momentum", "Range", "Retest", "FVG"] as const;
 type BreakoutType = (typeof breakoutTypes)[number];
@@ -165,6 +166,7 @@ export default function BreakoutsPage() {
 
   return (
     <div className="space-y-6">
+      <AdminRiskTargetBar />
       <div className="flex items-center gap-3 flex-wrap">
         <h1 className="text-2xl font-bold text-foreground">Major Breakouts</h1>
         <span className="text-xs bg-bull/10 text-bull-light px-2 py-0.5 rounded-full border border-bull/20 pulse-live">Live</span>
@@ -271,6 +273,11 @@ export default function BreakoutsPage() {
                         <div className="text-bull-light">{fmt(b.takeProfit2, b.decimals)}</div>
                       </div>
                     </div>
+                    <AdminLotSizeForCard
+                      symbol={b.symbol}
+                      entry={(b.entryLow + b.entryHigh) / 2}
+                      stopLoss={b.stopLoss}
+                    />
                     <p className="text-[10px] text-muted-light">
                       Levels aligned with the live session: entry at market, stop beyond the {isBull ? "demand" : "supply"} extreme, targets stepped at 1R / 2R of measured risk.
                     </p>

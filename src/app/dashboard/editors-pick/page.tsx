@@ -8,6 +8,7 @@ import { useTheme } from "@/components/ui/ThemeProvider";
 import type { TradeSetup } from "@/lib/setup-engine";
 import { TimeframeFilter, type TimeframeValue, matchesTimeframe, buildTimeframeCounts } from "@/components/dashboard/TimeframeFilter";
 import { computeOneR } from "@/lib/setups/one-r";
+import { AdminRiskTargetBar, AdminLotSizeForCard } from "@/components/admin/AdminRiskTarget";
 
 type PickStatus = "fresh" | "active" | "aging" | "expired";
 
@@ -126,6 +127,8 @@ export default function EditorsPickPage() {
         </div>
       )}
 
+      <AdminRiskTargetBar />
+
       <div>
         <div className="flex items-center gap-3 mb-1">
           <h1 className="text-2xl font-bold text-foreground">Editor&apos;s Picks</h1>
@@ -193,12 +196,15 @@ export default function EditorsPickPage() {
                   </div>
 
                   {/* Trade levels */}
-                  <div className="grid grid-cols-5 gap-3 mb-4">
+                  <div className="grid grid-cols-5 gap-3 mb-2">
                     <div className="bg-surface-2 rounded-lg p-3 text-center"><div className="text-[10px] text-accent-light uppercase mb-1">Entry</div><div className="text-sm font-bold font-mono">{pick.setup.entry}</div></div>
                     <div className="bg-surface-2 rounded-lg p-3 text-center"><div className="text-[10px] text-bear-light uppercase mb-1">Stop</div><div className="text-sm font-bold font-mono text-bear-light">{pick.setup.stopLoss}</div></div>
                     <div className="bg-surface-2 rounded-lg p-3 text-center"><div className="text-[10px] text-accent-light uppercase mb-1">1R</div><div className="text-sm font-bold font-mono text-accent-light">{computeOneR(pick.setup.entry, pick.setup.stopLoss, pick.setup.direction).toFixed(5)}</div></div>
                     <div className="bg-surface-2 rounded-lg p-3 text-center"><div className="text-[10px] text-bull-light uppercase mb-1">TP1</div><div className="text-sm font-bold font-mono text-bull-light">{pick.setup.takeProfit1}</div></div>
                     <div className="bg-surface-2 rounded-lg p-3 text-center"><div className="text-[10px] text-muted uppercase mb-1">R:R</div><div className="text-sm font-bold font-mono">{pick.setup.riskReward}:1</div></div>
+                  </div>
+                  <div className="mb-4">
+                    <AdminLotSizeForCard symbol={pick.setup.symbol} entry={pick.setup.entry} stopLoss={pick.setup.stopLoss} />
                   </div>
 
                   {/* Explanation */}

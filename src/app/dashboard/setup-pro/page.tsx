@@ -8,6 +8,7 @@ import type { TradeSetup } from "@/lib/setup-engine";
 import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
 import { TimeframeFilter, type TimeframeValue, matchesTimeframe, buildTimeframeCounts } from "@/components/dashboard/TimeframeFilter";
 import { computeOneR } from "@/lib/setups/one-r";
+import { AdminRiskTargetBar, AdminLotSizeForCard } from "@/components/admin/AdminRiskTarget";
 
 function ProSetupCard({ setup, onViewChart }: { setup: TradeSetup; onViewChart: (symbol: string) => void }) {
   const [expanded, setExpanded] = useState(false);
@@ -64,6 +65,10 @@ function ProSetupCard({ setup, onViewChart }: { setup: TradeSetup; onViewChart: 
             <div className="text-[10px] text-bull-light uppercase tracking-wider mb-1">TP2</div>
             <div className="text-sm font-bold text-bull-light font-mono">{setup.takeProfit2 || "—"}</div>
           </div>
+        </div>
+
+        <div className="mb-3">
+          <AdminLotSizeForCard symbol={setup.symbol} entry={setup.entry} stopLoss={setup.stopLoss} />
         </div>
 
         {/* RR and validity */}
@@ -196,6 +201,8 @@ export default function SetupProPage() {
   return (
     <div className="space-y-6">
       {chartSymbol && <ChartModal symbol={chartSymbol} onClose={() => setChartSymbol(null)} />}
+
+      <AdminRiskTargetBar />
 
       <div>
         <div className="flex items-center gap-3 mb-1 flex-wrap">
