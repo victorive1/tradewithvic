@@ -226,6 +226,11 @@ export default function BreakoutAlgoPage() {
         >
           {running ? "Stop Bot" : "Start Bot"}
         </button>
+        {!enabled && (
+          <span className="text-xs text-muted">
+            Enable the bot first using the toggle in the top right ↗
+          </span>
+        )}
         {enabled && (
           <span className="text-xs text-muted">
             Scanning {quotes.length} instruments...

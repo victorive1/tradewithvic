@@ -287,35 +287,29 @@ export default function AlgoVicPage() {
       {/* Live server-routing activity */}
       <AlgoBotStatusPanel botId="vic" />
 
-      {/* Server routing toggle — Algo Vic has its own in-page bot controls,
-          but the server runtime is driven separately so you can enable
-          routing without changing the page's scanner behaviour. */}
-      <div className="glass-card p-4 flex items-center justify-between">
-        <div>
-          <div className="text-sm font-semibold text-foreground">Server routing</div>
-          <div className="text-xs text-muted">
-            {serverState.enabled && serverState.running
-              ? "Routing matching A/A+ setups to linked MT accounts"
-              : "Disabled — toggle on to route matching setups to linked MT accounts"}
-          </div>
-        </div>
+      {/* Start / Stop the server-side runtime. Independent of the in-page
+          scanner above so admins can route trades without flipping the
+          page's scanner behaviour. */}
+      <div className="flex items-center gap-3 flex-wrap">
         <button
           onClick={() => {
             const next = !(serverState.enabled && serverState.running);
             setBotFlags({ enabled: next, running: next });
           }}
           className={cn(
-            "w-12 h-6 rounded-full relative transition-smooth",
-            serverState.enabled && serverState.running ? "bg-accent" : "bg-surface-3",
+            "px-6 py-2.5 rounded-xl text-sm font-semibold transition-smooth",
+            serverState.enabled && serverState.running
+              ? "bg-bear/20 text-bear-light hover:bg-bear/30 border border-bear/30"
+              : "bg-accent/20 text-accent-light hover:bg-accent/30 border border-accent/30",
           )}
         >
-          <div
-            className={cn(
-              "absolute top-0.5 w-5 h-5 rounded-full bg-white transition-smooth",
-              serverState.enabled && serverState.running ? "left-6" : "left-0.5",
-            )}
-          />
+          {serverState.enabled && serverState.running ? "Stop Bot" : "Start Bot"}
         </button>
+        <span className="text-xs text-muted">
+          {serverState.enabled && serverState.running
+            ? "Server is routing matching A/A+ setups to linked MT accounts."
+            : "Routing is off. Click Start Bot to begin sending trades to your MT5 instance."}
+        </span>
       </div>
 
       {/* Config Toggle */}

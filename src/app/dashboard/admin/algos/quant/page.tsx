@@ -173,8 +173,13 @@ export default function QuantAlgoPage() {
         >
           {running ? "Stop Bot" : "Start Bot"}
         </button>
+        {!enabled && (
+          <span className="text-xs text-muted">
+            Enable the bot first using the toggle in the top right ↗
+          </span>
+        )}
         {enabled && !running && (
-          <span className="text-xs text-muted">Toggle running to start routing on the next runtime tick.</span>
+          <span className="text-xs text-muted">Click Start Bot to route the next matching A+/A setup.</span>
         )}
       </div>
 

@@ -251,6 +251,11 @@ export default function US30AlgoPage() {
         >
           {running ? "Stop Bot" : "Start Bot"}
         </button>
+        {!enabled && (
+          <span className="text-xs text-muted">
+            Enable the bot first using the toggle in the top right ↗
+          </span>
+        )}
         {enabled && (
           <span className="text-xs text-muted">
             {us30 ? "Monitoring US30..." : "Waiting for US30 data..."}

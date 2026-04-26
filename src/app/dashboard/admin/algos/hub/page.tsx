@@ -136,10 +136,24 @@ export default function AlgoHubPage() {
     return s.symbols >= 11 ? full : full.slice(0, s.symbols);
   }));
 
+  // Mirror server state into the local botStatus so the Start/Stop button
+  // reflects whether the runtime is actually routing — not just what the
+  // page thinks it should be.
+  useEffect(() => {
+    if (serverState.enabled && serverState.running) {
+      setBotStatus((prev) => (prev === "paused" ? "paused" : "running"));
+    } else if (botStatus !== "idle") {
+      setBotStatus("idle");
+    }
+    // botStatus intentionally left out of deps — only follow server state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverState.enabled, serverState.running]);
+
   /* ── actions ── */
   function toggleBot() {
     if (botStatus === "running") {
       setBotStatus("idle");
+      setBotFlags({ enabled: false, running: false });
       addEvent("Bot stopped by user", "warn");
     } else {
       if (enabledCount === 0) {
@@ -147,6 +161,7 @@ export default function AlgoHubPage() {
         return;
       }
       setBotStatus("running");
+      setBotFlags({ enabled: true, running: true });
       addEvent("Bot started in " + opMode + " mode", "success");
     }
   }
@@ -155,6 +170,7 @@ export default function AlgoHubPage() {
     if (!confirm("KILL SWITCH: This will disable ALL strategies and stop the bot immediately. Continue?")) return;
     setStrategies((prev) => prev.map((s) => ({ ...s, enabled: false })));
     setBotStatus("idle");
+    setBotFlags({ enabled: false, running: false });
     addEvent("KILL SWITCH ACTIVATED -- all strategies disabled, bot stopped", "danger");
   }
 
