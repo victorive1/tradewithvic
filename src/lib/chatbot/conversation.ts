@@ -1,4 +1,16 @@
-// TradeWithVic AI Chatbot — Conversation Store & Response Engine
+// TradeWithVic AI Chatbot — Stateless response engine.
+//
+// Why stateless: this used to keep an in-memory `Map<convId, Conversation>`
+// on the server, which works in dev but breaks on Vercel — different requests
+// hit different Lambda instances, so the GET that creates the conversation
+// and the POST that sends a message frequently land on different VMs and the
+// POST throws "Conversation not found", returning 500. The client renders no
+// reply and the chat looks dead.
+//
+// Conversation state now lives on the client (ChatWidget). The server's only
+// job is: given the prior message list + current agent + the new user
+// message, compute the next assistant turn (plus any system messages emitted
+// by the routing/escalation rules) and return them.
 
 import { classifyAgent, shouldEscalate, agents, type AgentId } from "./agents";
 
@@ -12,50 +24,40 @@ export interface ChatMessage {
   attachments?: { type: "image" | "audio"; url: string; transcription?: string }[];
 }
 
-export interface Conversation {
-  id: string;
+export interface ConversationState {
   messages: ChatMessage[];
   currentAgent: AgentId;
-  userId?: string;
-  rating?: number;
-  resolved: boolean;
   escalated: boolean;
-  createdAt: string;
 }
 
-// In-memory conversation store
-const conversations = new Map<string, Conversation>();
-let msgCounter = 0;
+export interface TurnResult {
+  // New messages emitted by the server this turn — append these to the
+  // client's local list. May include a routing system message, the
+  // assistant reply, or an escalation system message. Does NOT include
+  // the user message; the client adds that optimistically.
+  newMessages: ChatMessage[];
+  // Updated conversation-level state.
+  currentAgent: AgentId;
+  escalated: boolean;
+}
 
+let msgCounter = 0;
 function genMsgId() { return `msg_${Date.now()}_${++msgCounter}`; }
 
-export function createConversation(userId?: string): Conversation {
-  const id = `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  const conv: Conversation = {
-    id,
-    messages: [{
+export function initialGreeting(): { message: ChatMessage; currentAgent: AgentId } {
+  return {
+    message: {
       id: genMsgId(),
       role: "assistant",
       content: "Hi! I'm the TradeWithVic assistant. How can I help you today? I can answer questions about the platform, trading tools, your account, or help you navigate any feature.",
       agent: "base",
       agentName: agents.base.name,
       timestamp: new Date().toISOString(),
-    }],
+    },
     currentAgent: "base",
-    userId,
-    resolved: false,
-    escalated: false,
-    createdAt: new Date().toISOString(),
   };
-  conversations.set(id, conv);
-  return conv;
 }
 
-export function getConversation(id: string): Conversation | null {
-  return conversations.get(id) || null;
-}
-
-// Knowledge base for common questions
 const knowledgeBase: Record<string, string> = {
   "market radar": "The Market Radar is your main dashboard. It shows live prices for all supported instruments (forex, metals, indices, crypto), currency strength rankings, top movers, and market pulse. It refreshes every 60 seconds with real-time data from TwelveData.",
   "trade setups": "Trade Setups are automatically generated trading ideas based on real market data. Each setup includes: direction (buy/sell), entry price, stop loss, take profit, risk/reward ratio, confidence score (0-100), and quality grade (A+ to C). Only setups with strong confluence are shown.",
@@ -83,51 +85,46 @@ function findAnswer(message: string): string | null {
   return null;
 }
 
-export function processMessage(conversationId: string, userMessage: string, attachments?: ChatMessage["attachments"]): ChatMessage {
-  const conv = conversations.get(conversationId);
-  if (!conv) throw new Error("Conversation not found");
+export function processTurn(
+  state: ConversationState,
+  userMessage: string,
+  attachments?: ChatMessage["attachments"],
+): TurnResult {
+  const newMessages: ChatMessage[] = [];
+  let { currentAgent, escalated } = state;
+  // priorMessageCount is what shouldEscalate looked at: total length AFTER the
+  // user message has been appended. Original code added the user message before
+  // calling shouldEscalate, so we mirror that count.
+  const priorMessageCount = state.messages.length + 1;
 
-  // Add user message
-  const userMsg: ChatMessage = {
-    id: genMsgId(),
-    role: "user",
-    content: userMessage,
-    timestamp: new Date().toISOString(),
-    attachments,
-  };
-  conv.messages.push(userMsg);
-
-  // Check for escalation
-  if (shouldEscalate(userMessage, conv.messages.length)) {
-    conv.escalated = true;
-    const escMsg: ChatMessage = {
+  // Escalation short-circuit: if user asks for human / repeats frustration /
+  // conversation has gone on too long, drop into escalation mode and bail.
+  if (shouldEscalate(userMessage, priorMessageCount)) {
+    escalated = true;
+    newMessages.push({
       id: genMsgId(),
       role: "system",
       content: "This conversation has been flagged for human review. A support team member will follow up within 24 hours. Your conversation transcript has been saved.",
       timestamp: new Date().toISOString(),
-    };
-    conv.messages.push(escMsg);
-    return escMsg;
+    });
+    return { newMessages, currentAgent, escalated };
   }
 
-  // Classify and potentially route to specialist
+  // Specialist routing — emit a system message when the agent changes.
   const suggestedAgent = classifyAgent(userMessage);
-  if (suggestedAgent !== conv.currentAgent && suggestedAgent !== "base") {
-    conv.currentAgent = suggestedAgent;
+  if (suggestedAgent !== currentAgent && suggestedAgent !== "base") {
+    currentAgent = suggestedAgent;
     const agent = agents[suggestedAgent];
-    const routeMsg: ChatMessage = {
+    newMessages.push({
       id: genMsgId(),
       role: "system",
       content: `Connecting you with ${agent.name}, our ${agent.role.toLowerCase()}...`,
       timestamp: new Date().toISOString(),
-    };
-    conv.messages.push(routeMsg);
+    });
   }
 
-  // Generate response
-  const currentAgent = agents[conv.currentAgent];
+  // Build the assistant reply.
   const knowledgeAnswer = findAnswer(userMessage);
-
   let responseContent: string;
 
   if (knowledgeAnswer) {
@@ -145,7 +142,6 @@ export function processMessage(conversationId: string, userMessage: string, atta
       responseContent = "I received your audio message. I'm processing the transcription now. In the meantime, feel free to type your question if you'd prefer.";
     }
   } else {
-    // General response based on common patterns
     const lower = userMessage.toLowerCase();
     if (lower.includes("hello") || lower.includes("hi") || lower.includes("hey")) {
       responseContent = "Hello! Welcome to TradeWithVic. How can I help you today? You can ask me about any feature, tool, or trading concept.";
@@ -158,23 +154,14 @@ export function processMessage(conversationId: string, userMessage: string, atta
     }
   }
 
-  const response: ChatMessage = {
+  newMessages.push({
     id: genMsgId(),
     role: "assistant",
     content: responseContent,
-    agent: conv.currentAgent,
-    agentName: currentAgent.name,
+    agent: currentAgent,
+    agentName: agents[currentAgent].name,
     timestamp: new Date().toISOString(),
-  };
-  conv.messages.push(response);
+  });
 
-  return response;
-}
-
-export function rateConversation(conversationId: string, rating: number): boolean {
-  const conv = conversations.get(conversationId);
-  if (!conv) return false;
-  conv.rating = Math.max(1, Math.min(5, rating));
-  conv.resolved = true;
-  return true;
+  return { newMessages, currentAgent, escalated };
 }

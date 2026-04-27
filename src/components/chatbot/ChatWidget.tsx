@@ -13,6 +13,8 @@ interface ChatMessage {
   attachments?: { type: string; url: string }[];
 }
 
+// Conversation state is now owned by the client (the API is stateless).
+// `id` is local-only — useful for analytics / future server-side persistence.
 interface Conversation {
   id: string;
   messages: ChatMessage[];
@@ -105,7 +107,15 @@ export function ChatWidget() {
     try {
       const res = await fetch("/api/chat");
       const data = await res.json();
-      if (data.conversation) setConversation(data.conversation);
+      if (data.success && data.initialMessage) {
+        setConversation({
+          id: `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          messages: [data.initialMessage],
+          currentAgent: data.currentAgent ?? "base",
+          escalated: false,
+          resolved: false,
+        });
+      }
     } catch (e) {
       console.error("Failed to start chat:", e);
     }
@@ -123,34 +133,63 @@ export function ChatWidget() {
     setInput("");
     setLoading(true);
 
-    // Optimistic: add user message immediately
+    // Optimistic: add user message immediately for instant feedback.
     const tempUserMsg: ChatMessage = {
       id: `temp_${Date.now()}`,
       role: "user",
       content: userMessage,
       timestamp: new Date().toISOString(),
     };
-    setConversation((prev) => prev ? { ...prev, messages: [...prev.messages, tempUserMsg] } : prev);
+    const messagesWithUser = [...conversation.messages, tempUserMsg];
+    setConversation({ ...conversation, messages: messagesWithUser });
 
     try {
+      // Server is stateless — send the prior conversation snapshot so
+      // any Lambda instance can compute the next turn correctly.
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId: conversation.id, message: userMessage }),
+        body: JSON.stringify({
+          messages: conversation.messages,
+          currentAgent: conversation.currentAgent,
+          escalated: conversation.escalated,
+          message: userMessage,
+        }),
       });
       const data = await res.json();
 
-      if (data.success) {
-        // Refresh conversation to get all messages including system routing messages
-        const convRes = await fetch(`/api/chat?id=${conversation.id}`);
-        const convData = await convRes.json();
-        if (convData.conversation) {
-          setConversation(convData.conversation);
-          if (convData.conversation.escalated) setShowRating(true);
-        }
+      if (data.success && Array.isArray(data.newMessages)) {
+        const escalatedNow = !!data.escalated;
+        setConversation((prev) => prev ? {
+          ...prev,
+          messages: [...messagesWithUser, ...data.newMessages],
+          currentAgent: data.currentAgent ?? prev.currentAgent,
+          escalated: escalatedNow,
+        } : prev);
+        if (escalatedNow) setShowRating(true);
+      } else {
+        // Surface an in-chat error so silent failures stop being silent.
+        setConversation((prev) => prev ? {
+          ...prev,
+          messages: [...messagesWithUser, {
+            id: `err_${Date.now()}`,
+            role: "system",
+            content: "Sorry — I couldn't reach the assistant just now. Please try again in a moment.",
+            timestamp: new Date().toISOString(),
+          }],
+        } : prev);
       }
     } catch (e) {
       console.error("Failed to send:", e);
+      setConversation((prev) => prev ? {
+        ...prev,
+        messages: [...messagesWithUser, {
+          id: `err_${Date.now()}`,
+          role: "system",
+          content: "Network error. Check your connection and try again.",
+          timestamp: new Date().toISOString(),
+        }],
+      } : prev);
     }
     setLoading(false);
   }

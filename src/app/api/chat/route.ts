@@ -1,47 +1,63 @@
 import { NextResponse } from "next/server";
-import { createConversation, getConversation, processMessage, rateConversation } from "@/lib/chatbot/conversation";
+import { initialGreeting, processTurn, type ChatMessage } from "@/lib/chatbot/conversation";
+import type { AgentId } from "@/lib/chatbot/agents";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const convId = searchParams.get("id");
-
-  if (convId) {
-    const conv = getConversation(convId);
-    if (!conv) return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
-    return NextResponse.json({ success: true, conversation: conv });
-  }
-
-  // Create new conversation
-  const conv = createConversation();
-  return NextResponse.json({ success: true, conversation: conv });
+// GET — returns the initial greeting + starting agent. The client owns
+// the conversation state from this point forward.
+export async function GET() {
+  const { message, currentAgent } = initialGreeting();
+  return NextResponse.json({
+    success: true,
+    initialMessage: message,
+    currentAgent,
+  });
 }
 
+// POST — stateless turn handler. Accepts the prior conversation state
+// in the body (so any Lambda instance can serve any user) and returns
+// the new server-emitted messages plus updated agent/escalation flags.
+//
+// Action variants:
+//   { messages, currentAgent, escalated, message, attachments? } → "next turn"
+//   { action: "rate", rating } → ack only (rating is client-side now)
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { conversationId, message, attachments, action } = body;
 
-    if (action === "rate") {
-      const success = rateConversation(conversationId, body.rating);
-      return NextResponse.json({ success });
+    if (body.action === "rate") {
+      // Rating used to mutate the in-memory conversation; with stateless
+      // state that's a client-side concern. Acknowledge so the UI flow
+      // stays unchanged. If we ever want to persist ratings, hook a DB
+      // write here.
+      return NextResponse.json({ success: true });
     }
 
-    if (!conversationId || !message) {
-      return NextResponse.json({ error: "conversationId and message required" }, { status: 400 });
+    const message: string | undefined = body.message;
+    const messages: ChatMessage[] = Array.isArray(body.messages) ? body.messages : [];
+    const currentAgent: AgentId = (body.currentAgent as AgentId) ?? "base";
+    const escalated: boolean = !!body.escalated;
+    const attachments = body.attachments;
+
+    if (!message || typeof message !== "string") {
+      return NextResponse.json({ error: "message is required" }, { status: 400 });
     }
 
-    const response = processMessage(conversationId, message, attachments);
-    const conv = getConversation(conversationId);
+    const result = processTurn(
+      { messages, currentAgent, escalated },
+      message,
+      attachments,
+    );
 
     return NextResponse.json({
       success: true,
-      response,
-      currentAgent: conv?.currentAgent,
-      escalated: conv?.escalated,
+      newMessages: result.newMessages,
+      currentAgent: result.currentAgent,
+      escalated: result.escalated,
     });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "unknown error";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
