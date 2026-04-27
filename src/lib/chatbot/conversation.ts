@@ -1,18 +1,22 @@
-// TradeWithVic AI Chatbot — Stateless response engine.
+// TradeWithVic Intelligence Assistant — orchestrator.
 //
-// Why stateless: this used to keep an in-memory `Map<convId, Conversation>`
-// on the server, which works in dev but breaks on Vercel — different requests
-// hit different Lambda instances, so the GET that creates the conversation
-// and the POST that sends a message frequently land on different VMs and the
-// POST throws "Conversation not found", returning 500. The client renders no
-// reply and the chat looks dead.
+// Pipeline per turn:
+//   1. Classify intent (rules → Haiku 4.5 fallback for ambiguous)
+//   2. Pick persona (Sam/Peter/base) from intent
+//   3. Hydrate per-intent server data (live quote, recent setups, risk math)
+//   4. Build TradeWithVic system prompt (cached prefix + intent suffix)
+//   5. Call Sonnet 4.6 with the prior message history + augmented user turn
+//   6. Return new assistant message + maybe a routing system message
 //
-// Conversation state now lives on the client (ChatWidget). The server's only
-// job is: given the prior message list + current agent + the new user
-// message, compute the next assistant turn (plus any system messages emitted
-// by the routing/escalation rules) and return them.
+// Stateless on the server — the client owns the conversation snapshot and
+// posts it on every turn (see /api/chat/route.ts and ChatWidget.tsx).
 
-import { classifyAgent, shouldEscalate, agents, type AgentId } from "./agents";
+import Anthropic from "@anthropic-ai/sdk";
+import { agents, type AgentId } from "./agents";
+import { classifyIntent, type Intent } from "./intent";
+import { getAnthropicClient } from "./anthropic-client";
+import { buildDataContext, renderDataContext } from "./data-context";
+import { getCachedPrefix, getDynamicSuffix } from "./system-prompts";
 
 export interface ChatMessage {
   id: string;
@@ -31,14 +35,12 @@ export interface ConversationState {
 }
 
 export interface TurnResult {
-  // New messages emitted by the server this turn — append these to the
-  // client's local list. May include a routing system message, the
-  // assistant reply, or an escalation system message. Does NOT include
-  // the user message; the client adds that optimistically.
   newMessages: ChatMessage[];
-  // Updated conversation-level state.
   currentAgent: AgentId;
   escalated: boolean;
+  intent?: Intent;
+  // Cache telemetry surfaced for ops monitoring (cache_read_input_tokens > 0 = working)
+  cacheStats?: { read: number; written: number; input: number; output: number };
 }
 
 let msgCounter = 0;
@@ -49,7 +51,8 @@ export function initialGreeting(): { message: ChatMessage; currentAgent: AgentId
     message: {
       id: genMsgId(),
       role: "assistant",
-      content: "Hi! I'm the TradeWithVic assistant. How can I help you today? I can answer questions about the platform, trading tools, your account, or help you navigate any feature.",
+      content:
+        "Hi — I'm the TradeWithVic Intelligence Assistant. I can explain forex concepts, read live market conditions, walk you through any platform feature, calculate risk, explain why a setup fired, or help you build a strategy. What's on your mind?",
       agent: "base",
       agentName: agents.base.name,
       timestamp: new Date().toISOString(),
@@ -58,101 +61,181 @@ export function initialGreeting(): { message: ChatMessage; currentAgent: AgentId
   };
 }
 
-const knowledgeBase: Record<string, string> = {
-  "market radar": "The Market Radar is your main dashboard. It shows live prices for all supported instruments (forex, metals, indices, crypto), currency strength rankings, top movers, and market pulse. It refreshes every 60 seconds with real-time data from TwelveData.",
-  "trade setups": "Trade Setups are automatically generated trading ideas based on real market data. Each setup includes: direction (buy/sell), entry price, stop loss, take profit, risk/reward ratio, confidence score (0-100), and quality grade (A+ to C). Only setups with strong confluence are shown.",
-  "currency strength": "The Currency Strength Meter ranks 8 major currencies (USD, EUR, GBP, JPY, CHF, AUD, CAD, NZD) by relative strength. It calculates strength from cross-pair price movements. Use it to find the strongest vs weakest pair opportunities.",
-  "candlestick": "A candlestick shows 4 price points: Open, High, Low, Close. Green/bullish candle = close above open (buyers won). Red/bearish candle = close below open (sellers won). The body shows the range between open and close. Wicks show the high and low.",
-  "support resistance": "Support is a price level where buying pressure tends to prevent further decline. Resistance is where selling pressure tends to prevent further rise. The S/R Engine auto-detects these levels and ranks them by strength, recency, and reaction count.",
-  "liquidity": "Liquidity zones are areas where stop losses cluster. Market makers and institutions often push price to these zones to trigger stops before reversing. The Liquidity Map shows buy-side liquidity (above price) and sell-side liquidity (below price).",
-  "algo": "The Algo Trading Hub lets you automate trading strategies. You can select strategies, set lot sizes, define risk rules, and let the system execute trades automatically. It supports multiple modes: Full Auto, Semi Auto, Paper Trade, and Demo Only.",
-  "watchlist": "Your Watchlist lets you pin your favorite instruments for quick access. Add any of our 22 supported instruments and see live prices, daily changes, and trend direction at a glance.",
-  "alerts": "Smart Alerts notify you when important market conditions occur: liquidity sweeps, new trade setups, volatility spikes, price levels hit, or economic events approaching. You can customize which alerts you receive.",
-  "sign up": "To create an account, go to tradewithvic.com/auth/signup. Enter your name, email, and create a password (min 8 characters). You can also sign up with Google.",
-  "sign in": "To sign in, go to tradewithvic.com/auth/signin. Enter your username or email and password. Your admin account username is your registered username.",
-  "theme": "You can switch between dark and light mode using the sun/moon toggle button in the top-right corner of the dashboard header. Your preference is saved automatically.",
-  "engulfing": "The Engulfing Detector uses the EPS (Engulfing Probability Score) formula: EPS = (LQ × 0.30) + (LOC × 0.25) + (MOM × 0.20) + (VOL × 0.15) + (TIME × 0.10). Scores above 0.75 are high probability. It only shows engulfing candles at key levels with liquidity context.",
-  "breakout": "The Major Breakouts scanner detects high-confidence breakouts across all markets. It identifies structure, momentum, range, retest, trendline, FVG, session, and order block breakouts. Each breakout is scored and graded A+ to B+.",
-  "sharp money": "The Sharp Money Tracker detects institutional activity. It scores each market for smart money flow based on liquidity sweeps, rejection patterns, and institutional accumulation/distribution behavior.",
-  "risk calculator": "The Position Risk Calculator helps you determine lot size based on your account balance, risk percentage, entry price, and stop loss. It shows dollar risk, lot size, pip value, and risk/reward ratio.",
-};
-
-function findAnswer(message: string): string | null {
-  const lower = message.toLowerCase();
-  for (const [key, answer] of Object.entries(knowledgeBase)) {
-    if (lower.includes(key)) return answer;
+// Map intents to which persona answers. Sam handles deep technical /
+// signal / strategy questions; Peter handles billing & policy; base handles
+// the rest.
+function pickAgentFor(intent: Intent, current: AgentId): AgentId {
+  switch (intent) {
+    case "SIGNAL_EXPLANATION":
+    case "TECHNICAL_ANALYSIS":
+    case "STRATEGY_BUILDER":
+    case "TRADE_REVIEW":
+    case "BROKER_EXECUTION_HELP":
+      return "sam";
+    case "ACCOUNT_SUPPORT":
+      return "peter";
+    case "RISK_CALCULATION":
+    case "LIVE_MARKET_ANALYSIS":
+    case "FUNDAMENTAL_ANALYSIS":
+    case "FOREX_EDUCATION":
+    case "PLATFORM_SUPPORT":
+    case "NEWS_EXPLANATION":
+    case "GENERAL_QUESTION":
+    default:
+      // Stay on the current persona if already specialized — avoids ping-ponging.
+      return current;
   }
-  return null;
 }
 
-export function processTurn(
+const ESCALATION_PHRASES = [
+  "speak to someone", "talk to a human", "real person", "not helpful",
+  "still confused", "doesn't make sense", "escalate", "manager", "supervisor",
+];
+
+function shouldEscalate(message: string, totalMessages: number): boolean {
+  const lower = message.toLowerCase();
+  if (ESCALATION_PHRASES.some((p) => lower.includes(p))) return true;
+  if (totalMessages > 16) return true;
+  return false;
+}
+
+// Convert client-side ChatMessage[] into the Anthropic Messages API shape.
+// We strip system messages (server emits routing notes that aren't part of
+// the model's context) and merge consecutive same-role turns implicitly via
+// the SDK (it accepts them).
+function toAnthropicMessages(history: ChatMessage[]): Anthropic.MessageParam[] {
+  const out: Anthropic.MessageParam[] = [];
+  for (const m of history) {
+    if (m.role === "system") continue;
+    if (!m.content || m.content.trim().length === 0) continue;
+    out.push({ role: m.role, content: m.content });
+  }
+  return out;
+}
+
+export async function processTurn(
   state: ConversationState,
   userMessage: string,
   attachments?: ChatMessage["attachments"],
-): TurnResult {
+): Promise<TurnResult> {
   const newMessages: ChatMessage[] = [];
   let { currentAgent, escalated } = state;
-  // priorMessageCount is what shouldEscalate looked at: total length AFTER the
-  // user message has been appended. Original code added the user message before
-  // calling shouldEscalate, so we mirror that count.
   const priorMessageCount = state.messages.length + 1;
 
-  // Escalation short-circuit: if user asks for human / repeats frustration /
-  // conversation has gone on too long, drop into escalation mode and bail.
+  // Escalation short-circuit — don't burn an LLM call.
   if (shouldEscalate(userMessage, priorMessageCount)) {
     escalated = true;
     newMessages.push({
       id: genMsgId(),
       role: "system",
-      content: "This conversation has been flagged for human review. A support team member will follow up within 24 hours. Your conversation transcript has been saved.",
+      content:
+        "This conversation has been flagged for human review. A support team member will follow up within 24 hours. Your conversation transcript has been saved.",
       timestamp: new Date().toISOString(),
     });
     return { newMessages, currentAgent, escalated };
   }
 
-  // Specialist routing — emit a system message when the agent changes.
-  const suggestedAgent = classifyAgent(userMessage);
-  if (suggestedAgent !== currentAgent && suggestedAgent !== "base") {
-    currentAgent = suggestedAgent;
-    const agent = agents[suggestedAgent];
+  // 1. Intent classification.
+  const intent = await classifyIntent(userMessage);
+
+  // 2. Persona routing — emit a system message if we change personas.
+  const nextAgent = pickAgentFor(intent, currentAgent);
+  if (nextAgent !== currentAgent) {
+    currentAgent = nextAgent;
+    const a = agents[nextAgent];
     newMessages.push({
       id: genMsgId(),
       role: "system",
-      content: `Connecting you with ${agent.name}, our ${agent.role.toLowerCase()}...`,
+      content: `Connecting you with ${a.name}, our ${a.role.toLowerCase()}…`,
       timestamp: new Date().toISOString(),
     });
   }
 
-  // Build the assistant reply.
-  const knowledgeAnswer = findAnswer(userMessage);
-  let responseContent: string;
+  // 3. Hydrate data context (live quote, recent setups, risk math).
+  const dataCtx = await buildDataContext(intent, userMessage);
+  const contextSuffix = renderDataContext(dataCtx);
 
-  if (knowledgeAnswer) {
-    responseContent = knowledgeAnswer;
-  } else if (attachments?.some((a) => a.type === "image")) {
-    responseContent = "I can see you've shared an image. Let me take a look... I can see what appears to be a trading chart or screenshot. Could you tell me specifically what you'd like help with regarding this image? For example: identifying patterns, understanding levels, or troubleshooting a display issue.";
-  } else if (attachments?.some((a) => a.type === "audio")) {
-    const transcript = attachments.find((a) => a.type === "audio")?.transcription;
-    if (transcript) {
-      responseContent = `I've transcribed your voice message: "${transcript}"\n\nLet me help with that. `;
-      const audioAnswer = findAnswer(transcript);
-      if (audioAnswer) responseContent += audioAnswer;
-      else responseContent += "Could you provide a bit more detail so I can give you the most accurate answer?";
-    } else {
-      responseContent = "I received your audio message. I'm processing the transcription now. In the meantime, feel free to type your question if you'd prefer.";
+  // 4. Build system prompt (frozen prefix + dynamic suffix).
+  const cachedPrefix = getCachedPrefix();
+  const dynamicSuffix = getDynamicSuffix(intent, currentAgent);
+
+  // Compose history. The latest user turn includes the server-data block
+  // appended; the rest of the history is preserved verbatim.
+  const history = toAnthropicMessages(state.messages);
+  const augmentedUserContent = userMessage + contextSuffix;
+  const messages: Anthropic.MessageParam[] = [
+    ...history,
+    { role: "user", content: augmentedUserContent },
+  ];
+
+  // 5. Call the LLM.
+  const client = getAnthropicClient();
+  if (!client) {
+    newMessages.push({
+      id: genMsgId(),
+      role: "assistant",
+      content:
+        "I'm not able to respond right now — the AI backend isn't configured (ANTHROPIC_API_KEY missing on the server). Tell an admin and try again in a few minutes.",
+      agent: currentAgent,
+      agentName: agents[currentAgent].name,
+      timestamp: new Date().toISOString(),
+    });
+    return { newMessages, currentAgent, escalated, intent };
+  }
+
+  let responseContent: string;
+  let cacheStats: TurnResult["cacheStats"];
+
+  try {
+    const resp = await client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 2048,
+      // Two-block system: long frozen prefix is cache_control'd; short dynamic
+      // suffix sits after. Caches hit on every turn after the first.
+      system: [
+        { type: "text", text: cachedPrefix, cache_control: { type: "ephemeral" } },
+        { type: "text", text: dynamicSuffix },
+      ],
+      messages,
+    });
+
+    responseContent = resp.content
+      .filter((b): b is Anthropic.TextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join("\n")
+      .trim();
+
+    if (!responseContent) {
+      responseContent =
+        "I generated an empty response — that's a bug on my end. Could you rephrase or ask a follow-up?";
     }
-  } else {
-    const lower = userMessage.toLowerCase();
-    if (lower.includes("hello") || lower.includes("hi") || lower.includes("hey")) {
-      responseContent = "Hello! Welcome to TradeWithVic. How can I help you today? You can ask me about any feature, tool, or trading concept.";
-    } else if (lower.includes("how does") || lower.includes("what is") || lower.includes("explain")) {
-      responseContent = `That's a great question. Let me explain...\n\nTradeWithVic offers comprehensive trading intelligence across forex, metals, indices, and crypto. Could you be more specific about which feature or concept you'd like me to explain? For example:\n\n• Market Radar & live data\n• Trade Setups & scoring\n• Currency Strength\n• Algo Trading\n• Liquidity & Smart Money\n• Any specific tool or page`;
-    } else if (lower.includes("thank")) {
-      responseContent = "You're welcome! Is there anything else I can help you with?";
+
+    cacheStats = {
+      read: resp.usage.cache_read_input_tokens ?? 0,
+      written: resp.usage.cache_creation_input_tokens ?? 0,
+      input: resp.usage.input_tokens,
+      output: resp.usage.output_tokens,
+    };
+  } catch (err) {
+    if (err instanceof Anthropic.RateLimitError) {
+      responseContent =
+        "I'm getting rate-limited right now — please try again in a few seconds.";
+    } else if (err instanceof Anthropic.AuthenticationError) {
+      responseContent =
+        "The AI backend rejected its API key. Tell an admin to rotate ANTHROPIC_API_KEY.";
+    } else if (err instanceof Anthropic.BadRequestError) {
+      responseContent =
+        "Your message couldn't be processed (bad request). If you uploaded an attachment, try again with text only.";
+    } else if (err instanceof Anthropic.APIError) {
+      responseContent =
+        `The AI backend returned an error (${err.status ?? "unknown"}). Try again in a moment.`;
     } else {
-      responseContent = `I understand you're asking about "${userMessage.slice(0, 50)}${userMessage.length > 50 ? "..." : ""}". Let me help with that.\n\nHere are some things I can assist with:\n• **Platform features** — how any tool or page works\n• **Trading concepts** — candlesticks, support/resistance, trends\n• **Account help** — signing in, settings, preferences\n• **Technical support** — issues with signals, bots, or charts\n\nCould you tell me more specifically what you need help with?`;
+      responseContent =
+        "Something went wrong on my side. Try again in a moment, or rephrase your question.";
     }
   }
+
+  void attachments; // attachments aren't sent to LLM yet — Phase 2 (vision/trade review)
 
   newMessages.push({
     id: genMsgId(),
@@ -163,5 +246,5 @@ export function processTurn(
     timestamp: new Date().toISOString(),
   });
 
-  return { newMessages, currentAgent, escalated };
+  return { newMessages, currentAgent, escalated, intent, cacheStats };
 }

@@ -44,7 +44,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "message is required" }, { status: 400 });
     }
 
-    const result = processTurn(
+    const result = await processTurn(
       { messages, currentAgent, escalated },
       message,
       attachments,
@@ -55,6 +55,10 @@ export async function POST(req: Request) {
       newMessages: result.newMessages,
       currentAgent: result.currentAgent,
       escalated: result.escalated,
+      intent: result.intent,
+      // cacheStats is exposed so we can monitor cache hit rate in browser
+      // network panel — drop later if we don't want clients to see it.
+      cacheStats: result.cacheStats,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "unknown error";

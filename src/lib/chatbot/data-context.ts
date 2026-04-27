@@ -1,0 +1,306 @@
+// Per-intent server-side data fetcher. Pulls live quotes, recent setups, and
+// risk math BEFORE we call the LLM, then bakes them into the user message
+// as a structured context block. The LLM sees real numbers, not hallucinated
+// ones — this is the anti-hallucination layer the blueprint requires.
+//
+// Each fetcher fails soft: if data is unavailable we return null and the
+// system prompt tells the LLM to acknowledge the gap rather than fabricate.
+
+import { ALL_INSTRUMENTS } from "@/lib/constants";
+import { computeLotSize } from "@/lib/trading/lot-sizing";
+import type { Intent } from "./intent";
+
+export interface MarketContext {
+  symbol: string;
+  displayName: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  high: number;
+  low: number;
+  previousClose: number;
+  capturedAt: string;
+}
+
+export interface SetupContext {
+  symbol: string;
+  direction: string;
+  setupType: string;
+  qualityGrade: string | null;
+  confidenceScore: number;
+  riskReward: number;
+  entry: number;
+  stopLoss: number;
+  takeProfit1: number;
+  timeframe: string;
+  createdAt: string;
+}
+
+export interface RiskCalcContext {
+  symbol: string;
+  entry: number;
+  stopLoss: number;
+  riskUSD: number;
+  lotSize: number;
+  miniLots: number;
+  microLots: number;
+  units: number;
+  pipValue: number;
+  slPips: number;
+  notes: string[];
+  warnings: string[];
+}
+
+export interface DataContext {
+  market?: MarketContext | null;
+  recentSetups?: SetupContext[] | null;
+  risk?: RiskCalcContext | null;
+  detectedSymbol?: string | null;
+}
+
+// Symbol-detection — looks for canonical pair tokens in the message.
+const SYMBOL_ALIASES: Array<{ canonical: string; patterns: RegExp[] }> = [
+  { canonical: "EURUSD", patterns: [/\beur[\/\s\-]?usd\b/i, /\beuro[\/\s]?dollar\b/i, /\beur\b(?!.*\b(jpy|gbp))/i] },
+  { canonical: "GBPUSD", patterns: [/\bgbp[\/\s\-]?usd\b/i, /\bcable\b/i, /\bpound[\/\s]?dollar\b/i] },
+  { canonical: "USDJPY", patterns: [/\busd[\/\s\-]?jpy\b/i, /\bdollar[\/\s]?yen\b/i] },
+  { canonical: "USDCHF", patterns: [/\busd[\/\s\-]?chf\b/i] },
+  { canonical: "AUDUSD", patterns: [/\baud[\/\s\-]?usd\b/i, /\baussie\b/i] },
+  { canonical: "NZDUSD", patterns: [/\bnzd[\/\s\-]?usd\b/i, /\bkiwi\b/i] },
+  { canonical: "USDCAD", patterns: [/\busd[\/\s\-]?cad\b/i, /\bloonie\b/i] },
+  { canonical: "EURJPY", patterns: [/\beur[\/\s\-]?jpy\b/i] },
+  { canonical: "GBPJPY", patterns: [/\bgbp[\/\s\-]?jpy\b/i] },
+  { canonical: "AUDJPY", patterns: [/\baud[\/\s\-]?jpy\b/i] },
+  { canonical: "EURGBP", patterns: [/\beur[\/\s\-]?gbp\b/i] },
+  { canonical: "XAUUSD", patterns: [/\bxau[\/\s\-]?usd\b/i, /\bgold\b/i] },
+  { canonical: "XAGUSD", patterns: [/\bxag[\/\s\-]?usd\b/i, /\bsilver\b/i] },
+  { canonical: "USOIL",  patterns: [/\bus\s*oil\b/i, /\bwti\b/i, /\bcrude\s*oil\b/i] },
+  { canonical: "BTCUSD", patterns: [/\bbtc[\/\s\-]?usd\b/i, /\bbitcoin\b/i] },
+  { canonical: "ETHUSD", patterns: [/\beth[\/\s\-]?usd\b/i, /\bethereum\b/i] },
+  { canonical: "SOLUSD", patterns: [/\bsol[\/\s\-]?usd\b/i, /\bsolana\b/i] },
+  { canonical: "XRPUSD", patterns: [/\bxrp[\/\s\-]?usd\b/i, /\bripple\b/i] },
+];
+
+export function detectSymbol(message: string): string | null {
+  for (const { canonical, patterns } of SYMBOL_ALIASES) {
+    if (patterns.some((p) => p.test(message))) return canonical;
+  }
+  return null;
+}
+
+// Best-effort: use the public quotes route. Same origin in browser; in server
+// runtime we need an absolute URL. We compose it from VERCEL_URL or fall back
+// to the public site (final fallback is null → degrades gracefully).
+async function fetchMarketQuote(symbol: string): Promise<MarketContext | null> {
+  const base = process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : process.env.NEXT_PUBLIC_SITE_URL ?? "https://tradewithvic.com";
+  try {
+    const res = await fetch(`${base}/api/market/quotes`, {
+      cache: "no-store",
+      // Server-to-server fetch — no auth needed for the public quotes endpoint.
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { quotes?: Array<{
+      symbol?: string;
+      displayName?: string;
+      price?: number;
+      change?: number;
+      changePercent?: number;
+      high?: number;
+      low?: number;
+      previousClose?: number;
+    }> };
+    const q = json.quotes?.find((x) => x.symbol === symbol);
+    if (!q || typeof q.price !== "number") return null;
+    return {
+      symbol,
+      displayName: q.displayName ?? symbol,
+      price: q.price,
+      change: q.change ?? 0,
+      changePercent: q.changePercent ?? 0,
+      high: q.high ?? 0,
+      low: q.low ?? 0,
+      previousClose: q.previousClose ?? 0,
+      capturedAt: new Date().toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchRecentSetups(symbol: string | null, limit = 3): Promise<SetupContext[] | null> {
+  // Lazy-import prisma so the module load order doesn't pull a DB connection
+  // into the build-time module-collection phase.
+  try {
+    const { prisma } = await import("@/lib/prisma");
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const setups = await prisma.tradeSetup.findMany({
+      where: {
+        status: "active",
+        qualityGrade: { in: ["A+", "A", "B+"] },
+        ...(symbol ? { symbol } : {}),
+        createdAt: { gte: since },
+      },
+      orderBy: [{ confidenceScore: "desc" }, { createdAt: "desc" }],
+      take: limit,
+      select: {
+        symbol: true, direction: true, setupType: true, qualityGrade: true,
+        confidenceScore: true, riskReward: true, entry: true, stopLoss: true,
+        takeProfit1: true, timeframe: true, createdAt: true,
+      },
+    });
+    return setups.map((s) => ({
+      symbol: s.symbol,
+      direction: s.direction,
+      setupType: s.setupType,
+      qualityGrade: s.qualityGrade,
+      confidenceScore: s.confidenceScore,
+      riskReward: s.riskReward,
+      entry: s.entry,
+      stopLoss: s.stopLoss,
+      takeProfit1: s.takeProfit1,
+      timeframe: s.timeframe,
+      createdAt: s.createdAt.toISOString(),
+    }));
+  } catch {
+    return null;
+  }
+}
+
+interface RiskHints {
+  symbol?: string | null;
+  entry?: number | null;
+  stopLoss?: number | null;
+  riskUSD?: number | null;
+}
+
+// Pull entry / SL / risk-$ out of free-text if the user includes them. This is
+// best-effort — when the user is vague (e.g. "what lot for $20 risk?") we run
+// the calc on whatever symbol they mentioned plus a placeholder so the LLM at
+// least has the math template to point at.
+function extractRiskHints(message: string, fallbackSymbol: string | null): RiskHints {
+  const symbolMatch = fallbackSymbol;
+
+  // Try to find numbers labeled as entry / SL / stop / TP in any order
+  const entryMatch = message.match(/\bentry\s*(?:is|at|=|:)?\s*\$?(\d+\.?\d*)/i);
+  const slMatch = message.match(/\b(?:sl|stop\s*loss|stop)\s*(?:is|at|=|:)?\s*\$?(\d+\.?\d*)/i);
+  const riskMatch =
+    message.match(/risk(?:ing)?\s*\$?(\d+(?:,\d{3})*(?:\.\d+)?)/i) ??
+    message.match(/\$\s*(\d+(?:,\d{3})*(?:\.\d+)?)\s+(?:risk|per\s*trade)/i);
+
+  return {
+    symbol: symbolMatch,
+    entry: entryMatch ? parseFloat(entryMatch[1]) : null,
+    stopLoss: slMatch ? parseFloat(slMatch[1]) : null,
+    riskUSD: riskMatch ? parseFloat(riskMatch[1].replace(/,/g, "")) : null,
+  };
+}
+
+function computeRiskContext(hints: RiskHints): RiskCalcContext | null {
+  if (!hints.symbol || !hints.entry || !hints.stopLoss) return null;
+  if (hints.entry === hints.stopLoss) return null;
+  const riskUSD = hints.riskUSD && hints.riskUSD > 0 ? hints.riskUSD : 100;
+  const result = computeLotSize({
+    symbol: hints.symbol,
+    entry: hints.entry,
+    stopLoss: hints.stopLoss,
+    riskUSD,
+  });
+  if (!Number.isFinite(result.lotSize) || result.lotSize <= 0) return null;
+  return {
+    symbol: hints.symbol,
+    entry: hints.entry,
+    stopLoss: hints.stopLoss,
+    riskUSD,
+    lotSize: result.lotSize,
+    miniLots: result.miniLots,
+    microLots: result.microLots,
+    units: result.units,
+    pipValue: result.pipValue,
+    slPips: result.slPips,
+    notes: result.notes,
+    warnings: result.warnings,
+  };
+}
+
+export async function buildDataContext(
+  intent: Intent,
+  message: string,
+): Promise<DataContext> {
+  const detectedSymbol = detectSymbol(message);
+  const ctx: DataContext = { detectedSymbol };
+
+  // Map intents to which data layers to hydrate. We deliberately fetch only
+  // what each intent actually needs — keeps the prompt tight and the LLM
+  // focused on the right context.
+  switch (intent) {
+    case "LIVE_MARKET_ANALYSIS":
+    case "NEWS_EXPLANATION": {
+      if (detectedSymbol) ctx.market = await fetchMarketQuote(detectedSymbol);
+      ctx.recentSetups = await fetchRecentSetups(detectedSymbol, 3);
+      break;
+    }
+    case "SIGNAL_EXPLANATION": {
+      ctx.recentSetups = await fetchRecentSetups(detectedSymbol, 3);
+      if (detectedSymbol) ctx.market = await fetchMarketQuote(detectedSymbol);
+      break;
+    }
+    case "RISK_CALCULATION": {
+      const hints = extractRiskHints(message, detectedSymbol);
+      ctx.risk = computeRiskContext(hints);
+      if (detectedSymbol) ctx.market = await fetchMarketQuote(detectedSymbol);
+      break;
+    }
+    case "TECHNICAL_ANALYSIS":
+    case "FUNDAMENTAL_ANALYSIS": {
+      // These don't strictly need live data — concept questions — but if a
+      // symbol is mentioned we attach the quote so the LLM can ground the
+      // explanation in the actual current price.
+      if (detectedSymbol) ctx.market = await fetchMarketQuote(detectedSymbol);
+      break;
+    }
+    default:
+      break;
+  }
+  return ctx;
+}
+
+// Render the structured context as a markdown block appended to the user
+// turn. Keeps the LLM grounded — when it cites entry/SL numbers, they come
+// from this block, not from training data.
+export function renderDataContext(ctx: DataContext): string {
+  const lines: string[] = [];
+  if (ctx.detectedSymbol) {
+    const inst = ALL_INSTRUMENTS.find((i) => i.symbol === ctx.detectedSymbol);
+    lines.push(`Detected symbol: ${ctx.detectedSymbol}${inst ? ` (${inst.displayName})` : ""}`);
+  }
+  if (ctx.market) {
+    const m = ctx.market;
+    lines.push(
+      `Live ${m.displayName}: ${m.price} (${m.changePercent >= 0 ? "+" : ""}${m.changePercent.toFixed(2)}%, day range ${m.low}-${m.high}, prev close ${m.previousClose}). Captured ${m.capturedAt}.`,
+    );
+  } else if (ctx.detectedSymbol) {
+    lines.push(`Live ${ctx.detectedSymbol} quote: NOT AVAILABLE — do not invent a price; offer the educational/structural answer instead and tell the user the live feed isn't reachable right now.`);
+  }
+  if (ctx.recentSetups && ctx.recentSetups.length > 0) {
+    lines.push("Recent A/B+ active setups (last 24h):");
+    for (const s of ctx.recentSetups) {
+      lines.push(
+        `- ${s.symbol} ${s.direction} ${s.setupType} on ${s.timeframe}, grade ${s.qualityGrade ?? "—"}, score ${s.confidenceScore}, RR ${s.riskReward.toFixed(2)}, entry ${s.entry}, SL ${s.stopLoss}, TP1 ${s.takeProfit1} (${s.createdAt})`,
+      );
+    }
+  }
+  if (ctx.risk) {
+    const r = ctx.risk;
+    lines.push(
+      `Risk calc (computed server-side via the same engine the platform uses):
+  symbol=${r.symbol}, entry=${r.entry}, SL=${r.stopLoss}, risk=$${r.riskUSD}
+  → lot size: ${r.lotSize.toFixed(4)} std (${r.miniLots.toFixed(2)} mini, ${r.microLots.toFixed(0)} micro, ${r.units.toFixed(0)} units)
+  pip value/lot: $${r.pipValue.toFixed(2)}, SL distance: ${r.slPips.toFixed(1)} pips
+  ${r.notes.length > 0 ? `notes: ${r.notes.join("; ")}` : ""}
+  ${r.warnings.length > 0 ? `warnings: ${r.warnings.join("; ")}` : ""}`,
+    );
+  }
+  if (lines.length === 0) return "";
+  return `\n\n[SERVER-PROVIDED DATA — cite these exact numbers, do not invent]\n${lines.join("\n")}`;
+}
