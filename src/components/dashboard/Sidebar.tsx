@@ -158,6 +158,7 @@ const navItems: NavSection[] = [
       { label: "Breakout Signals", href: "/dashboard/breakouts", icon: "setups" },
       { label: "Editor's Picks", href: "/dashboard/editors-pick", icon: "watchlist" },
       { label: "Engulfing", href: "/dashboard/engulfing", icon: "screener" },
+      { label: "Inverse FVG", href: "/dashboard/inverse-fvg", icon: "setups" },
       { label: "Institutional Flow", href: "/dashboard/institutional-flow", icon: "radar" },
       { label: "MTF Analyzer", href: "/dashboard/mtf", icon: "radar" },
       { label: "Order Block Signals", href: "/dashboard/order-blocks", icon: "liquidity" },

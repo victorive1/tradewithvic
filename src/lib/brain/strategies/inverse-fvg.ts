@@ -156,16 +156,37 @@ function evaluateInverseSell(ctx: IFVGContext, fvg: FVGZone): DetectedSetup | nu
   }
   if (!retestSeen) return null;
 
-  // Step 9: latest candle shows bearish rejection — wicked into the zone
-  // but closed back below the FVG low.
-  const latest = candles[candles.length - 1];
-  const wickedIntoZone = latest.high >= fvg.low;
-  const closedBelowZone = latest.close < fvg.low;
-  if (!wickedIntoZone || !closedBelowZone) return null;
+  // Step 9: rejection on any of the LAST 3 closed bars — wicked into the
+  // zone but closed back below the FVG low, with ≥30% rejection wick.
+  // Looking at just the latest bar was too tight: 60s scans frequently land
+  // a bar or two AFTER the rejection candle closed, and the strict check
+  // returned null even when the trade was on. The 3-bar window also
+  // requires that no candle since the rejection has reclaimed the zone —
+  // a clean reclaim would invalidate the setup.
+  const lookbackStart = Math.max(violationIdx + 1, candles.length - 3);
+  let rejection: { candle: CandleRow; strength: number } | null = null;
+  for (let i = lookbackStart; i < candles.length; i++) {
+    const c = candles[i];
+    const wicked = c.high >= fvg.low;
+    const closedBelow = c.close < fvg.low;
+    if (!wicked || !closedBelow) continue;
+    const wickSize = c.high - Math.max(c.open, c.close);
+    const strength = wickSize / Math.max(c.high - c.low, 1e-9);
+    if (strength < 0.3) continue;
+    rejection = { candle: c, strength };
+  }
+  if (!rejection) return null;
 
-  const rejectionWickSize = latest.high - Math.max(latest.open, latest.close);
-  const rejectionStrength = rejectionWickSize / Math.max(latest.high - latest.low, 1e-9);
-  if (rejectionStrength < 0.3) return null; // require a real wick, not just a body close
+  // After the rejection bar(s), no candle should have CLOSED back above the
+  // FVG high — that would mean the inversion failed and the FVG is
+  // re-defending. (Wicks above don't count; a clean close is required to
+  // invalidate the inversion thesis.)
+  for (let i = lookbackStart; i < candles.length; i++) {
+    if (candles[i].close > fvg.high) return null;
+  }
+
+  const latest = candles[candles.length - 1];
+  const rejectionStrength = rejection.strength;
 
   // Step 12: stop above max(fvg.high, violation candle high) + ATR buffer.
   const stopAnchor = Math.max(fvg.high, violationCandle.high);
@@ -256,14 +277,28 @@ function evaluateInverseBuy(ctx: IFVGContext, fvg: FVGZone): DetectedSetup | nul
   }
   if (!retestSeen) return null;
 
-  const latest = candles[candles.length - 1];
-  const wickedIntoZone = latest.low <= fvg.high;
-  const closedAboveZone = latest.close > fvg.high;
-  if (!wickedIntoZone || !closedAboveZone) return null;
+  // 3-bar lookback for rejection — see SELL path for the rationale.
+  const lookbackStart = Math.max(violationIdx + 1, candles.length - 3);
+  let rejection: { candle: CandleRow; strength: number } | null = null;
+  for (let i = lookbackStart; i < candles.length; i++) {
+    const c = candles[i];
+    const wicked = c.low <= fvg.high;
+    const closedAbove = c.close > fvg.high;
+    if (!wicked || !closedAbove) continue;
+    const wickSize = Math.min(c.open, c.close) - c.low;
+    const strength = wickSize / Math.max(c.high - c.low, 1e-9);
+    if (strength < 0.3) continue;
+    rejection = { candle: c, strength };
+  }
+  if (!rejection) return null;
 
-  const rejectionWickSize = Math.min(latest.open, latest.close) - latest.low;
-  const rejectionStrength = rejectionWickSize / Math.max(latest.high - latest.low, 1e-9);
-  if (rejectionStrength < 0.3) return null;
+  // Inversion must remain intact — no clean close back below the FVG low.
+  for (let i = lookbackStart; i < candles.length; i++) {
+    if (candles[i].close < fvg.low) return null;
+  }
+
+  const latest = candles[candles.length - 1];
+  const rejectionStrength = rejection.strength;
 
   const stopAnchor = Math.min(fvg.low, violationCandle.low);
   const stopLoss = stopAnchor - atr * 0.3;
