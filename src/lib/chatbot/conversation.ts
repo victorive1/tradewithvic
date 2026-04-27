@@ -102,15 +102,54 @@ function shouldEscalate(message: string, totalMessages: number): boolean {
 // Convert client-side ChatMessage[] into the Anthropic Messages API shape.
 // We strip system messages (server emits routing notes that aren't part of
 // the model's context) and merge consecutive same-role turns implicitly via
-// the SDK (it accepts them).
+// the SDK (it accepts them). Image attachments on prior user turns are
+// preserved so multi-turn discussions about the same chart still work.
 function toAnthropicMessages(history: ChatMessage[]): Anthropic.MessageParam[] {
   const out: Anthropic.MessageParam[] = [];
   for (const m of history) {
     if (m.role === "system") continue;
-    if (!m.content || m.content.trim().length === 0) continue;
+    const images = m.attachments?.filter((a) => a.type === "image") ?? [];
+    if ((!m.content || m.content.trim().length === 0) && images.length === 0) continue;
+
+    if (images.length > 0 && m.role === "user") {
+      const blocks: Array<Anthropic.ImageBlockParam | Anthropic.TextBlockParam> = [];
+      for (const img of images) {
+        const parsed = parseDataUrlImage(img.url);
+        if (parsed) blocks.push(parsed);
+      }
+      if (m.content && m.content.trim().length > 0) {
+        blocks.push({ type: "text", text: m.content });
+      }
+      if (blocks.length > 0) out.push({ role: "user", content: blocks });
+      continue;
+    }
     out.push({ role: m.role, content: m.content });
   }
   return out;
+}
+
+// Accept either a `data:image/...;base64,...` URL (what the widget sends) or
+// a plain http(s) URL. Returns null on anything unparseable so we don't
+// blow up the API call on a malformed attachment.
+function parseDataUrlImage(url: string): Anthropic.ImageBlockParam | null {
+  if (typeof url !== "string" || url.length === 0) return null;
+  if (url.startsWith("data:")) {
+    const match = url.match(/^data:(image\/(?:png|jpeg|jpg|gif|webp));base64,(.+)$/);
+    if (!match) return null;
+    const mediaType = match[1] === "image/jpg" ? "image/jpeg" : match[1];
+    return {
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: mediaType as "image/png" | "image/jpeg" | "image/gif" | "image/webp",
+        data: match[2],
+      },
+    };
+  }
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    return { type: "image", source: { type: "url", url } };
+  }
+  return null;
 }
 
 export async function processTurn(
@@ -135,8 +174,11 @@ export async function processTurn(
     return { newMessages, currentAgent, escalated };
   }
 
-  // 1. Intent classification.
-  const intent = await classifyIntent(userMessage);
+  // 1. Intent classification — but force TRADE_REVIEW when the user uploads
+  //    an image. A chart screenshot in the chat is unambiguously a trade-
+  //    review request even if the accompanying text is vague ("thoughts?").
+  const hasImage = (attachments ?? []).some((a) => a.type === "image" && typeof a.url === "string");
+  const intent = hasImage ? "TRADE_REVIEW" : await classifyIntent(userMessage);
 
   // 2. Persona routing — emit a system message if we change personas.
   const nextAgent = pickAgentFor(intent, currentAgent);
@@ -160,13 +202,32 @@ export async function processTurn(
   const dynamicSuffix = getDynamicSuffix(intent, currentAgent);
 
   // Compose history. The latest user turn includes the server-data block
-  // appended; the rest of the history is preserved verbatim.
+  // appended; the rest of the history is preserved verbatim. When the user
+  // uploads images, we send a multimodal content array (image blocks first,
+  // then the text + data context) — Sonnet 4.6 reads them in order.
   const history = toAnthropicMessages(state.messages);
-  const augmentedUserContent = userMessage + contextSuffix;
-  const messages: Anthropic.MessageParam[] = [
-    ...history,
-    { role: "user", content: augmentedUserContent },
-  ];
+  const augmentedUserContent = (userMessage || "Please review this trade screenshot.") + contextSuffix;
+
+  let currentUserTurn: Anthropic.MessageParam;
+  const currentImages: Anthropic.ImageBlockParam[] = [];
+  for (const a of attachments ?? []) {
+    if (a.type !== "image") continue;
+    const parsed = parseDataUrlImage(a.url);
+    if (parsed) currentImages.push(parsed);
+  }
+  if (currentImages.length > 0) {
+    currentUserTurn = {
+      role: "user",
+      content: [
+        ...currentImages,
+        { type: "text", text: augmentedUserContent },
+      ],
+    };
+  } else {
+    currentUserTurn = { role: "user", content: augmentedUserContent };
+  }
+
+  const messages: Anthropic.MessageParam[] = [...history, currentUserTurn];
 
   // 5. Call the LLM.
   const client = getAnthropicClient();
@@ -234,8 +295,6 @@ export async function processTurn(
         "Something went wrong on my side. Try again in a moment, or rephrase your question.";
     }
   }
-
-  void attachments; // attachments aren't sent to LLM yet — Phase 2 (vision/trade review)
 
   newMessages.push({
     id: genMsgId(),
