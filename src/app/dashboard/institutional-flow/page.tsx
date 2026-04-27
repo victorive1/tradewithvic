@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
 import { computeOneR } from "@/lib/setups/one-r";
+import { LotSizeForCard } from "@/components/admin/AdminRiskTarget";
 
 interface Signal {
   id: string;
@@ -321,6 +322,7 @@ function IflowTradeSetup({ signal }: { signal: Signal }) {
           <div className="text-bull-light">{fmt(takeProfit2)}</div>
         </div>
       </div>
+      <LotSizeForCard symbol={signal.assetSymbol} entry={entry} stopLoss={stopLoss} />
       <p className="text-[10px] text-muted-light leading-relaxed">
         Entry at the defended level where informed capital appears to have stepped in. Stop just beyond the invalidation level; targets stepped 1.5R / 2.5R of measured risk.
       </p>

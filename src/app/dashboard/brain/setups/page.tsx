@@ -7,6 +7,7 @@ import { ManualTickets } from "../ManualTickets";
 import { ActiveSetupsFilter } from "../ActiveSetupsFilter";
 import { LiveRefresh } from "@/components/dashboard/LiveRefresh";
 import { computeOneR } from "@/lib/setups/one-r";
+import { LotSizeForCard } from "@/components/admin/AdminRiskTarget";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -129,6 +130,7 @@ export default async function BrainSetupsPage() {
                       <div className="flex justify-between"><span className="text-muted">TP2</span><span className={p.tp2Hit ? "text-green-400/50 line-through" : "text-green-400"}>{p.takeProfit2.toFixed(priceDigits)}</span></div>
                     )}
                   </div>
+                  <LotSizeForCard symbol={p.symbol} entry={p.entry} stopLoss={p.stopLoss} />
                   <div className="flex items-center justify-between pt-2 border-t border-border/40 text-[11px]">
                     <div className="flex items-center gap-1.5">
                       <span className={`px-1.5 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider ${thesisClass}`}>
