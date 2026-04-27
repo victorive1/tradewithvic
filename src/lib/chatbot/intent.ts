@@ -67,8 +67,17 @@ const RULES: RuleMatch[] = [
   },
   {
     intent: "STRATEGY_BUILDER",
+    // Smoke-test caught the prior regex requiring "strategy" immediately
+    // after "build me a" — "build me an inverse FVG strategy" missed.
+    // New shape: any of {build, create, design, generate} as a verb
+    // anywhere before "strateg" within ~120 chars, OR explicit
+    // "turn rules/idea into" / "rulebook" phrasings.
     test: (m) =>
-      /\bbuild\s+(me\s+)?a?\s*strateg|create\s+(a\s+)?strateg|turn\s+(my|this)\s+(idea|rules)\s+into|generate\s+(a\s+)?strateg|design\s+a?\s*strateg|backtest\s+rules/.test(m),
+      /\b(build|create|design|generate|make|write)\b[^.\n?]{0,120}\bstrateg/.test(m)
+      || /\bturn\s+(my|this|these|the)\s+(idea|rules?|setup)\s+into/.test(m)
+      || /\b(a\+|aplus)\s+(only\s+)?(rulebook|trading\s*rules)\b/.test(m)
+      || /\bbacktest\s+(rules|plan|the\s+strategy)\b/.test(m)
+      || /\brule\s*book\s+for\b/.test(m),
   },
   {
     intent: "LIVE_MARKET_ANALYSIS",

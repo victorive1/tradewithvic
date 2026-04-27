@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
 import { TimeframeFilter, type TimeframeValue, matchesTimeframe, buildTimeframeCounts } from "@/components/dashboard/TimeframeFilter";
@@ -8,6 +8,7 @@ import { ALL_INSTRUMENTS } from "@/lib/constants";
 import type { MarketQuote } from "@/lib/market-data";
 import { computeOneR } from "@/lib/setups/one-r";
 import { AdminRiskTargetBar, AdminLotSizeForCard } from "@/components/admin/AdminRiskTarget";
+import { useStableSetups } from "@/lib/dashboard/use-stable-setups";
 
 const breakoutTypes = ["All", "Structure", "Momentum", "Range", "Retest", "FVG"] as const;
 type BreakoutType = (typeof breakoutTypes)[number];
@@ -132,10 +133,15 @@ export default function BreakoutsPage() {
   const [timeframe, setTimeframe] = useState<TimeframeValue>("all");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
+  // Pause refresh while user is hovering the breakout list so the
+  // entry/SL/TP numbers don't shift while they're copying them.
+  const pausedRef = useRef(false);
+  const [paused, setPaused] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
+      if (pausedRef.current) return;
       try {
         const res = await fetch("/api/market/quotes", { cache: "no-store" });
         const data = await res.json();
@@ -151,12 +157,25 @@ export default function BreakoutsPage() {
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
-  const breakouts = useMemo(() => {
+  // Re-derive on each quotes change. Sorting happens server-flavor (highest
+  // first) BUT useStableSetups merges this list against the previously
+  // displayed order so cards keep their slots — so a small score wiggle
+  // doesn't reshuffle the page.
+  const derived = useMemo(() => {
     return quotes
       .map(deriveBreakout)
       .filter((b): b is Breakout => b !== null)
       .sort((a, b) => b.score - a.score);
   }, [quotes]);
+
+  // Stable id per breakout: symbol-only is too coarse (a symbol can flip
+  // bullish/bearish between sessions); we include direction so a flip
+  // re-mounts the card with the new color, but tweaks within a direction
+  // keep the card put. setupType deliberately NOT in the key — type can
+  // re-classify (Momentum → Range) on the same setup as price moves
+  // through thresholds, and we don't want that to look like a new card.
+  const getId = useCallback((b: Breakout) => `${b.symbol}_${b.direction}`, []);
+  const { items: breakouts, changedIds } = useStableSetups(derived, getId, paused);
 
   const byType = filter === "All" ? breakouts : breakouts.filter((b) => b.type === filter);
   const timeframeCounts = buildTimeframeCounts(byType, (b) => b.timeframe);
@@ -165,7 +184,11 @@ export default function BreakoutsPage() {
   const ageSec = lastUpdated ? Math.round((Date.now() - lastUpdated) / 1000) : null;
 
   return (
-    <div className="space-y-6">
+    <div
+      className="space-y-6"
+      onMouseEnter={() => { pausedRef.current = true; setPaused(true); }}
+      onMouseLeave={() => { pausedRef.current = false; setPaused(false); }}
+    >
       <AdminRiskTargetBar />
       <div className="flex items-center gap-3 flex-wrap">
         <h1 className="text-2xl font-bold text-foreground">Major Breakouts</h1>
@@ -173,6 +196,11 @@ export default function BreakoutsPage() {
         {ageSec != null && (
           <span className="text-xs text-muted">
             Last updated {ageSec < 60 ? `${ageSec}s ago` : `${Math.floor(ageSec / 60)}m ago`}
+          </span>
+        )}
+        {paused && (
+          <span className="text-[11px] text-warn-light bg-warn/10 border border-warn/30 px-2 py-0.5 rounded-full" title="Refresh paused while you're hovering — move away to resume">
+            ⏸ paused while interacting
           </span>
         )}
       </div>
@@ -209,8 +237,15 @@ export default function BreakoutsPage() {
         <div className="space-y-4">
           {filtered.map((b) => {
             const isBull = b.direction === "Bullish";
+            const justUpdated = changedIds.has(getId(b));
             return (
-              <div key={b.symbol + b.type} className="glass-card overflow-hidden">
+              <div
+                key={getId(b)}
+                className={cn(
+                  "glass-card overflow-hidden transition-all duration-300",
+                  justUpdated && "ring-2 ring-accent/40 shadow-lg shadow-accent/10",
+                )}
+              >
                 <div className={cn("h-1", isBull ? "bg-bull" : "bg-bear")} />
                 <div className="p-5">
                   <div className="flex items-center justify-between mb-3 flex-wrap gap-2">

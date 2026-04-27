@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SetupsClient } from "./SetupsClient";
 import type { TradeSetup } from "@/lib/setup-engine";
 
@@ -8,12 +8,18 @@ export default function SetupsPage() {
   const [setups, setSetups] = useState<TradeSetup[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
+  // pausedRef lets us pause the polling timer while the user has the
+  // mouse over the setups area — entry/SL/TP numbers stay frozen so
+  // they can be read or copied without the values shifting underneath.
+  const pausedRef = useRef(false);
+  const [paused, setPaused] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
+      if (pausedRef.current) return; // skip this tick — user is interacting
       try {
-        // cache: "no-store" + timestamp query defeats any Next.js / CDN
+        // cache: "no-store" + timestamp query defeats Next.js / CDN
         // caching so the setups always reflect the latest quote snapshot.
         const res = await fetch(`/api/market/setups?t=${Date.now()}`, { cache: "no-store" });
         const data = await res.json();
@@ -44,5 +50,16 @@ export default function SetupsPage() {
     );
   }
 
-  return <SetupsClient initialSetups={setups} lastUpdated={lastUpdated} />;
+  // The hover handlers wrap the entire SetupsClient so any interaction
+  // inside (hovering a card, focusing the Execute button, opening
+  // Details) freezes refreshes. mouseLeave resumes them and immediately
+  // applies the latest snapshot.
+  return (
+    <div
+      onMouseEnter={() => { pausedRef.current = true; setPaused(true); }}
+      onMouseLeave={() => { pausedRef.current = false; setPaused(false); }}
+    >
+      <SetupsClient initialSetups={setups} lastUpdated={lastUpdated} paused={paused} />
+    </div>
+  );
 }

@@ -7,12 +7,18 @@ import { AdminLotSizeForCard } from "@/components/admin/AdminRiskTarget";
 import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
 import { computeOneR } from "@/lib/setups/one-r";
 
-export function SetupCard({ setup }: { setup: TradeSetup }) {
+export function SetupCard({ setup, justUpdated = false }: { setup: TradeSetup; justUpdated?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const isBuy = setup.direction === "buy";
 
   return (
-    <div className="glass-card glass-card-hover overflow-hidden">
+    <div className={cn(
+      "glass-card glass-card-hover overflow-hidden transition-all duration-300",
+      // Subtle ring + glow when this card's score/grade changed in the
+      // last refresh — fades out on its own after ~8s via the hook so it
+      // doesn't get noisy.
+      justUpdated && "ring-2 ring-accent/40 shadow-lg shadow-accent/10",
+    )}>
       {/* Top color bar */}
       <div className={cn("h-1", isBuy ? "bg-bull" : "bg-bear")} />
 

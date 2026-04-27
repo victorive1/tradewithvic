@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { SetupCard } from "@/components/dashboard/SetupCard";
 import type { TradeSetup } from "@/lib/setup-engine";
 import { MARKET_CATEGORIES } from "@/lib/constants";
 import { TimeframeFilter, type TimeframeValue, matchesTimeframe, buildTimeframeCounts } from "@/components/dashboard/TimeframeFilter";
 import { AdminRiskTargetBar } from "@/components/admin/AdminRiskTarget";
+import { useStableSetups } from "@/lib/dashboard/use-stable-setups";
 
 const setupFilters = [
   { id: "all", label: "All Setups" },
@@ -16,7 +17,7 @@ const setupFilters = [
   { id: "bestrr", label: "Best R:R" },
 ];
 
-export function SetupsClient({ initialSetups, lastUpdated }: { initialSetups: TradeSetup[]; lastUpdated?: number | null }) {
+export function SetupsClient({ initialSetups, lastUpdated, paused = false }: { initialSetups: TradeSetup[]; lastUpdated?: number | null; paused?: boolean }) {
   const ageSec = lastUpdated ? Math.round((Date.now() - lastUpdated) / 1000) : null;
   const freshnessLabel = ageSec == null ? null
     : ageSec < 60 ? `${ageSec}s ago`
@@ -26,7 +27,13 @@ export function SetupsClient({ initialSetups, lastUpdated }: { initialSetups: Tr
   const [direction, setDirection] = useState<"all" | "buy" | "sell">("all");
   const [timeframe, setTimeframe] = useState<TimeframeValue>("all");
 
-  let filtered = initialSetups;
+  // Stable ordering — incoming setups are merged into the existing display
+  // order so cards don't reshuffle on every refresh. New ones append at
+  // the bottom, gone ones drop out, surviving ones keep their slots.
+  const getId = useCallback((s: TradeSetup) => s.id, []);
+  const { items: stableSetups, changedIds } = useStableSetups(initialSetups, getId, paused);
+
+  let filtered = stableSetups;
 
   if (category !== "all") {
     filtered = filtered.filter((s) => s.category === category);
@@ -59,6 +66,11 @@ export function SetupsClient({ initialSetups, lastUpdated }: { initialSetups: Tr
           <span className="text-xs bg-bull/10 text-bull-light px-2 py-0.5 rounded-full border border-bull/20 pulse-live">Live</span>
           {freshnessLabel && (
             <span className="text-xs text-muted">Last updated {freshnessLabel} · refreshes every 60s</span>
+          )}
+          {paused && (
+            <span className="text-[11px] text-warn-light bg-warn/10 border border-warn/30 px-2 py-0.5 rounded-full" title="Refresh paused while you're hovering — move away to resume">
+              ⏸ paused while interacting
+            </span>
           )}
         </div>
         <p className="text-sm text-muted mt-1">
@@ -127,7 +139,7 @@ export function SetupsClient({ initialSetups, lastUpdated }: { initialSetups: Tr
           </h2>
           <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
             {highQuality.map((setup) => (
-              <SetupCard key={setup.id} setup={setup} />
+              <SetupCard key={setup.id} setup={setup} justUpdated={changedIds.has(setup.id)} />
             ))}
           </div>
         </div>
@@ -142,7 +154,7 @@ export function SetupsClient({ initialSetups, lastUpdated }: { initialSetups: Tr
           </h2>
           <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
             {moderate.map((setup) => (
-              <SetupCard key={setup.id} setup={setup} />
+              <SetupCard key={setup.id} setup={setup} justUpdated={changedIds.has(setup.id)} />
             ))}
           </div>
         </div>

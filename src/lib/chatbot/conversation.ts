@@ -92,9 +92,19 @@ function pickAgentFor(intent: Intent, current: AgentId): AgentId {
   }
 }
 
+// Substring matches against a lowercased message. Smoke-test caught the
+// prior list missing "speak to a human" (we only had "talk to a human")
+// and "isn't helpful" (we only had "not helpful"). Expanded to the
+// natural-language variants traders actually type when they're frustrated.
 const ESCALATION_PHRASES = [
-  "speak to someone", "talk to a human", "real person", "not helpful",
-  "still confused", "doesn't make sense", "escalate", "manager", "supervisor",
+  "speak to someone", "speak to a human", "speak to a person", "speak with someone",
+  "talk to someone", "talk to a human", "talk to a person", "talk to support",
+  "real person", "actual person", "human support",
+  "not helpful", "isn't helpful", "isnt helpful", "this isn't working", "this isnt working",
+  "still confused", "i'm confused", "im confused",
+  "doesn't make sense", "doesnt make sense",
+  "escalate", "escalation", "manager", "supervisor",
+  "open a ticket", "file a ticket",
 ];
 
 function shouldEscalate(message: string, totalMessages: number): boolean {
