@@ -43,6 +43,7 @@ export interface TurnResult {
   currentAgent: AgentId;
   escalated: boolean;
   intent?: Intent;
+  sessionId?: string;
   // Cache telemetry surfaced for ops monitoring (cache_read_input_tokens > 0 = working)
   cacheStats?: { read: number; written: number; input: number; output: number };
 }
@@ -161,6 +162,7 @@ export async function processTurn(
   userMessage: string,
   attachments?: ChatMessage["attachments"],
   userId: string | null = null,
+  sessionId: string | null = null,
 ): Promise<TurnResult> {
   const newMessages: ChatMessage[] = [];
   let { currentAgent, escalated } = state;
@@ -342,5 +344,79 @@ export async function processTurn(
     ...(structuredPayload ? { structured: structuredPayload } : {}),
   });
 
-  return { newMessages, currentAgent, escalated, intent, cacheStats };
+  // Persist for signed-in users. Anonymous users get the stateless flow only.
+  // Failure to persist is non-fatal — the user still gets the reply this
+  // turn; only their history won't be saved.
+  let persistedSessionId: string | undefined;
+  if (userId) {
+    try {
+      persistedSessionId = await persistTurn({
+        sessionId,
+        userId,
+        userMessage,
+        currentAgent,
+        escalated,
+        intent,
+        newMessages,
+      });
+    } catch {
+      // Swallow — log later if we want, but don't break the turn.
+    }
+  }
+
+  return { newMessages, currentAgent, escalated, intent, sessionId: persistedSessionId, cacheStats };
+}
+
+interface PersistTurnArgs {
+  sessionId: string | null;
+  userId: string;
+  userMessage: string;
+  currentAgent: AgentId;
+  escalated: boolean;
+  intent: Intent;
+  newMessages: ChatMessage[];
+}
+
+// Persist this turn's user message and any server-emitted assistant/system
+// messages. Creates the ChatSession on the first turn (sessionId === null).
+// We don't persist attachments — image base64 is too big for the row, and
+// only matters for the active client state anyway.
+async function persistTurn(args: PersistTurnArgs): Promise<string> {
+  const { prisma } = await import("@/lib/prisma");
+  let sid = args.sessionId;
+  if (!sid) {
+    const created = await prisma.chatSession.create({
+      data: {
+        userId: args.userId,
+        title: args.userMessage.slice(0, 80),
+        currentAgent: args.currentAgent,
+        escalated: args.escalated,
+      },
+    });
+    sid = created.id;
+  } else {
+    await prisma.chatSession.update({
+      where: { id: sid },
+      data: { currentAgent: args.currentAgent, escalated: args.escalated },
+    });
+  }
+
+  // Insert user turn first so the order is preserved by createdAt.
+  await prisma.chatSessionMessage.create({
+    data: { sessionId: sid, role: "user", content: args.userMessage },
+  });
+  for (const m of args.newMessages) {
+    await prisma.chatSessionMessage.create({
+      data: {
+        sessionId: sid,
+        role: m.role,
+        content: m.content,
+        agent: m.agent,
+        agentName: m.agentName,
+        intent: m.role === "assistant" ? args.intent : null,
+        structuredJson: m.structured ? JSON.stringify(m.structured) : null,
+      },
+    });
+  }
+  return sid;
 }

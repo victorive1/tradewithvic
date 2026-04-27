@@ -21,11 +21,12 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts    Account[]
-  sessions    Session[]
-  watchlist   Watchlist[]
-  alerts      Alert[]
-  preferences UserPreference?
+  accounts     Account[]
+  sessions     Session[]
+  watchlist    Watchlist[]
+  alerts       Alert[]
+  preferences  UserPreference?
+  chatSessions ChatSession[]
 }
 
 model Account {
@@ -64,6 +65,45 @@ model VerificationToken {
 }
 
 // ==================== USER PREFERENCES ====================
+
+// Persistent chat history for signed-in users. Anonymous users get the
+// stateless ephemeral flow; signed-in users get conversation continuity
+// across devices and sessions.
+model ChatSession {
+  id           String   @id @default(cuid())
+  userId       String
+  title        String?  // first user message, truncated; lazily backfilled
+  currentAgent String   @default("base")
+  escalated    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user     User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ChatSessionMessage[]
+
+  @@index([userId, updatedAt])
+}
+
+// Each turn's worth of messages — both user and assistant. Image
+// attachments are intentionally NOT persisted in this row (base64 would
+// bloat the table); they live only in the active client state. Structured
+// payloads (StrategyBlueprint) ARE persisted as JSON so cards re-render
+// when a session is loaded.
+model ChatSessionMessage {
+  id              String   @id @default(cuid())
+  sessionId       String
+  role            String   // user | assistant | system
+  content         String   @db.Text
+  agent           String?
+  agentName       String?
+  intent          String?
+  structuredJson  String?  // serialized StrategyBlueprint, etc.
+  createdAt       DateTime @default(now())
+
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+}
 
 model UserPreference {
   id                  String   @id @default(cuid())

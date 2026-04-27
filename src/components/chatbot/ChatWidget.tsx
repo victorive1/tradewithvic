@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { StrategyBuilderCard } from "./StrategyBuilderCard";
 import { ChatPreferencesPanel } from "./ChatPreferencesPanel";
+import { ChatHistoryPanel } from "./ChatHistoryPanel";
 
 interface StrategyBlueprint {
   name: string;
@@ -87,10 +88,13 @@ async function fileToResizedDataUrl(file: File): Promise<string> {
   }
 }
 
-// Conversation state is now owned by the client (the API is stateless).
-// `id` is local-only — useful for analytics / future server-side persistence.
+// Conversation state lives on the client; for signed-in users a parallel
+// copy is persisted server-side (see /api/chat/sessions). `serverSessionId`
+// is the server-issued ChatSession.id once it exists — null on a brand-new
+// conversation, populated from the first POST response.
 interface Conversation {
   id: string;
+  serverSessionId: string | null;
   messages: ChatMessage[];
   currentAgent: string;
   escalated: boolean;
@@ -188,6 +192,7 @@ export function ChatWidget() {
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [showPrefs, setShowPrefs] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -202,6 +207,7 @@ export function ChatWidget() {
       if (data.success && data.initialMessage) {
         setConversation({
           id: `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          serverSessionId: null,
           messages: [data.initialMessage],
           currentAgent: data.currentAgent ?? "base",
           escalated: false,
@@ -216,6 +222,39 @@ export function ChatWidget() {
   function handleOpen() {
     setIsOpen(true);
     if (!conversation) startConversation();
+  }
+
+  // Reset to a fresh conversation. Useful after wrapping up a topic so the
+  // assistant doesn't carry context (and tokens) into the next ask.
+  async function newConversation() {
+    setShowHistory(false);
+    setShowPrefs(false);
+    setPendingImage(null);
+    setImageError(null);
+    await startConversation();
+  }
+
+  // Load a saved conversation from history. Replaces current state with
+  // the persisted transcript and pins the serverSessionId so subsequent
+  // turns append to that same row.
+  async function loadSession(sessionId: string) {
+    try {
+      const res = await fetch(`/api/chat/sessions/${sessionId}`, { cache: "no-store" });
+      const data = await res.json();
+      if (!data.success || !data.session) return;
+      setConversation({
+        id: `conv_${data.session.id}`,
+        serverSessionId: data.session.id,
+        messages: data.session.messages,
+        currentAgent: data.session.currentAgent,
+        escalated: data.session.escalated,
+        resolved: false,
+      });
+      setShowHistory(false);
+      setShowPrefs(false);
+    } catch {
+      // No-op — user stays on current conversation.
+    }
   }
 
   async function handleImagePick(file: File | null) {
@@ -270,6 +309,7 @@ export function ChatWidget() {
           escalated: conversation.escalated,
           message: userMessage || "Please review this trade screenshot.",
           attachments,
+          sessionId: conversation.serverSessionId,
         }),
       });
       const data = await res.json();
@@ -281,6 +321,7 @@ export function ChatWidget() {
           messages: [...messagesWithUser, ...data.newMessages],
           currentAgent: data.currentAgent ?? prev.currentAgent,
           escalated: escalatedNow,
+          serverSessionId: data.sessionId ?? prev.serverSessionId,
         } : prev);
         if (escalatedNow) setShowRating(true);
       } else {
@@ -363,7 +404,25 @@ export function ChatWidget() {
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setShowPrefs((s) => !s)}
+                onClick={newConversation}
+                className="text-muted hover:text-muted-light transition-smooth"
+                title="Start a new conversation"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
+                </svg>
+              </button>
+              <button
+                onClick={() => { setShowHistory((h) => !h); setShowPrefs(false); }}
+                className={cn("transition-smooth", showHistory ? "text-accent-light" : "text-muted hover:text-muted-light")}
+                title="Past conversations"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </button>
+              <button
+                onClick={() => { setShowPrefs((s) => !s); setShowHistory(false); }}
                 className={cn("transition-smooth", showPrefs ? "text-accent-light" : "text-muted hover:text-muted-light")}
                 title="Personalize the assistant"
               >
@@ -381,7 +440,14 @@ export function ChatWidget() {
             </div>
           </div>
 
-          {/* Preferences panel — slides down between header and messages */}
+          {/* Slide-down panels — only one at a time */}
+          {showHistory && (
+            <ChatHistoryPanel
+              activeSessionId={conversation?.serverSessionId ?? null}
+              onLoad={loadSession}
+              onClose={() => setShowHistory(false)}
+            />
+          )}
           {showPrefs && <ChatPreferencesPanel onClose={() => setShowPrefs(false)} />}
 
           {/* Messages */}

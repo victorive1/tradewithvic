@@ -40,6 +40,7 @@ export async function POST(req: Request) {
     const currentAgent: AgentId = (body.currentAgent as AgentId) ?? "base";
     const escalated: boolean = !!body.escalated;
     const attachments = body.attachments;
+    const sessionId: string | null = typeof body.sessionId === "string" ? body.sessionId : null;
 
     if (!message || typeof message !== "string") {
       return NextResponse.json({ error: "message is required" }, { status: 400 });
@@ -56,6 +57,7 @@ export async function POST(req: Request) {
       message,
       attachments,
       userId,
+      sessionId,
     );
 
     return NextResponse.json({
@@ -64,6 +66,7 @@ export async function POST(req: Request) {
       currentAgent: result.currentAgent,
       escalated: result.escalated,
       intent: result.intent,
+      sessionId: result.sessionId,
       // cacheStats is exposed so we can monitor cache hit rate in browser
       // network panel — drop later if we don't want clients to see it.
       cacheStats: result.cacheStats,
