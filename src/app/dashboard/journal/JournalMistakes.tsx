@@ -35,7 +35,10 @@ export function JournalMistakes() {
   if (loading) return <div className="glass-card p-8 text-center text-sm text-muted">Reviewing your trades…</div>;
 
   const totalCost = items.reduce((a, b) => a + b.cost, 0);
-  const maxCost = Math.max(...items.map((i) => i.cost), 1);
+  // Math.max with no args returns -Infinity, which divides into NaN%
+  // CSS widths. Always seed with 1 so an empty `items` (or all-zero
+  // costs) renders a flat-zero bar instead of broken layout.
+  const maxCost = items.length > 0 ? Math.max(1, ...items.map((i) => i.cost)) : 1;
 
   return (
     <div className="space-y-5">

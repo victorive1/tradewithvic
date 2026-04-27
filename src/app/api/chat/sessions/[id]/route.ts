@@ -68,12 +68,12 @@ export async function DELETE(_req: Request, { params }: RouteCtx) {
   const { id } = await params;
   // Restrict deletion to the user's own sessions — defence in depth even
   // though the foreign key enforces userId association.
-  const owned = await prisma.chatSession.findFirst({
+  // deleteMany with compound (id, userId) closes the TOCTOU race a
+  // plain delete({where: {id}}) would leave open after the ownership
+  // findFirst — see journal entries route for full rationale.
+  const result = await prisma.chatSession.deleteMany({
     where: { id, userId: user.id },
-    select: { id: true },
   });
-  if (!owned) return NextResponse.json({ error: "not found" }, { status: 404 });
-
-  await prisma.chatSession.delete({ where: { id } });
+  if (result.count === 0) return NextResponse.json({ error: "not found" }, { status: 404 });
   return NextResponse.json({ success: true });
 }

@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
-const API_KEY = process.env.TWELVEDATA_API_KEY || "";
+// Lazy getter — see lib/market-data.ts for the build-trap rationale.
+function getApiKey(): string { return process.env.TWELVEDATA_API_KEY ?? ""; }
 const BASE_URL = "https://api.twelvedata.com";
 
 export async function GET(request: Request) {
@@ -9,12 +10,13 @@ export async function GET(request: Request) {
   const interval = searchParams.get("interval") || "1h";
   const outputsize = searchParams.get("outputsize") || "100";
 
-  if (!API_KEY) {
+  const apiKey = getApiKey();
+  if (!apiKey) {
     return Response.json({ error: "API key not configured" }, { status: 500 });
   }
 
   try {
-    const url = `${BASE_URL}/time_series?symbol=${encodeURIComponent(symbol)}&interval=${interval}&outputsize=${outputsize}&apikey=${API_KEY}`;
+    const url = `${BASE_URL}/time_series?symbol=${encodeURIComponent(symbol)}&interval=${interval}&outputsize=${outputsize}&apikey=${apiKey}`;
     const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
 
     if (!res.ok) {
@@ -28,7 +30,8 @@ export async function GET(request: Request) {
     }
 
     return Response.json(data);
-  } catch (error: any) {
-    return Response.json({ error: error.message || "Request failed" }, { status: 500 });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : "request_failed";
+    return Response.json({ error: msg }, { status: 500 });
   }
 }

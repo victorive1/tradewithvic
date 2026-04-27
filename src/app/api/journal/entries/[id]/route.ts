@@ -113,10 +113,18 @@ export async function PATCH(req: Request, { params }: RouteCtx) {
   set("takeProfit", num(body.takeProfit));
   set("preTradeChecklist", jsonObj(body.preTradeChecklist));
 
-  const updated = await prisma.tradeJournalEntry.update({
-    where: { id },
+  // updateMany with compound (id, userId) closes the TOCTOU race that a
+  // plain update({where: {id}}) would leave open: even if some other
+  // request flipped ownership between the findFirst above and this call,
+  // updateMany only mutates rows that still match BOTH id AND userId.
+  // count === 0 means the row vanished or changed hands — bail.
+  const result = await prisma.tradeJournalEntry.updateMany({
+    where: { id, userId: user.id },
     data,
   });
+  if (result.count === 0) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  const updated = await prisma.tradeJournalEntry.findUnique({ where: { id } });
+  if (!updated) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
   await refreshDayAggregate(user.id, dayKey(existing.openedAt));
   return NextResponse.json({ success: true, entry: serialize(updated) });
@@ -130,7 +138,13 @@ export async function DELETE(_req: Request, { params }: RouteCtx) {
     where: { id, userId: user.id },
   });
   if (!existing) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  await prisma.tradeJournalEntry.delete({ where: { id } });
+  // Same TOCTOU-close pattern: deleteMany scoped to (id, userId) so a
+  // race window can't let an authenticated attacker delete a row that
+  // was reassigned between the ownership check and the delete.
+  const deleted = await prisma.tradeJournalEntry.deleteMany({
+    where: { id, userId: user.id },
+  });
+  if (deleted.count === 0) return NextResponse.json({ error: "not_found" }, { status: 404 });
   await refreshDayAggregate(user.id, dayKey(existing.openedAt));
   return NextResponse.json({ success: true });
 }

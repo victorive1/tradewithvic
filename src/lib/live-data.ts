@@ -1,7 +1,8 @@
 // Live data service - fetches real market data and derives all analytics from it
 // Every display value must come from here, never hardcoded
 
-const API_KEY = process.env.TWELVEDATA_API_KEY || "";
+// Lazy getter — see lib/market-data.ts for the build-trap rationale.
+function getApiKey(): string { return process.env.TWELVEDATA_API_KEY ?? ""; }
 const BASE_URL = "https://api.twelvedata.com";
 
 export interface LiveQuote {
@@ -42,7 +43,7 @@ export function fromApiSymbol(apiSymbol: string): string {
 export async function fetchLiveQuote(symbol: string): Promise<LiveQuote | null> {
   try {
     const apiSymbol = toApiSymbol(symbol);
-    const res = await fetch(`${BASE_URL}/quote?symbol=${encodeURIComponent(apiSymbol)}&apikey=${API_KEY}`, {
+    const res = await fetch(`${BASE_URL}/quote?symbol=${encodeURIComponent(apiSymbol)}&apikey=${getApiKey()}`, {
       next: { revalidate: 30 },
     });
     if (!res.ok) return null;
@@ -72,7 +73,7 @@ export async function fetchLiveQuote(symbol: string): Promise<LiveQuote | null> 
 export async function fetchMultipleQuotes(symbols: string[]): Promise<LiveQuote[]> {
   try {
     const apiSymbols = symbols.map(toApiSymbol).join(",");
-    const res = await fetch(`${BASE_URL}/quote?symbol=${encodeURIComponent(apiSymbols)}&apikey=${API_KEY}`, {
+    const res = await fetch(`${BASE_URL}/quote?symbol=${encodeURIComponent(apiSymbols)}&apikey=${getApiKey()}`, {
       next: { revalidate: 30 },
     });
     if (!res.ok) return [];

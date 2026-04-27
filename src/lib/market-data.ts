@@ -1,6 +1,10 @@
 import { ALL_INSTRUMENTS } from "./constants";
 
-const API_KEY = process.env.TWELVEDATA_API_KEY || "";
+// Lazy getter — never read process.env at module-import scope. Next.js 16
+// build-time module collection imports route modules without executing
+// handlers; reading non-NEXT_PUBLIC env vars at module top risks build
+// crashes if vars aren't visible to that phase. See the build-trap memory.
+function getApiKey(): string { return process.env.TWELVEDATA_API_KEY ?? ""; }
 const BASE_URL = "https://api.twelvedata.com";
 
 export interface MarketQuote {
@@ -37,11 +41,12 @@ function toTwelveDataSymbol(symbol: string): string {
 
 // Fetch a small batch of quotes (max 8 per request for free tier)
 async function fetchBatch(symbols: string[]): Promise<MarketQuote[]> {
-  if (!API_KEY || symbols.length === 0) return [];
+  const apiKey = getApiKey();
+  if (!apiKey || symbols.length === 0) return [];
 
   try {
     const twelveSymbols = symbols.map(toTwelveDataSymbol).join(",");
-    const url = `${BASE_URL}/quote?symbol=${encodeURIComponent(twelveSymbols)}&apikey=${API_KEY}`;
+    const url = `${BASE_URL}/quote?symbol=${encodeURIComponent(twelveSymbols)}&apikey=${apiKey}`;
 
     const res = await fetch(url, {
       next: { revalidate: 30 },
@@ -99,7 +104,7 @@ async function fetchBatch(symbols: string[]): Promise<MarketQuote[]> {
 
 // Fetch all quotes in batches of 8 (TwelveData free tier limit)
 export async function fetchAllQuotes(): Promise<MarketQuote[]> {
-  if (!API_KEY) {
+  if (!getApiKey()) {
     console.error("TWELVEDATA_API_KEY not set");
     return [];
   }

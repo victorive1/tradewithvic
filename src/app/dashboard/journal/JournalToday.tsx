@@ -89,8 +89,13 @@ export function JournalToday() {
       if (entryRes.status === 401) { setAuthError(true); return; }
       const entryData = await entryRes.json();
       const dayData = await dayRes.json();
-      if (entryData.success) setEntries(entryData.entries);
-      if (dayData.success) setDay(dayData.day);
+      // Defensive: a malformed server response could return success:true
+      // without an `entries` array. Guarding against that prevents the
+      // .map() at render time from crashing the whole tab.
+      if (entryData?.success && Array.isArray(entryData.entries)) {
+        setEntries(entryData.entries);
+      }
+      if (dayData?.success && dayData.day) setDay(dayData.day);
     } finally {
       setLoading(false);
     }
