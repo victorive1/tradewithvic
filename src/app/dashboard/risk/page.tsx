@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
 import { computeLotSize, type LotResult } from "@/lib/trading/lot-sizing";
@@ -81,6 +81,39 @@ function describePosition(symbol: string, r: LotResult): {
 export default function RiskPage() {
   const [symbol, setSymbol] = useState("EURUSD");
   const [balance, setBalance] = useState("10000");
+
+  // Live price for the selected symbol — fetched from /api/market/quotes
+  // and refreshed every 5 minutes (per the platform's "real-time = 5–10
+  // min fresh" data freshness convention; we don't need tick-level here).
+  const [livePrice, setLivePrice] = useState<{ price: number; changePercent: number; lastUpdate: number } | null>(null);
+  const [livePriceLoading, setLivePriceLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch("/api/market/quotes", { cache: "no-store" });
+        const data = await res.json();
+        if (cancelled) return;
+        const q = Array.isArray(data?.quotes)
+          ? data.quotes.find((x: { symbol?: string }) => x.symbol === symbol)
+          : null;
+        if (q && typeof q.price === "number") {
+          setLivePrice({ price: q.price, changePercent: q.changePercent ?? 0, lastUpdate: Date.now() });
+        } else {
+          // No quote for this instrument (e.g. indices on TwelveData free)
+          setLivePrice(null);
+        }
+      } catch {
+        if (!cancelled) setLivePrice(null);
+      } finally {
+        if (!cancelled) setLivePriceLoading(false);
+      }
+    }
+    setLivePriceLoading(true);
+    load();
+    const id = window.setInterval(load, 5 * 60 * 1000);
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, [symbol]);
   const [riskMode, setRiskMode] = useState<RiskMode>("percent");
   const [riskPercent, setRiskPercent] = useState("1");
   const [riskDollar, setRiskDollar] = useState("100");
@@ -128,7 +161,33 @@ export default function RiskPage() {
           <h3 className="text-sm font-semibold text-foreground">Trade Parameters</h3>
 
           <div>
-            <label className="text-xs text-muted-light mb-1.5 block">Instrument</label>
+            <div className="flex items-center justify-between mb-1.5 gap-2">
+              <label className="text-xs text-muted-light">Instrument</label>
+              {/* Live price chip — fetched from TwelveData via /api/market/quotes,
+                  refreshed every 5 min. Indices show "—" because TwelveData's
+                  free/Ultra tiers don't carry US cash indices. */}
+              {livePriceLoading ? (
+                <span className="text-[10px] text-muted">Loading price…</span>
+              ) : livePrice ? (
+                <span className="flex items-center gap-1.5 text-[11px] font-mono">
+                  <span className="text-muted-light">Live</span>
+                  <span className="text-foreground font-semibold">{livePrice.price.toFixed(livePrice.price < 10 ? 5 : livePrice.price < 1000 ? 2 : 0)}</span>
+                  <span className={cn(livePrice.changePercent >= 0 ? "text-bull-light" : "text-bear-light")}>
+                    {livePrice.changePercent >= 0 ? "▲" : "▼"} {livePrice.changePercent >= 0 ? "+" : ""}{livePrice.changePercent.toFixed(2)}%
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setEntry(livePrice.price.toFixed(5))}
+                    className="text-[10px] text-accent-light hover:text-accent ml-1 underline-offset-2 hover:underline"
+                    title="Use this price as entry"
+                  >
+                    use
+                  </button>
+                </span>
+              ) : (
+                <span className="text-[10px] text-muted" title="No live quote available for this instrument">price unavailable</span>
+              )}
+            </div>
             <select
               value={symbol}
               onChange={(e) => setSymbol(e.target.value)}
