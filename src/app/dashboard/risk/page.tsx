@@ -3,9 +3,80 @@
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
-import { computeLotSize } from "@/lib/trading/lot-sizing";
+import { computeLotSize, type LotResult } from "@/lib/trading/lot-sizing";
 
 type RiskMode = "percent" | "dollar";
+
+// Instrument-aware position display. Returns the right hero label/value
+// pair and the breakdown line for an instrument, so we don't render
+// "2.50 mini · 25 micro" for crypto/indices/oil where those lot tiers
+// don't really exist or aren't how brokers quote.
+function describePosition(symbol: string, r: LotResult): {
+  heroLabel: string;
+  heroValue: string;
+  breakdown: string;
+} {
+  // Helper: format a number with sensible decimals for display.
+  const fmt = (n: number, d = 2) =>
+    n.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+  const fmtAuto = (n: number) =>
+    n >= 1 ? n.toLocaleString(undefined, { maximumFractionDigits: 2 })
+            : n.toLocaleString(undefined, { maximumFractionDigits: 4 });
+  const lot = r.lotSize >= 0.01 ? r.lotSize.toFixed(2) : r.lotSize.toExponential(2);
+
+  // Indices — quoted as contracts. 1 contract ≈ $1 per point on the
+  // brokers we support, so mini/micro tiers are mostly fictional. Show
+  // contracts + per-point dollar value.
+  if (["US30", "NAS100", "SPX500", "GER40", "UK100", "JPN225"].includes(symbol)) {
+    return {
+      heroLabel: "Contracts",
+      heroValue: lot,
+      breakdown: `= $${fmt(r.pipValue * r.lotSize, 2)} per point movement`,
+    };
+  }
+
+  // Crypto — express in coins of the underlying. Mini/micro aren't a
+  // meaningful broker quote unit; the user wants to see "0.25 BTC".
+  const cryptoMap: Record<string, string> = {
+    BTCUSD: "BTC", ETHUSD: "ETH", SOLUSD: "SOL", XRPUSD: "XRP",
+  };
+  if (cryptoMap[symbol]) {
+    const coin = cryptoMap[symbol];
+    return {
+      heroLabel: `${coin} Units`,
+      heroValue: fmtAuto(r.units),
+      breakdown: `≈ ${lot} std lot · $${fmt(r.pipValue * r.lotSize, 2)} risk per $1 move`,
+    };
+  }
+
+  // Oil — barrels are how the rest of the trading world thinks. 1 std
+  // lot = 1000 bbl on JustMarkets/etc. Lots stay primary because that's
+  // what you enter on the order ticket, but barrels gives the intuition.
+  if (symbol === "USOIL" || symbol === "UKOIL") {
+    return {
+      heroLabel: "Standard Lots",
+      heroValue: lot,
+      breakdown: `= ${fmt(r.miniLots, 2)} mini · ${fmt(r.microLots, 0)} micro · ${fmtAuto(r.units)} barrels`,
+    };
+  }
+
+  // Metals — keep the mini/micro tiers (brokers do accept them) but
+  // express the underlying as troy ounces, not "units".
+  if (symbol === "XAUUSD" || symbol === "XAGUSD") {
+    return {
+      heroLabel: "Standard Lots",
+      heroValue: lot,
+      breakdown: `= ${fmt(r.miniLots, 2)} mini · ${fmt(r.microLots, 0)} micro · ${fmtAuto(r.units)} oz`,
+    };
+  }
+
+  // Default: forex. Standard / mini / micro lots + base-currency units.
+  return {
+    heroLabel: "Standard Lots",
+    heroValue: lot,
+    breakdown: `= ${fmt(r.miniLots, 2)} mini · ${fmt(r.microLots, 0)} micro · ${fmtAuto(r.units)} base units`,
+  };
+}
 
 export default function RiskPage() {
   const [symbol, setSymbol] = useState("EURUSD");
@@ -190,18 +261,21 @@ export default function RiskPage() {
 
         {/* Results */}
         <div className="space-y-4">
-          {/* HERO: lot size — the answer the user actually wants */}
+          {/* HERO: lot size — the answer the user actually wants. The
+              label, value, and breakdown all adapt to the instrument so
+              crypto/indices/oil don't get a forex-shaped readout. */}
           <div className="glass-card p-6 border-2 border-accent/30">
             <h3 className="text-sm font-semibold text-foreground mb-4">Position Size</h3>
-            <div className="text-center mb-4">
-              <div className="text-[10px] uppercase tracking-[0.18em] text-muted">Standard Lots</div>
-              <div className="text-5xl font-black text-accent-light mt-1">
-                {result.lotSize >= 0.01 ? result.lotSize.toFixed(2) : result.lotSize.toExponential(2)}
-              </div>
-              <div className="text-xs text-muted mt-1">
-                = {formatNum(result.miniLots, 2)} mini · {formatNum(result.microLots, 0)} micro · {formatNum(result.units, result.units < 1 ? 4 : 0)} {symbol === "XAUUSD" ? "oz" : symbol === "XAGUSD" ? "oz" : (symbol.startsWith("BTC") || symbol.startsWith("ETH") || symbol.startsWith("SOL") || symbol.startsWith("XRP")) ? "coins" : symbol === "USOIL" ? "barrels" : "units"}
-              </div>
-            </div>
+            {(() => {
+              const d = describePosition(symbol, result);
+              return (
+                <div className="text-center mb-4">
+                  <div className="text-[10px] uppercase tracking-[0.18em] text-muted">{d.heroLabel}</div>
+                  <div className="text-5xl font-black text-accent-light mt-1">{d.heroValue}</div>
+                  <div className="text-xs text-muted mt-1">{d.breakdown}</div>
+                </div>
+              );
+            })()}
             {result.warnings.length > 0 && (
               <div className="text-[11px] text-bear-light bg-bear/5 border border-bear/30 rounded-lg p-2 mt-2 space-y-0.5">
                 {result.warnings.map((w, i) => <div key={i}>⚠ {w}</div>)}
