@@ -51,11 +51,45 @@ export interface RiskCalcContext {
   warnings: string[];
 }
 
+export interface NewsContext {
+  publishedAt: string;
+  headline: string;
+  summary: string | null;
+  severity: string;
+  category: string;
+  sourceName: string;
+}
+
+export interface UpcomingEventContext {
+  eventTime: string;
+  country: string;
+  eventName: string;
+  impact: string;
+  forecast: string | null;
+  previous: string | null;
+}
+
 export interface DataContext {
   market?: MarketContext | null;
   recentSetups?: SetupContext[] | null;
   risk?: RiskCalcContext | null;
+  news?: NewsContext[] | null;
+  upcomingEvents?: UpcomingEventContext[] | null;
   detectedSymbol?: string | null;
+}
+
+// Pull the currencies that drive a symbol so we can match calendar events.
+// XAUUSD → USD (gold trades against USD), USOIL → USD, BTCUSD → USD.
+// Forex pairs return both halves: EURUSD → EUR, USD.
+function currenciesForSymbol(symbol: string): string[] {
+  if (symbol === "XAUUSD" || symbol === "XAGUSD" || symbol === "USOIL" || symbol === "UKOIL") return ["USD"];
+  if (symbol === "BTCUSD" || symbol === "ETHUSD" || symbol === "SOLUSD" || symbol === "XRPUSD") return ["USD"];
+  if (["US30", "NAS100", "SPX500"].includes(symbol)) return ["USD"];
+  if (symbol === "GER40") return ["EUR"];
+  if (symbol === "UK100") return ["GBP"];
+  if (symbol === "JPN225") return ["JPY"];
+  if (symbol.length === 6) return [symbol.slice(0, 3), symbol.slice(3, 6)];
+  return [];
 }
 
 // Symbol-detection — looks for canonical pair tokens in the message.
@@ -123,6 +157,102 @@ async function fetchMarketQuote(symbol: string): Promise<MarketContext | null> {
       previousClose: q.previousClose ?? 0,
       capturedAt: new Date().toISOString(),
     };
+  } catch {
+    return null;
+  }
+}
+
+// Recent active news headlines that mention this symbol or its currencies,
+// plus general macro / central-bank / geopolitical headlines as fallback —
+// those move the whole risk-on/risk-off complex even when no specific symbol
+// is named.
+async function fetchRecentNews(symbol: string | null, limit = 5): Promise<NewsContext[] | null> {
+  try {
+    const { prisma } = await import("@/lib/prisma");
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const rows = await prisma.marketNewsHeadline.findMany({
+      where: { isActive: true, publishedAt: { gte: since } },
+      orderBy: [{ severity: "asc" }, { publishedAt: "desc" }],
+      take: 50,
+      select: {
+        publishedAt: true, headline: true, summary: true, severity: true,
+        category: true, sourceName: true, affectedSymbolsJson: true,
+      },
+    });
+    const currencies = symbol ? currenciesForSymbol(symbol) : [];
+    const matched: NewsContext[] = [];
+    const macroFallback: NewsContext[] = [];
+    for (const r of rows) {
+      const ctx: NewsContext = {
+        publishedAt: r.publishedAt.toISOString(),
+        headline: r.headline,
+        summary: r.summary,
+        severity: r.severity,
+        category: r.category,
+        sourceName: r.sourceName,
+      };
+      let symbols: string[] = [];
+      try { symbols = JSON.parse(r.affectedSymbolsJson) as string[]; } catch { /* malformed JSON */ }
+      const hitsSymbol = symbol && symbols.includes(symbol);
+      const hitsCurrency = currencies.some((c) => symbols.includes(c));
+      if (hitsSymbol || hitsCurrency) {
+        matched.push(ctx);
+      } else if (["macro", "central_bank", "geopolitical"].includes(r.category) && (r.severity === "red" || r.severity === "orange")) {
+        macroFallback.push(ctx);
+      }
+      if (matched.length >= limit) break;
+    }
+    const final = matched.length > 0 ? matched : macroFallback.slice(0, limit);
+    return final.slice(0, limit);
+  } catch {
+    return null;
+  }
+}
+
+// Upcoming high-impact events in the next 24h for the symbol's currencies.
+// Used both for FUNDAMENTAL_ANALYSIS questions and as a "news risk" tag on
+// LIVE_MARKET_ANALYSIS — never recommend a trade idea into a high-impact
+// window without flagging it.
+async function fetchUpcomingEvents(symbol: string | null, hoursAhead = 24, limit = 5): Promise<UpcomingEventContext[] | null> {
+  try {
+    const { prisma } = await import("@/lib/prisma");
+    const now = new Date();
+    const horizon = new Date(now.getTime() + hoursAhead * 60 * 60 * 1000);
+    const rows = await prisma.fundamentalEvent.findMany({
+      where: {
+        eventTime: { gte: now, lte: horizon },
+        impact: { in: ["high", "medium"] },
+      },
+      orderBy: { eventTime: "asc" },
+      take: 50,
+      select: {
+        eventTime: true, country: true, eventName: true, impact: true,
+        forecast: true, previous: true, affectedCurrenciesJson: true,
+        affectedSymbolsJson: true,
+      },
+    });
+    const currencies = symbol ? currenciesForSymbol(symbol) : [];
+    const matched: UpcomingEventContext[] = [];
+    const fallback: UpcomingEventContext[] = [];
+    for (const r of rows) {
+      const ctx: UpcomingEventContext = {
+        eventTime: r.eventTime.toISOString(),
+        country: r.country,
+        eventName: r.eventName,
+        impact: r.impact,
+        forecast: r.forecast,
+        previous: r.previous,
+      };
+      let curs: string[] = [];
+      let syms: string[] = [];
+      try { curs = JSON.parse(r.affectedCurrenciesJson) as string[]; } catch { /* malformed */ }
+      try { syms = JSON.parse(r.affectedSymbolsJson) as string[]; } catch { /* malformed */ }
+      const hits = currencies.some((c) => curs.includes(c)) || (symbol && syms.includes(symbol));
+      if (hits) matched.push(ctx);
+      else if (r.impact === "high") fallback.push(ctx);
+      if (matched.length >= limit) break;
+    }
+    return (matched.length > 0 ? matched : fallback).slice(0, limit);
   } catch {
     return null;
   }
@@ -233,30 +363,78 @@ export async function buildDataContext(
   // Map intents to which data layers to hydrate. We deliberately fetch only
   // what each intent actually needs — keeps the prompt tight and the LLM
   // focused on the right context.
+  // Each branch fetches in parallel so we don't serialize quote → setups →
+  // news. Promise.all returns whichever ones the intent needs.
   switch (intent) {
-    case "LIVE_MARKET_ANALYSIS":
+    case "LIVE_MARKET_ANALYSIS": {
+      const [market, setups, news, events] = await Promise.all([
+        detectedSymbol ? fetchMarketQuote(detectedSymbol) : Promise.resolve(null),
+        fetchRecentSetups(detectedSymbol, 3),
+        fetchRecentNews(detectedSymbol, 4),
+        fetchUpcomingEvents(detectedSymbol, 24, 4),
+      ]);
+      ctx.market = market;
+      ctx.recentSetups = setups;
+      ctx.news = news;
+      ctx.upcomingEvents = events;
+      break;
+    }
     case "NEWS_EXPLANATION": {
-      if (detectedSymbol) ctx.market = await fetchMarketQuote(detectedSymbol);
-      ctx.recentSetups = await fetchRecentSetups(detectedSymbol, 3);
+      const [market, news, events] = await Promise.all([
+        detectedSymbol ? fetchMarketQuote(detectedSymbol) : Promise.resolve(null),
+        fetchRecentNews(detectedSymbol, 8),
+        fetchUpcomingEvents(detectedSymbol, 12, 4),
+      ]);
+      ctx.market = market;
+      ctx.news = news;
+      ctx.upcomingEvents = events;
+      break;
+    }
+    case "FUNDAMENTAL_ANALYSIS": {
+      const [market, news, events] = await Promise.all([
+        detectedSymbol ? fetchMarketQuote(detectedSymbol) : Promise.resolve(null),
+        fetchRecentNews(detectedSymbol, 4),
+        fetchUpcomingEvents(detectedSymbol, 48, 6),
+      ]);
+      ctx.market = market;
+      ctx.news = news;
+      ctx.upcomingEvents = events;
       break;
     }
     case "SIGNAL_EXPLANATION": {
-      ctx.recentSetups = await fetchRecentSetups(detectedSymbol, 3);
-      if (detectedSymbol) ctx.market = await fetchMarketQuote(detectedSymbol);
+      const [market, setups, events] = await Promise.all([
+        detectedSymbol ? fetchMarketQuote(detectedSymbol) : Promise.resolve(null),
+        fetchRecentSetups(detectedSymbol, 3),
+        fetchUpcomingEvents(detectedSymbol, 6, 3),
+      ]);
+      ctx.market = market;
+      ctx.recentSetups = setups;
+      ctx.upcomingEvents = events;
       break;
     }
     case "RISK_CALCULATION": {
       const hints = extractRiskHints(message, detectedSymbol);
+      const [market, events] = await Promise.all([
+        detectedSymbol ? fetchMarketQuote(detectedSymbol) : Promise.resolve(null),
+        fetchUpcomingEvents(detectedSymbol, 6, 3),
+      ]);
       ctx.risk = computeRiskContext(hints);
+      ctx.market = market;
+      ctx.upcomingEvents = events;
+      break;
+    }
+    case "TECHNICAL_ANALYSIS": {
+      // Concept question; if a symbol is mentioned we anchor the example to
+      // the live price.
       if (detectedSymbol) ctx.market = await fetchMarketQuote(detectedSymbol);
       break;
     }
-    case "TECHNICAL_ANALYSIS":
-    case "FUNDAMENTAL_ANALYSIS": {
-      // These don't strictly need live data — concept questions — but if a
-      // symbol is mentioned we attach the quote so the LLM can ground the
-      // explanation in the actual current price.
-      if (detectedSymbol) ctx.market = await fetchMarketQuote(detectedSymbol);
+    case "TRADE_REVIEW": {
+      // Image-driven; no symbol context is fetched server-side because the
+      // LLM reads it off the screenshot. We do attach upcoming events as
+      // news-risk context — a "perfect" entry into a high-impact window
+      // should still get flagged.
+      ctx.upcomingEvents = await fetchUpcomingEvents(null, 6, 3);
       break;
     }
     default:
@@ -301,6 +479,27 @@ export function renderDataContext(ctx: DataContext): string {
   ${r.warnings.length > 0 ? `warnings: ${r.warnings.join("; ")}` : ""}`,
     );
   }
+  if (ctx.news && ctx.news.length > 0) {
+    lines.push(`Recent news (last 24h, severity-sorted):`);
+    for (const n of ctx.news) {
+      const sev = n.severity === "red" ? "🔴" : n.severity === "orange" ? "🟠" : "🟢";
+      lines.push(
+        `- [${n.publishedAt}] ${sev} ${n.headline}${n.summary ? ` — ${n.summary.slice(0, 240)}` : ""} (${n.sourceName})`,
+      );
+    }
+  }
+  if (ctx.upcomingEvents && ctx.upcomingEvents.length > 0) {
+    lines.push(`Upcoming economic events (next 6–48h):`);
+    for (const e of ctx.upcomingEvents) {
+      const tag = e.impact === "high" ? "⚠️ HIGH" : "● med";
+      const at = new Date(e.eventTime);
+      const mins = Math.round((at.getTime() - Date.now()) / 60000);
+      const inLabel = mins < 60 ? `${mins}m` : `${Math.round(mins / 60)}h`;
+      lines.push(
+        `- ${tag} ${e.country} ${e.eventName} in ~${inLabel} (forecast=${e.forecast ?? "—"}, prev=${e.previous ?? "—"})`,
+      );
+    }
+  }
   if (lines.length === 0) return "";
-  return `\n\n[SERVER-PROVIDED DATA — cite these exact numbers, do not invent]\n${lines.join("\n")}`;
+  return `\n\n[SERVER-PROVIDED DATA — cite these exact numbers and headlines, do not invent]\n${lines.join("\n")}`;
 }
