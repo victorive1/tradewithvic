@@ -160,6 +160,7 @@ export async function processTurn(
   state: ConversationState,
   userMessage: string,
   attachments?: ChatMessage["attachments"],
+  userId: string | null = null,
 ): Promise<TurnResult> {
   const newMessages: ChatMessage[] = [];
   let { currentAgent, escalated } = state;
@@ -197,8 +198,8 @@ export async function processTurn(
     });
   }
 
-  // 3. Hydrate data context (live quote, recent setups, risk math).
-  const dataCtx = await buildDataContext(intent, userMessage);
+  // 3. Hydrate data context (live quote, recent setups, risk math, user prefs).
+  const dataCtx = await buildDataContext(intent, userMessage, userId);
   const contextSuffix = renderDataContext(dataCtx);
 
   // 4. Build system prompt (frozen prefix + dynamic suffix).

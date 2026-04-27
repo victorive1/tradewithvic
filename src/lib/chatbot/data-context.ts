@@ -69,12 +69,25 @@ export interface UpcomingEventContext {
   previous: string | null;
 }
 
+export interface UserPrefsContext {
+  favoriteMarkets: string[];
+  defaultTimeframe: string;
+  defaultRiskPercent?: number;
+  defaultRiskUSD?: number;
+  tradingStyle?: string;
+  preferredSessions?: string[];
+  broker?: string;
+  responseLength?: string;
+  notes?: string;
+}
+
 export interface DataContext {
   market?: MarketContext | null;
   recentSetups?: SetupContext[] | null;
   risk?: RiskCalcContext | null;
   news?: NewsContext[] | null;
   upcomingEvents?: UpcomingEventContext[] | null;
+  userPrefs?: UserPrefsContext | null;
   detectedSymbol?: string | null;
 }
 
@@ -258,6 +271,35 @@ async function fetchUpcomingEvents(symbol: string | null, hoursAhead = 24, limit
   }
 }
 
+async function fetchUserPrefs(userId: string | null): Promise<UserPrefsContext | null> {
+  if (!userId) return null;
+  try {
+    const { prisma } = await import("@/lib/prisma");
+    const row = await prisma.userPreference.findUnique({
+      where: { userId },
+      select: { favoriteMarkets: true, defaultTimeframe: true, chatbotPreferences: true },
+    });
+    if (!row) return null;
+    let favoriteMarkets: string[] = [];
+    try { favoriteMarkets = JSON.parse(row.favoriteMarkets) as string[]; } catch { /* malformed */ }
+    let chatbotPrefs: Partial<UserPrefsContext> = {};
+    try { chatbotPrefs = JSON.parse(row.chatbotPreferences) as Partial<UserPrefsContext>; } catch { /* malformed */ }
+    return {
+      favoriteMarkets,
+      defaultTimeframe: row.defaultTimeframe,
+      defaultRiskPercent: chatbotPrefs.defaultRiskPercent,
+      defaultRiskUSD: chatbotPrefs.defaultRiskUSD,
+      tradingStyle: chatbotPrefs.tradingStyle,
+      preferredSessions: chatbotPrefs.preferredSessions,
+      broker: chatbotPrefs.broker,
+      responseLength: chatbotPrefs.responseLength,
+      notes: chatbotPrefs.notes,
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function fetchRecentSetups(symbol: string | null, limit = 3): Promise<SetupContext[] | null> {
   // Lazy-import prisma so the module load order doesn't pull a DB connection
   // into the build-time module-collection phase.
@@ -356,9 +398,17 @@ function computeRiskContext(hints: RiskHints): RiskCalcContext | null {
 export async function buildDataContext(
   intent: Intent,
   message: string,
+  userId: string | null = null,
 ): Promise<DataContext> {
   const detectedSymbol = detectSymbol(message);
   const ctx: DataContext = { detectedSymbol };
+
+  // User prefs are cheap to fetch (one indexed query) and useful for almost
+  // every intent — personalize at every turn unless we know we don't need it.
+  // Only skip for general off-topic chitchat to save a query.
+  if (intent !== "GENERAL_QUESTION") {
+    ctx.userPrefs = await fetchUserPrefs(userId);
+  }
 
   // Map intents to which data layers to hydrate. We deliberately fetch only
   // what each intent actually needs — keeps the prompt tight and the LLM
@@ -448,6 +498,22 @@ export async function buildDataContext(
 // from this block, not from training data.
 export function renderDataContext(ctx: DataContext): string {
   const lines: string[] = [];
+  if (ctx.userPrefs) {
+    const p = ctx.userPrefs;
+    const prefBits: string[] = [];
+    if (p.favoriteMarkets.length > 0) prefBits.push(`favorite markets: ${p.favoriteMarkets.join(", ")}`);
+    if (p.tradingStyle) prefBits.push(`style: ${p.tradingStyle}`);
+    if (p.defaultRiskPercent != null) prefBits.push(`default risk: ${p.defaultRiskPercent}%`);
+    if (p.defaultRiskUSD != null) prefBits.push(`default $ risk: $${p.defaultRiskUSD}`);
+    if (p.defaultTimeframe) prefBits.push(`default TF: ${p.defaultTimeframe}`);
+    if (p.preferredSessions && p.preferredSessions.length > 0) prefBits.push(`sessions: ${p.preferredSessions.join("/")}`);
+    if (p.broker) prefBits.push(`broker: ${p.broker}`);
+    if (p.responseLength) prefBits.push(`prefers ${p.responseLength} responses`);
+    if (prefBits.length > 0) {
+      lines.push(`User preferences: ${prefBits.join("; ")}.`);
+    }
+    if (p.notes) lines.push(`User profile notes: ${p.notes}`);
+  }
   if (ctx.detectedSymbol) {
     const inst = ALL_INSTRUMENTS.find((i) => i.symbol === ctx.detectedSymbol);
     lines.push(`Detected symbol: ${ctx.detectedSymbol}${inst ? ` (${inst.displayName})` : ""}`);

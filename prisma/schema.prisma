@@ -66,14 +66,24 @@ model VerificationToken {
 // ==================== USER PREFERENCES ====================
 
 model UserPreference {
-  id               String   @id @default(cuid())
-  userId           String   @unique
-  favoriteMarkets  String   @default("[]")
-  defaultTimeframe String   @default("1h")
-  dashboardLayout  String   @default("[]")
-  alertSettings    String   @default("{}")
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  favoriteMarkets     String   @default("[]")
+  defaultTimeframe    String   @default("1h")
+  dashboardLayout     String   @default("[]")
+  alertSettings       String   @default("{}")
+  // Chatbot personalization. JSON shape:
+  // { defaultRiskPercent?: number,
+  //   defaultRiskUSD?: number,
+  //   tradingStyle?: "scalper" | "intraday" | "swing" | "position",
+  //   preferredSessions?: ("london" | "newyork" | "asia" | "overlap")[],
+  //   broker?: string,
+  //   responseLength?: "concise" | "detailed",
+  //   notes?: string }
+  // Empty object means "no chatbot prefs set yet — use platform defaults".
+  chatbotPreferences  String   @default("{}")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

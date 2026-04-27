@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { initialGreeting, processTurn, type ChatMessage } from "@/lib/chatbot/conversation";
 import type { AgentId } from "@/lib/chatbot/agents";
+import { getSession } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -44,10 +45,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "message is required" }, { status: 400 });
     }
 
+    // Pull user from the session cookie so we can personalize via
+    // UserPreference. Anonymous users still get full chatbot — preferences
+    // simply won't be applied.
+    const sessionUser = await getSession();
+    const userId = sessionUser?.id ?? null;
+
     const result = await processTurn(
       { messages, currentAgent, escalated },
       message,
       attachments,
+      userId,
     );
 
     return NextResponse.json({
