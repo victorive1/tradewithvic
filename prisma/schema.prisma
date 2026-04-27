@@ -21,12 +21,14 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts     Account[]
-  sessions     Session[]
-  watchlist    Watchlist[]
-  alerts       Alert[]
-  preferences  UserPreference?
-  chatSessions ChatSession[]
+  accounts        Account[]
+  sessions        Session[]
+  watchlist       Watchlist[]
+  alerts          Alert[]
+  preferences     UserPreference?
+  chatSessions    ChatSession[]
+  journalEntries  TradeJournalEntry[]
+  journalDays     TradeJournalDay[]
 }
 
 model Account {
@@ -103,6 +105,131 @@ model ChatSessionMessage {
   session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, createdAt])
+}
+
+// World-class trading journal. Each TradeJournalEntry is one trade —
+// either auto-imported from an ExecutionTrade (broker side) or logged
+// manually for trades on platforms that aren't connected. Layered on
+// top of the trade core (entry/SL/exit/PnL) is the journaling data
+// the user adds: emotional state, mistake tags, rule adherence,
+// pre-trade Trade Quality Score, screenshots, and notes. This is the
+// "studies the trader, not just the trade" surface.
+model TradeJournalEntry {
+  id                String    @id @default(cuid())
+  userId            String
+
+  // Optional link to a broker-confirmed trade. When set, entry/exit/PnL
+  // are sourced from ExecutionTrade — the journal is just the
+  // user-added overlay (notes, mistakes, emotion, grade).
+  executionTradeId  String?   @unique
+
+  // Trade core. Mirrored here so manual entries (no broker) work too.
+  symbol            String
+  direction         String    // buy | sell
+  entry             Float
+  exit              Float?
+  stopLoss          Float
+  takeProfit        Float?
+  positionSize      Float
+  riskAmount        Float?
+  riskPercent       Float?
+  realizedPnl       Float?
+  rMultiple         Float?
+
+  // Time + venue
+  openedAt          DateTime
+  closedAt          DateTime?
+  durationMinutes   Int?
+  session           String?   // london | newyork | asia | overlap | other
+  timeframe         String?   // 5m | 15m | 1h | 4h | 1d
+  broker            String?
+  account           String?
+
+  // Strategy + market context
+  strategy          String?   // inverse_fvg | supply_demand | breakout_retest | ...
+  marketCondition   String?   // trending | ranging | high_vol | low_vol | post_news
+  htfBias           String?   // bullish | bearish | neutral
+
+  // Pre-trade checklist + Trade Quality Score (computed before entry)
+  preTradeChecklist String    @default("{}") // JSON of checklist tick state
+  tradeQualityScore Int?      // 0–100
+
+  // Post-trade reflection
+  qualityGrade      String?   // A+ | A | B | C | D | F
+
+  // Emotional state — separate stages so the trader can see how mood
+  // shifted across the trade lifecycle
+  emotionBefore     String?
+  emotionDuring     String?
+  emotionAfter      String?
+
+  // Mistake tags as JSON array of strings (entered_too_early,
+  // chased_price, ignored_htf, ignored_news, risked_too_much,
+  // moved_stop, closed_too_early, revenge_trading, overtrading,
+  // low_quality_setup, etc.)
+  mistakesJson      String    @default("[]")
+
+  // Rule adherence — separate from quality grade. A trade can be
+  // perfectly executed against the rulebook and still lose.
+  rulesFollowed     Boolean   @default(true)
+  rulesViolatedJson String    @default("[]")
+  disciplineScore   Int?      // 0–100
+
+  // Free-form
+  notes             String?
+  lessonLearned     String?
+  screenshotsJson   String    @default("[]") // array of {url, label, type}
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, openedAt])
+  @@index([userId, closedAt])
+  @@index([userId, strategy])
+  @@index([userId, qualityGrade])
+}
+
+// One row per trading day. Holds daily-level fields: pre-market plan,
+// daily review, lessons learned, tomorrow's focus, and cached daily
+// totals so calendar/heatmap views render instantly.
+model TradeJournalDay {
+  id              String   @id @default(cuid())
+  userId          String
+  date            String   // YYYY-MM-DD (treated as UTC)
+
+  // Pre-market plan (filled before trading)
+  preMarketBias   String?
+  watchlistJson   String   @default("[]")
+  newsRiskJson    String   @default("[]")
+  marketView      String?
+
+  // Daily review (filled at end of day)
+  planAdherence   Int?     // 0–100
+  overtraded      Boolean  @default(false)
+  hitDailyLimit   Boolean  @default(false)
+  topMistake      String?
+  lessonLearned   String?
+  tomorrowsFocus  String?
+  notes           String?
+
+  // Cached aggregates — kept in sync by the journal API on every entry
+  // change so the calendar view doesn't need to re-aggregate every page
+  // load. Stale-tolerant: if a trade is added retroactively for an old
+  // day, the next entry-mutation for that day refreshes these.
+  pnl             Float    @default(0)
+  trades          Int      @default(0)
+  wins            Int      @default(0)
+  losses          Int      @default(0)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId, date])
 }
 
 model UserPreference {

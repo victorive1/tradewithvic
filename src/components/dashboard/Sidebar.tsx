@@ -123,6 +123,7 @@ const navItems: NavSection[] = [
     section: "Tools",
     items: [
       { label: "Day Evaluator", href: "/dashboard/evaluator", icon: "watchlist" },
+      { label: "Daily Journal", href: "/dashboard/journal", icon: "calendar" },
       { label: "Notifications", href: "/dashboard/notifications", icon: "alerts" },
       { label: "Risk Calculator", href: "/dashboard/risk", icon: "risk" },
       { label: "Watchlist", href: "/dashboard/watchlist", icon: "watchlist" },
