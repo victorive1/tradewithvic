@@ -17,6 +17,7 @@ import { classifyIntent, type Intent } from "./intent";
 import { getAnthropicClient } from "./anthropic-client";
 import { buildDataContext, renderDataContext } from "./data-context";
 import { getCachedPrefix, getDynamicSuffix } from "./system-prompts";
+import { STRATEGY_BLUEPRINT_SCHEMA, isStrategyBlueprint, type StrategyBlueprint } from "./strategy";
 
 export interface ChatMessage {
   id: string;
@@ -26,6 +27,9 @@ export interface ChatMessage {
   agentName?: string;
   timestamp: string;
   attachments?: { type: "image" | "audio"; url: string; transcription?: string }[];
+  // Structured payloads for rich rendering. Optional — text-only messages
+  // omit this. Adding new variants is a discriminated union extension.
+  structured?: { type: "strategy"; data: StrategyBlueprint };
 }
 
 export interface ConversationState {
@@ -245,30 +249,61 @@ export async function processTurn(
   }
 
   let responseContent: string;
+  let structuredPayload: ChatMessage["structured"];
   let cacheStats: TurnResult["cacheStats"];
 
+  // STRATEGY_BUILDER intent forces structured JSON output via the Messages
+  // API's output_config.format. The user gets a typed StrategyBlueprint they
+  // can render as a card / save / copy / export to bot config later.
+  const structuredMode = intent === "STRATEGY_BUILDER";
+
   try {
+    // The structured-output branch needs a higher token ceiling — strategy
+    // blueprints are ~600–1500 output tokens including pseudocode.
     const resp = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 2048,
-      // Two-block system: long frozen prefix is cache_control'd; short dynamic
-      // suffix sits after. Caches hit on every turn after the first.
+      max_tokens: structuredMode ? 4096 : 2048,
       system: [
         { type: "text", text: cachedPrefix, cache_control: { type: "ephemeral" } },
         { type: "text", text: dynamicSuffix },
       ],
       messages,
+      ...(structuredMode
+        ? {
+            output_config: {
+              format: {
+                type: "json_schema" as const,
+                schema: STRATEGY_BLUEPRINT_SCHEMA,
+              },
+            },
+          }
+        : {}),
     });
 
-    responseContent = resp.content
+    const textOut = resp.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")
       .map((b) => b.text)
       .join("\n")
       .trim();
 
-    if (!responseContent) {
-      responseContent =
-        "I generated an empty response — that's a bug on my end. Could you rephrase or ask a follow-up?";
+    if (structuredMode) {
+      // Try to parse the JSON the model returned. If it fails (rare with
+      // schema enforcement), fall back to showing the raw text so the user
+      // still gets value rather than a vague error.
+      let blueprint: unknown;
+      try { blueprint = JSON.parse(textOut); } catch { blueprint = null; }
+      if (isStrategyBlueprint(blueprint)) {
+        structuredPayload = { type: "strategy", data: blueprint };
+        responseContent = `Here's your **${blueprint.name}** strategy. Tap any section to expand. The pseudocode is at the bottom.`;
+      } else {
+        responseContent = textOut.length > 0
+          ? textOut
+          : "I couldn't structure that strategy — try rephrasing with more specifics (timeframe, instrument, entry trigger).";
+      }
+    } else {
+      responseContent = textOut.length > 0
+        ? textOut
+        : "I generated an empty response — that's a bug on my end. Could you rephrase or ask a follow-up?";
     }
 
     cacheStats = {
@@ -303,6 +338,7 @@ export async function processTurn(
     agent: currentAgent,
     agentName: agents[currentAgent].name,
     timestamp: new Date().toISOString(),
+    ...(structuredPayload ? { structured: structuredPayload } : {}),
   });
 
   return { newMessages, currentAgent, escalated, intent, cacheStats };

@@ -2,6 +2,24 @@
 
 import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
+import { StrategyBuilderCard } from "./StrategyBuilderCard";
+
+interface StrategyBlueprint {
+  name: string;
+  symbols: string[];
+  marketConditions: string;
+  timeframes: { bias: string; entry: string };
+  entryRules: string[];
+  stopLossRules: string;
+  takeProfitRules: string;
+  riskRules: string;
+  invalidationRules: string;
+  newsFilter: string;
+  sessionFilter: string;
+  backtestingPlan: string;
+  pseudocode: string;
+  alertLogic: string;
+}
 
 interface ChatMessage {
   id: string;
@@ -11,6 +29,7 @@ interface ChatMessage {
   agentName?: string;
   timestamp: string;
   attachments?: { type: "image" | "audio"; url: string; transcription?: string }[];
+  structured?: { type: "strategy"; data: StrategyBlueprint };
 }
 
 // Hard caps for image upload before sending to the server. Sonnet 4.6's
@@ -130,6 +149,9 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
           />
         ))}
         {msg.content && <div className="whitespace-pre-wrap">{msg.content}</div>}
+        {msg.structured?.type === "strategy" && (
+          <StrategyBuilderCard blueprint={msg.structured.data} />
+        )}
         <div className={cn("text-[10px] mt-1.5", isUser ? "text-white/60" : "text-muted")}>
           {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
         </div>
