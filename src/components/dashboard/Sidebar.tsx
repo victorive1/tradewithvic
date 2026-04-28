@@ -157,6 +157,7 @@ const navItems: NavSection[] = [
     requiresAccess: "agent",
     items: [
       { label: "Breakout Signals", href: "/dashboard/breakouts", icon: "setups" },
+      { label: "Bullish FVG Inversion", href: "/dashboard/bullish-fvg-inversion", icon: "setups" },
       { label: "Editor's Picks", href: "/dashboard/editors-pick", icon: "watchlist" },
       { label: "Engulfing", href: "/dashboard/engulfing", icon: "screener" },
       { label: "Inverse FVG", href: "/dashboard/inverse-fvg", icon: "setups" },

@@ -3,6 +3,7 @@ import { detectInverseFVG } from "@/lib/brain/strategies/inverse-fvg";
 import { detectOrderBlock } from "@/lib/brain/strategies/order-block";
 import { detectBreakerBlock } from "@/lib/brain/strategies/breaker-block";
 import { detectFVGContinuation } from "@/lib/brain/strategies/fvg-continuation";
+import { detectBullishFVGInversion } from "@/lib/brain/strategies/bullish-fvg-inversion";
 import type { DetectedSetup } from "@/lib/brain/strategies-types";
 
 export type { DetectedSetup };
@@ -306,7 +307,7 @@ export async function detectStrategies(
     atr: indicators?.atr14 ?? null,
   };
 
-  const detectors: Array<(c: StrategyContext) => DetectedSetup | null> = [
+  const detectors: Array<(c: StrategyContext) => DetectedSetup | null | Promise<DetectedSetup | null>> = [
     detectBreakout,
     detectPullback,
     detectSweepReversal,
@@ -314,10 +315,11 @@ export async function detectStrategies(
     detectOrderBlock,
     detectBreakerBlock,
     detectFVGContinuation,
+    detectBullishFVGInversion,
   ];
   const detected: DetectedSetup[] = [];
   for (const d of detectors) {
-    const result = d(ctx);
+    const result = await d(ctx);
     if (result) detected.push(result);
   }
 
