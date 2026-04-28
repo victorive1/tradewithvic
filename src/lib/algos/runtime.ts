@@ -320,8 +320,22 @@ async function routeOne(
 ): Promise<boolean> {
   if (!bot || !setup || !account) return false;
 
-  // Idempotency: (bot, setup, account) is unique. If another runtime
-  // pass already inserted, this throws — treat as not routed, not an error.
+  // Idempotency: AlgoBotExecution has @@unique([botId, setupId, accountLogin]).
+  // Without this short-circuit, every cron tick re-creates a TradeExecutionRequest
+  // for the same setup; the unique throw only fires after submit() at the end of
+  // this function, leaving orphaned submitted requests.
+  const existing = await prisma.algoBotExecution.findUnique({
+    where: {
+      botId_setupId_accountLogin: {
+        botId: bot.botId,
+        setupId: setup.id,
+        accountLogin: account.accountLogin,
+      },
+    },
+    select: { id: true },
+  });
+  if (existing) return false;
+
   const mapping = await mapSymbolForAccount({
     internalSymbol: setup.symbol,
     account: {
@@ -334,15 +348,14 @@ async function routeOne(
 
   const side = setup.direction === "long" ? "buy" : "sell";
 
-  // Auto Lot Sizing layer (opt-in). Two toggles:
-  //   - closeAt1R: cap the TP at +1R from entry, regardless of the setup's
-  //     natural target. Sizing stays as configured.
-  //   - autoLotSizingEnabled: solve lot size so SL = -$amount and 1R = +$amount,
-  //     using the per-pair pip math in lot-sizing.ts. Implies closeAt1R because
-  //     the dollar target is by construction the 1R level.
-  // If math fails (missing entry/SL, zero amount), fall back to fixed lot
-  // and the setup's natural TP — matches the documented escape hatch.
-  const useAutoSize = !!bot.autoLotSizingEnabled
+  // sizingMode is the primary switch. autoLotSizingEnabled is an opt-in
+  // override layer that ONLY applies when sizingMode != "fixed_lot" — fixed_lot
+  // means "use fixedLotSize verbatim", so an auto-size override would silently
+  // contradict that and produce huge lots (the $5K → 60-lot bug).
+  // closeAt1R: cap TP at +1R from entry; sizing stays as configured.
+  // Auto path: solve lot so SL = -$amount and 1R = +$amount; implies closeAt1R.
+  const useAutoSize = bot.sizingMode !== "fixed_lot"
+    && !!bot.autoLotSizingEnabled
     && bot.autoLotSizingAmount > 0
     && setup.entry > 0
     && setup.stopLoss > 0
