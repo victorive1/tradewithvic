@@ -94,6 +94,7 @@ export default function TradeOutcomesHubPage() {
   const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>("all");
   const [symbolFilter, setSymbolFilter] = useState<string>("");
   const [gradeFilter, setGradeFilter] = useState<string>("");
+  const [strategyFilter, setStrategyFilter] = useState<string>("");
   const [period, setPeriod] = useState<TimePeriod>("7d");
 
   const [selectedOutcome, setSelectedOutcome] = useState<OutcomeRow | null>(null);
@@ -145,6 +146,7 @@ export default function TradeOutcomesHubPage() {
       if (new Date(o.closedAt).getTime() < cutoff) return false;
       if (symbolFilter && !o.symbol.toLowerCase().includes(symbolFilter.toLowerCase())) return false;
       if (gradeFilter && o.grade !== gradeFilter) return false;
+      if (strategyFilter && o.strategy !== strategyFilter) return false;
       if (outcomeFilter === "wins" && !(o.outcomeState === "tp_full" || o.outcomeState === "tp_partial")) return false;
       if (outcomeFilter === "losses" && o.outcomeState !== "sl_hit") return false;
       if (outcomeFilter === "breakeven" && o.outcomeState !== "breakeven") return false;
@@ -152,9 +154,13 @@ export default function TradeOutcomesHubPage() {
       if (outcomeFilter === "invalid" && o.outcomeState !== "never_triggered") return false;
       return true;
     });
-  }, [outcomes, period, symbolFilter, gradeFilter, outcomeFilter]);
+  }, [outcomes, period, symbolFilter, gradeFilter, strategyFilter, outcomeFilter]);
 
   const uniqueSymbols = useMemo(() => Array.from(new Set(outcomes.map((o) => o.symbol))).sort(), [outcomes]);
+  const uniqueStrategies = useMemo(
+    () => Array.from(new Set(outcomes.map((o) => o.strategy).filter(Boolean))).sort(),
+    [outcomes]
+  );
 
   function addNote(outcomeId: string) {
     if (!newNote.trim()) return;
@@ -293,6 +299,16 @@ export default function TradeOutcomesHubPage() {
                 <option value="candidate">Candidate</option>
                 <option value="watch">Watch</option>
               </select>
+              <select
+                value={strategyFilter}
+                onChange={(e) => setStrategyFilter(e.target.value)}
+                className="px-3 py-1.5 rounded-lg bg-surface-2 border border-border text-xs"
+              >
+                <option value="">All strategies</option>
+                {uniqueStrategies.map((s) => (
+                  <option key={s} value={s}>{s.replace(/_/g, " ")}</option>
+                ))}
+              </select>
               <div className="flex items-center gap-1.5 flex-wrap">
                 {([
                   ["all", "All"], ["wins", "Wins"], ["losses", "Losses"], ["breakeven", "BE"], ["expired", "Expired"], ["invalid", "Invalid"],
@@ -307,7 +323,7 @@ export default function TradeOutcomesHubPage() {
                 ))}
               </div>
               <button
-                onClick={() => { setSymbolFilter(""); setGradeFilter(""); setOutcomeFilter("all"); }}
+                onClick={() => { setSymbolFilter(""); setGradeFilter(""); setStrategyFilter(""); setOutcomeFilter("all"); }}
                 className="text-[11px] text-muted hover:text-foreground underline ml-auto"
               >
                 clear filters
