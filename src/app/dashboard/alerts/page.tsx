@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
 import { computeOneR } from "@/lib/setups/one-r";
+import { isBullishDirection } from "@/lib/setups/direction";
 import { AdminRiskTargetBar, AdminLotSizeForCard } from "@/components/admin/AdminRiskTarget";
 
 type AlertView = "inbox" | "setups" | "rules" | "history" | "settings";
@@ -252,8 +253,8 @@ export default function AlertsPage() {
   const filteredSetups = setups.filter((s) => {
     if (setupFilter === "a_plus") return s.qualityGrade === "A+";
     if (setupFilter === "a") return s.qualityGrade === "A";
-    if (setupFilter === "long") return s.direction === "bullish";
-    if (setupFilter === "short") return s.direction === "bearish";
+    if (setupFilter === "long") return isBullishDirection(s.direction);
+    if (setupFilter === "short") return !isBullishDirection(s.direction);
     return true;
   });
 
@@ -261,14 +262,14 @@ export default function AlertsPage() {
     total: setups.length,
     aPlus: setups.filter((s) => s.qualityGrade === "A+").length,
     a: setups.filter((s) => s.qualityGrade === "A").length,
-    long: setups.filter((s) => s.direction === "bullish").length,
-    short: setups.filter((s) => s.direction === "bearish").length,
+    long: setups.filter((s) => isBullishDirection(s.direction)).length,
+    short: setups.filter((s) => !isBullishDirection(s.direction)).length,
   };
 
   function createAlertForSetup(setup: EliteSetup) {
     setView("rules");
     setShowBuilder(true);
-    setNewName(`${setup.qualityGrade} · ${setup.displayName} · ${setup.direction === "bullish" ? "Long" : "Short"}`);
+    setNewName(`${setup.qualityGrade} · ${setup.displayName} · ${isBullishDirection(setup.direction) ? "Long" : "Short"}`);
     setNewCategory("signal");
     setNewInstruments([setup.symbol]);
     setNewUrgency(setup.qualityGrade === "A+" ? "high" : "medium");
@@ -498,7 +499,7 @@ export default function AlertsPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {filteredSetups.map((setup) => {
-                const isBull = setup.direction === "bullish";
+                const isBull = isBullishDirection(setup.direction);
                 const gradeColor =
                   setup.qualityGrade === "A+" ? "bg-purple-500/15 text-purple-300 border-purple-500/40"
                     : setup.qualityGrade === "A" ? "bg-bull/15 text-bull-light border-bull/40"

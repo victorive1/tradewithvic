@@ -11,6 +11,7 @@ const MAX_NET_SAME_DIRECTION_PER_CURRENCY = 4;
 import { validateOrderTicket } from "@/lib/trading/validation";
 import { resolveAdapter, type NormalizedOrder } from "@/lib/trading/adapter";
 import { computeLotSize } from "@/lib/trading/lot-sizing";
+import { isBullishDirection } from "@/lib/setups/direction";
 
 /**
  * Server-side algo runtime — the thing that actually routes trades.
@@ -346,7 +347,10 @@ async function routeOne(
     },
   });
 
-  const side = setup.direction === "long" ? "buy" : "sell";
+  // Direction conventions vary across the codebase ("bullish" from Brain,
+  // "long" from older paths, "buy" from the legacy engine). Coerce here
+  // so a bullish setup never routes as a sell.
+  const side = isBullishDirection(setup.direction) ? "buy" : "sell";
 
   // sizingMode is the primary switch. autoLotSizingEnabled is an opt-in
   // override layer that ONLY applies when sizingMode != "fixed_lot" — fixed_lot

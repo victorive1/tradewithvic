@@ -6,10 +6,11 @@ import type { TradeSetup } from "@/lib/setup-engine";
 import { AdminLotSizeForCard } from "@/components/admin/AdminRiskTarget";
 import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
 import { computeOneR } from "@/lib/setups/one-r";
+import { isBullishDirection } from "@/lib/setups/direction";
 
 export function SetupCard({ setup, justUpdated = false }: { setup: TradeSetup; justUpdated?: boolean }) {
   const [expanded, setExpanded] = useState(false);
-  const isBuy = setup.direction === "buy";
+  const isBuy = isBullishDirection(setup.direction);
 
   return (
     <div className={cn(
@@ -28,7 +29,7 @@ export function SetupCard({ setup, justUpdated = false }: { setup: TradeSetup; j
           <div className="flex items-center gap-3">
             <h3 className="text-base font-bold text-foreground">{setup.displayName}</h3>
             <span className={cn("text-xs font-bold px-2.5 py-1 rounded-full uppercase", isBuy ? "badge-bull" : "badge-bear")}>
-              {setup.direction}
+              {isBuy ? "long" : "short"}
             </span>
           </div>
           <div className="flex items-center gap-2">
