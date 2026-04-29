@@ -442,11 +442,15 @@ export function ChatWidget() {
         </button>
       )}
 
-      {/* Chat window */}
+      {/* Chat window. Default position is fixed bottom-6 right-6. The
+          dragOffset moves it UP via translateY — using transform instead
+          of mutating `bottom` because transforms always render reliably
+          regardless of any containing-block weirdness from ancestor
+          backdrop-filter / transform / will-change. */}
       {isOpen && (
         <div
-          className="fixed right-6 w-[380px] h-[580px] bg-background border border-border rounded-2xl shadow-2xl shadow-black/30 flex flex-col z-50 overflow-hidden"
-          style={{ bottom: `${24 + dragOffset}px` }}
+          className="fixed bottom-6 right-6 w-[380px] h-[580px] bg-background border border-border rounded-2xl shadow-2xl shadow-black/30 flex flex-col z-50 overflow-hidden transition-transform duration-150"
+          style={{ transform: `translate3d(0, -${dragOffset}px, 0)` }}
         >
           {/* Header. The avatar+name half (below) is the drag handle —
               click and drag it up to slide the chat out of the way. */}
