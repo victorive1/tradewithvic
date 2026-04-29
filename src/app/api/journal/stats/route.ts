@@ -21,9 +21,23 @@ export async function GET(req: Request) {
     select: {
       symbol: true, strategy: true, session: true,
       realizedPnl: true, rMultiple: true, qualityGrade: true,
+      outcome: true,
       mistakesJson: true, openedAt: true, closedAt: true,
     },
   });
+
+  // Resolve W/L for an entry: explicit outcome wins; otherwise fall back
+  // to the sign of realizedPnl (only when closed). Returns null when the
+  // trade is open / unscored. Centralized so summary, byStrategy, and
+  // bySession all classify identically.
+  function resolveOutcome(e: { outcome: string | null; realizedPnl: number | null; closedAt: Date | null }): "win" | "loss" | null {
+    if (e.outcome === "win" || e.outcome === "loss") return e.outcome;
+    if (e.realizedPnl != null && e.closedAt) {
+      if (e.realizedPnl > 0) return "win";
+      if (e.realizedPnl < 0) return "loss";
+    }
+    return null;
+  }
 
   let pnl = 0;
   let wins = 0;
@@ -36,17 +50,25 @@ export async function GET(req: Request) {
   let lossStreak = 0;
   let curStreak = 0;
   for (const e of entries) {
-    if (!e.closedAt || e.realizedPnl == null) continue;
-    closed++;
-    pnl += e.realizedPnl;
-    if (e.rMultiple != null) totalR += e.rMultiple;
-    if (e.realizedPnl > 0) {
+    const wl = resolveOutcome(e);
+    // Aggregate dollar P&L only when the trade actually has a closed
+    // realizedPnl — the explicit-outcome path doesn't synthesize a
+    // dollar value. A trade tagged "win" with no exit price still
+    // increments the win count but contributes 0 to PnL.
+    const hasClosedPnl = e.closedAt != null && e.realizedPnl != null;
+    if (!wl && !hasClosedPnl) continue;
+    if (hasClosedPnl) {
+      closed++;
+      pnl += e.realizedPnl!;
+      if (e.rMultiple != null) totalR += e.rMultiple;
+    }
+    if (wl === "win") {
       wins++;
-      if (e.realizedPnl > biggestWin) biggestWin = e.realizedPnl;
+      if (hasClosedPnl && e.realizedPnl! > biggestWin) biggestWin = e.realizedPnl!;
       curStreak = 0;
-    } else if (e.realizedPnl < 0) {
+    } else if (wl === "loss") {
       losses++;
-      if (e.realizedPnl < biggestLoss) biggestLoss = e.realizedPnl;
+      if (hasClosedPnl && e.realizedPnl! < biggestLoss) biggestLoss = e.realizedPnl!;
       curStreak++;
       if (curStreak > lossStreak) lossStreak = curStreak;
     }
@@ -60,11 +82,10 @@ export async function GET(req: Request) {
     const key = e.strategy ?? "unspecified";
     const cur = strategyMap.get(key) ?? { trades: 0, wins: 0, losses: 0, pnl: 0, rSum: 0, rN: 0 };
     cur.trades++;
-    if (e.realizedPnl != null && e.closedAt) {
-      cur.pnl += e.realizedPnl;
-      if (e.realizedPnl > 0) cur.wins++;
-      else if (e.realizedPnl < 0) cur.losses++;
-    }
+    const wl = resolveOutcome(e);
+    if (e.realizedPnl != null && e.closedAt) cur.pnl += e.realizedPnl;
+    if (wl === "win") cur.wins++;
+    else if (wl === "loss") cur.losses++;
     if (e.rMultiple != null) { cur.rSum += e.rMultiple; cur.rN++; }
     strategyMap.set(key, cur);
   }
@@ -85,11 +106,10 @@ export async function GET(req: Request) {
     const key = e.session ?? "unspecified";
     const cur = sessionMap.get(key) ?? { trades: 0, pnl: 0, wins: 0, losses: 0 };
     cur.trades++;
-    if (e.realizedPnl != null && e.closedAt) {
-      cur.pnl += e.realizedPnl;
-      if (e.realizedPnl > 0) cur.wins++;
-      else if (e.realizedPnl < 0) cur.losses++;
-    }
+    const wl = resolveOutcome(e);
+    if (e.realizedPnl != null && e.closedAt) cur.pnl += e.realizedPnl;
+    if (wl === "win") cur.wins++;
+    else if (wl === "loss") cur.losses++;
     sessionMap.set(key, cur);
   }
   const bySession = [...sessionMap.entries()].map(([session, s]) => ({

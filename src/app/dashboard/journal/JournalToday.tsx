@@ -35,6 +35,7 @@ interface Entry {
   positionSize: number;
   realizedPnl: number | null;
   rMultiple: number | null;
+  outcome: "win" | "loss" | null;
   openedAt: string;
   closedAt: string | null;
   session: string | null;
@@ -214,6 +215,7 @@ function QuickLogger({ onSaved }: { onSaved: () => void }) {
   const [timeframe, setTimeframe] = useState("");
   const [emotionBefore, setEmotionBefore] = useState("");
   const [tradeQualityScore, setTradeQualityScore] = useState(70);
+  const [outcome, setOutcome] = useState<"" | "win" | "loss">("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -241,6 +243,7 @@ function QuickLogger({ onSaved }: { onSaved: () => void }) {
           timeframe: timeframe || undefined,
           emotionBefore: emotionBefore || undefined,
           tradeQualityScore,
+          outcome: outcome || undefined,
           openedAt: new Date().toISOString(),
         }),
       });
@@ -317,6 +320,28 @@ function QuickLogger({ onSaved }: { onSaved: () => void }) {
 
       <Field label={`Trade quality score: ${tradeQualityScore}`}>
         <input type="range" min="0" max="100" step="5" value={tradeQualityScore} onChange={(e) => setTradeQualityScore(parseInt(e.target.value, 10))} className="w-full" />
+      </Field>
+
+      <Field label="Outcome">
+        <div className="flex gap-1">
+          {([
+            { v: "", label: "Open", cls: "bg-surface-2 text-muted-light border-border/50" },
+            { v: "win", label: "Win", cls: "bg-bull text-white border-bull" },
+            { v: "loss", label: "Loss", cls: "bg-bear text-white border-bear" },
+          ] as const).map((o) => (
+            <button
+              key={o.v}
+              type="button"
+              onClick={() => setOutcome(o.v)}
+              className={cn(
+                "flex-1 px-2 py-1 rounded text-[11px] capitalize border",
+                outcome === o.v ? o.cls : "bg-surface-2 text-muted-light border-border/50",
+              )}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
       </Field>
 
       {error && <div className="text-[11px] text-bear-light bg-bear/10 border border-bear/30 rounded px-2 py-1">{error}</div>}
@@ -454,6 +479,7 @@ function EntryCard({ entry: e, onUpdated }: { entry: Entry; onUpdated: () => voi
   const [mistakes, setMistakes] = useState<string[]>(e.mistakes);
   const [notes, setNotes] = useState<string>(e.notes ?? "");
   const [lessonLearned, setLessonLearned] = useState<string>(e.lessonLearned ?? "");
+  const [outcome, setOutcome] = useState<"" | "win" | "loss">(e.outcome ?? "");
 
   const isClosed = e.exit != null && e.realizedPnl != null;
   const isBuy = e.direction === "buy";
@@ -476,6 +502,8 @@ function EntryCard({ entry: e, onUpdated }: { entry: Entry; onUpdated: () => voi
         mistakes,
         notes,
         lessonLearned,
+        // "" clears the outcome on the server; "win"/"loss" sets it.
+        outcome,
       }),
     });
     onUpdated();
@@ -499,6 +527,12 @@ function EntryCard({ entry: e, onUpdated }: { entry: Entry; onUpdated: () => voi
             {e.timeframe && <span className="text-[10px] text-muted-light bg-surface-2 px-1.5 py-0.5 rounded">{e.timeframe}</span>}
             {e.strategy && <span className="text-[10px] text-accent-light bg-accent/10 px-1.5 py-0.5 rounded">{e.strategy.replace(/_/g, " ")}</span>}
             {e.qualityGrade && <span className="text-[10px] font-bold text-foreground bg-surface-3 px-1.5 py-0.5 rounded">{e.qualityGrade}</span>}
+            {e.outcome === "win" && (
+              <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-bull text-white" title="Winning trade">W</span>
+            )}
+            {e.outcome === "loss" && (
+              <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-bear text-white" title="Losing trade">L</span>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <span className={cn("text-sm font-mono font-semibold", pnlClass)}>
@@ -534,7 +568,28 @@ function EntryCard({ entry: e, onUpdated }: { entry: Entry; onUpdated: () => voi
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
+              <Field label="Outcome">
+                <div className="flex gap-1">
+                  {([
+                    { v: "", label: "Open", cls: "bg-surface-2 text-muted-light border-border/50" },
+                    { v: "win", label: "Win", cls: "bg-bull text-white border-bull" },
+                    { v: "loss", label: "Loss", cls: "bg-bear text-white border-bear" },
+                  ] as const).map((o) => (
+                    <button
+                      key={o.v}
+                      type="button"
+                      onClick={() => setOutcome(o.v)}
+                      className={cn(
+                        "flex-1 px-1.5 py-1 rounded text-[10px] capitalize border",
+                        outcome === o.v ? o.cls : "bg-surface-2 text-muted-light border-border/50",
+                      )}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </Field>
               <Field label="Grade">
                 <select value={grade} onChange={(e) => setGrade(e.target.value)} className="w-full px-2 py-1 rounded bg-surface-2 border border-border text-xs">
                   <option value="">—</option>

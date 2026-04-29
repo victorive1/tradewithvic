@@ -18,6 +18,7 @@ interface PatchBody {
   closedAt?: unknown;
   realizedPnl?: unknown;
   rMultiple?: unknown;
+  outcome?: unknown;
   qualityGrade?: unknown;
   emotionBefore?: unknown;
   emotionDuring?: unknown;
@@ -53,6 +54,15 @@ function jsonArr(x: unknown): string | undefined {
 }
 function jsonObj(x: unknown): string | undefined {
   return x && typeof x === "object" && !Array.isArray(x) ? JSON.stringify(x) : undefined;
+}
+// outcome supports tri-state on PATCH:
+//   "win" | "loss"   → set
+//   ""               → clear (untag)
+//   anything else    → skip (undefined; field left untouched)
+function outcomeForPatch(x: unknown): string | null | undefined {
+  if (x === "win" || x === "loss") return x;
+  if (x === "") return null;
+  return undefined;
 }
 function date(x: unknown): Date | undefined {
   if (x instanceof Date && !Number.isNaN(x.getTime())) return x;
@@ -94,6 +104,7 @@ export async function PATCH(req: Request, { params }: RouteCtx) {
   set("durationMinutes", durationMinutes);
   set("realizedPnl", num(body.realizedPnl));
   set("rMultiple", num(body.rMultiple));
+  set("outcome", outcomeForPatch(body.outcome));
   set("qualityGrade", str(body.qualityGrade, 4));
   set("emotionBefore", str(body.emotionBefore, 32));
   set("emotionDuring", str(body.emotionDuring, 32));

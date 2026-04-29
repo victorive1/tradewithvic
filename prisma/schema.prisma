@@ -136,6 +136,12 @@ model TradeJournalEntry {
   realizedPnl       Float?
   rMultiple         Float?
 
+  // Explicit win/loss tag — set by the user when logging or closing the
+  // trade. Sourced separately from realizedPnl so a trade can be marked
+  // even without exit numbers, and so user intent overrides raw P&L sign.
+  // Values: "win" | "loss" | null (open/untagged).
+  outcome           String?
+
   // Time + venue
   openedAt          DateTime
   closedAt          DateTime?

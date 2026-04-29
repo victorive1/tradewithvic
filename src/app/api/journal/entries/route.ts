@@ -20,6 +20,7 @@ interface CreateEntryBody {
   riskPercent?: unknown;
   realizedPnl?: unknown;
   rMultiple?: unknown;
+  outcome?: unknown;
   openedAt?: unknown;
   closedAt?: unknown;
   session?: unknown;
@@ -61,6 +62,9 @@ function asJsonArray(x: unknown): string {
 }
 function asJsonObject(x: unknown): string {
   return JSON.stringify(x && typeof x === "object" && !Array.isArray(x) ? x : {});
+}
+function asOutcome(x: unknown): string | null {
+  return x === "win" || x === "loss" ? x : null;
 }
 function asDate(x: unknown, fallback: Date | null = null): Date | null {
   if (x instanceof Date && !Number.isNaN(x.getTime())) return x;
@@ -159,6 +163,7 @@ export async function POST(req: Request) {
       riskPercent: asNumber(body.riskPercent),
       realizedPnl,
       rMultiple,
+      outcome: asOutcome(body.outcome),
       openedAt,
       closedAt,
       durationMinutes,
@@ -217,6 +222,7 @@ export function serialize(e: NonNullable<EntryRow>) {
     riskPercent: e.riskPercent,
     realizedPnl: e.realizedPnl,
     rMultiple: e.rMultiple,
+    outcome: e.outcome,
     openedAt: e.openedAt.toISOString(),
     closedAt: e.closedAt?.toISOString() ?? null,
     durationMinutes: e.durationMinutes,
