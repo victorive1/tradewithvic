@@ -193,8 +193,51 @@ export function ChatWidget() {
   const [imageError, setImageError] = useState<string | null>(null);
   const [showPrefs, setShowPrefs] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  // Vertical drag offset above the default `bottom-6` resting position.
+  // Lives in component state only — no persistence — so a refresh resets
+  // the chat back to the default bottom-right corner.
+  const [dragOffset, setDragOffset] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Drag the chat window up out of the way when it covers something on the
+  // page (e.g. the bottom-most journal entry's edit button). Only the
+  // header is the grab handle, and clicks on header buttons short-circuit
+  // before drag starts. Vertical only — horizontal stays pinned to the
+  // right edge.
+  function startHeaderDrag(e: React.MouseEvent | React.TouchEvent) {
+    if ((e.target as HTMLElement).closest("button")) return;
+    e.preventDefault();
+    const startY = "touches" in e ? e.touches[0].clientY : e.clientY;
+    const startOffset = dragOffset;
+    setIsDragging(true);
+
+    const onMove = (ev: MouseEvent | TouchEvent) => {
+      const y = "touches" in ev ? (ev.touches[0]?.clientY ?? startY) : ev.clientY;
+      // dragging up = positive offset = chat moves toward the top
+      const delta = startY - y;
+      // Keep the chat fully on-screen. 580px window height + 24px default
+      // bottom margin + small buffer at viewport top.
+      const maxUp = Math.max(0, window.innerHeight - 580 - 24 - 8);
+      const next = Math.max(0, Math.min(maxUp, startOffset + delta));
+      setDragOffset(next);
+      if ("touches" in ev) ev.preventDefault();
+    };
+    const onEnd = () => {
+      setIsDragging(false);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onEnd);
+      window.removeEventListener("touchmove", onMove as EventListener);
+      window.removeEventListener("touchend", onEnd);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onEnd);
+    // passive: false so we can call preventDefault to stop the page from
+    // scrolling along with the drag on touch devices.
+    window.addEventListener("touchmove", onMove as EventListener, { passive: false });
+    window.addEventListener("touchend", onEnd);
+  }
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -382,9 +425,21 @@ export function ChatWidget() {
 
       {/* Chat window */}
       {isOpen && (
-        <div className="fixed bottom-6 right-6 w-[380px] h-[580px] bg-background border border-border rounded-2xl shadow-2xl shadow-black/30 flex flex-col z-50 overflow-hidden">
-          {/* Header */}
-          <div className="bg-surface border-b border-border/50 px-4 py-3 flex items-center justify-between flex-shrink-0">
+        <div
+          className="fixed right-6 w-[380px] h-[580px] bg-background border border-border rounded-2xl shadow-2xl shadow-black/30 flex flex-col z-50 overflow-hidden"
+          style={{ bottom: `${24 + dragOffset}px` }}
+        >
+          {/* Header — also the drag handle. Click + drag anywhere on the
+              bar (except the button cluster) to slide the chat up so it
+              stops blocking page content beneath it. */}
+          <div
+            onMouseDown={startHeaderDrag}
+            onTouchStart={startHeaderDrag}
+            className={cn(
+              "bg-surface border-b border-border/50 px-4 py-3 flex items-center justify-between flex-shrink-0 select-none",
+              isDragging ? "cursor-grabbing" : "cursor-grab",
+            )}
+          >
             <div className="flex items-center gap-3">
               <div className={cn("w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold",
                 agentColors[conversation?.currentAgent || "base"])}>
