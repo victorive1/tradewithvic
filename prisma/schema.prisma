@@ -1385,6 +1385,12 @@ model TradeSetup {
   originalThesis            String?
   requiredConditionsJson    String   @default("[]")
   invalidationConditionsJson String  @default("[]")
+  // Free-form per-strategy payload. Triple Lock uses it to store the
+  // 12-gate breakdown (pass/fail, points, evidence string, source =
+  // direct/heuristic) so the UI can render the read-only checklist
+  // exactly as it stood at detection time. Other strategies can use
+  // this column for whatever per-detection metadata they need.
+  metadataJson              String?
   status          String    @default("active")
   validUntil      DateTime?
   createdAt       DateTime  @default(now())

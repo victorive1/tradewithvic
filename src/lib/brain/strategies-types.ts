@@ -21,4 +21,8 @@ export interface DetectedSetup {
   originalThesis?: string;
   requiredConditions?: string[];
   invalidationConditions?: string[];
+  // Free-form per-detection payload. Persisted as TradeSetup.metadataJson.
+  // Triple Lock uses it for the 12-gate breakdown so the UI can render
+  // the read-only checklist exactly as it stood at detection time.
+  metadata?: unknown;
 }

@@ -373,6 +373,7 @@ export async function detectStrategies(
       originalThesis: s.originalThesis ?? s.explanation,
       requiredConditionsJson: JSON.stringify(s.requiredConditions ?? defaultRequired(s)),
       invalidationConditionsJson: JSON.stringify(s.invalidationConditions ?? defaultInvalidation(s)),
+      metadataJson: s.metadata !== undefined ? JSON.stringify(s.metadata) : null,
       status: "active",
       validUntil: new Date(validUntilBase + s.validHours * 60 * 60 * 1000),
     })),
