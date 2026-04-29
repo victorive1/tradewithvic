@@ -432,14 +432,55 @@ export function ChatWidget() {
 
   return (
     <>
-      {/* Launcher button */}
+      {/* Launcher button + nudge controls. The launcher AND the up/down
+          arrow column share the same dragOffset so they slide up together
+          and the arrows stay visually anchored next to the launcher. */}
       {!isOpen && (
-        <button onClick={handleOpen}
-          className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-accent hover:bg-accent-light text-white shadow-lg shadow-accent/25 flex items-center justify-center transition-all hover:scale-105 z-50">
-          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-          </svg>
-        </button>
+        <>
+          {/* Up/down nudge column — sits to the LEFT of the launcher
+              bubble so users see "I can move the chat" without opening it. */}
+          <div
+            className="fixed flex flex-col gap-1 z-50 transition-transform duration-150"
+            style={{
+              right: "88px",
+              bottom: "24px",
+              transform: `translate3d(0, -${dragOffset}px, 0)`,
+            }}
+          >
+            <button
+              onClick={nudgeUp}
+              disabled={atTop}
+              className="w-7 h-7 rounded-full bg-surface-2 hover:bg-surface-3 text-foreground border border-border/50 shadow flex items-center justify-center transition-smooth disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Move chat up"
+              aria-label="Move chat up"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+              </svg>
+            </button>
+            <button
+              onClick={nudgeDown}
+              disabled={atBottom}
+              className="w-7 h-7 rounded-full bg-surface-2 hover:bg-surface-3 text-foreground border border-border/50 shadow flex items-center justify-center transition-smooth disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Move chat down"
+              aria-label="Move chat down"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          </div>
+
+          <button
+            onClick={handleOpen}
+            className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-accent hover:bg-accent-light text-white shadow-lg shadow-accent/25 flex items-center justify-center transition-transform duration-150 hover:scale-105 z-50"
+            style={{ transform: `translate3d(0, -${dragOffset}px, 0)` }}
+          >
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+          </button>
+        </>
       )}
 
       {/* Chat window. Default position is fixed bottom-6 right-6. The
