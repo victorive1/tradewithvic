@@ -12,6 +12,11 @@ export interface StrategyMeta {
   family: StrategyFamily;
   // Short one-liner for the strategy-picker dropdown / tooltip.
   blurb?: string;
+  // Path to the strategy's dedicated dashboard tab, if one exists.
+  // The "A & A+ Only" tab uses this to render an "open in tab" link
+  // on each card. Strategies without a dedicated tab fall back to a
+  // strategy-filtered Strategy Bible link.
+  dedicatedTab?: string;
 }
 
 // Curated registry. Anything in the DB but not here renders with the
@@ -21,11 +26,14 @@ export const STRATEGY_REGISTRY: StrategyMeta[] = [
   { setupType: "fvg_continuation",          label: "FVG Continuation",          family: "ICT",
     blurb: "Fill of a 3-candle imbalance in the trend direction." },
   { setupType: "inverse_fvg",               label: "Inverse FVG",               family: "ICT",
+    dedicatedTab: "/dashboard/inverse-fvg",
     blurb: "FVG flipped after a close-through — old support becomes resistance and vice versa." },
   { setupType: "bullish_fvg_inversion",     label: "Bullish FVG Inversion",     family: "ICT",
+    dedicatedTab: "/dashboard/bullish-fvg-inversion",
     blurb: "1H FVG tap from discount + 5min bearish FVG failure → bullish inversion zone." },
   // ── PDF Strategy 02: Order Block ──
   { setupType: "order_block",               label: "Order Block",               family: "ICT",
+    dedicatedTab: "/dashboard/order-blocks",
     blurb: "Last opposite-coloured candle before a confirmed BOS impulse — institutional order zone." },
   { setupType: "breaker_block",             label: "Breaker Block",             family: "ICT",
     blurb: "Order Block whose protective swing was swept then broken — flipped role." },
@@ -34,12 +42,14 @@ export const STRATEGY_REGISTRY: StrategyMeta[] = [
     blurb: "Stop hunt beyond an obvious level followed by sharp reversal." },
   // ── PDF Strategy 11: Breakout ──
   { setupType: "breakout",                  label: "Breakout",                  family: "HYBRID",
+    dedicatedTab: "/dashboard/breakouts",
     blurb: "Body close through prior day high/low with displacement." },
   // ── PDF Strategy 14: Pullback / Trend Continuation ──
   { setupType: "trend_pullback",            label: "Trend Pullback",            family: "SMC",
     blurb: "Pullback to EMA20 inside an aligned trend, RSI in entry band." },
   // ── PDF Strategy 12: PO3 / Triple Lock ──
   { setupType: "triple_lock",               label: "Power of 3 (Triple Lock)",  family: "ELITE",
+    dedicatedTab: "/dashboard/triple-lock",
     blurb: "PO3 + VP/OF + CCTE — 12-gate composite, EPS-scored." },
   // ── PDF Strategy 03: BOS / CHoCH ──
   { setupType: "bos_setup",                 label: "BOS Continuation",          family: "SMC",
