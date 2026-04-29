@@ -156,6 +156,7 @@ const navItems: NavSection[] = [
     section: "Signals",
     requiresAccess: "agent",
     items: [
+      { label: "Strategy Bible", href: "/dashboard/strategy-bible", icon: "setups" },
       { label: "Breakout Signals", href: "/dashboard/breakouts", icon: "setups" },
       { label: "Bullish FVG Inversion", href: "/dashboard/bullish-fvg-inversion", icon: "setups" },
       { label: "Editor's Picks", href: "/dashboard/editors-pick", icon: "watchlist" },
