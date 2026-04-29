@@ -243,6 +243,21 @@ export function ChatWidget() {
     handle.addEventListener("pointercancel", onEnd);
   }
 
+  // Arrow-button alternative to drag — guaranteed to work no matter what.
+  // Each click moves the chat 80px in the chosen direction. Same bounds
+  // as the drag (max up keeps it on-screen, min 0 = default position).
+  const NUDGE_PX = 80;
+  function nudgeUp() {
+    const maxUp = typeof window === "undefined" ? 0 : Math.max(0, window.innerHeight - 580 - 24 - 8);
+    setDragOffset((o) => Math.min(maxUp, o + NUDGE_PX));
+  }
+  function nudgeDown() {
+    setDragOffset((o) => Math.max(0, o - NUDGE_PX));
+  }
+  const maxUpRender = typeof window === "undefined" ? Infinity : Math.max(0, window.innerHeight - 580 - 24 - 8);
+  const atTop = dragOffset >= maxUpRender;
+  const atBottom = dragOffset <= 0;
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [conversation?.messages]);
@@ -461,6 +476,30 @@ export function ChatWidget() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {/* Move chat up — out of the way of page content underneath. */}
+              <button
+                onClick={nudgeUp}
+                disabled={atTop}
+                className="text-muted hover:text-muted-light transition-smooth disabled:opacity-30 disabled:cursor-not-allowed"
+                title="Move chat up"
+                aria-label="Move chat up"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M5 15l7-7 7 7" />
+                </svg>
+              </button>
+              {/* Move chat back down toward the default bottom-right corner. */}
+              <button
+                onClick={nudgeDown}
+                disabled={atBottom}
+                className="text-muted hover:text-muted-light transition-smooth disabled:opacity-30 disabled:cursor-not-allowed"
+                title="Move chat down"
+                aria-label="Move chat down"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
               <button
                 onClick={newConversation}
                 className="text-muted hover:text-muted-light transition-smooth"
