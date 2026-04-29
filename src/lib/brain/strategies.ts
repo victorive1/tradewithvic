@@ -11,6 +11,9 @@ import { detectDealingRangeOte } from "@/lib/brain/strategies/dealing-range-ote"
 import { detectSilverBullet } from "@/lib/brain/strategies/silver-bullet";
 import { detectMmbm } from "@/lib/brain/strategies/mmbm";
 import { detectLondonBreakout } from "@/lib/brain/strategies/london-breakout";
+import { detectCrt } from "@/lib/brain/strategies/crt";
+import { detectCisd } from "@/lib/brain/strategies/cisd";
+import { detectWyckoff } from "@/lib/brain/strategies/wyckoff";
 import type { DetectedSetup } from "@/lib/brain/strategies-types";
 
 export type { DetectedSetup };
@@ -330,6 +333,9 @@ export async function detectStrategies(
     detectSilverBullet,
     detectMmbm,
     detectLondonBreakout,
+    detectCrt,
+    detectCisd,
+    detectWyckoff,
   ];
   const detected: DetectedSetup[] = [];
   for (const d of detectors) {
