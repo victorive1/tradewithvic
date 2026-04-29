@@ -202,41 +202,45 @@ export function ChatWidget() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Drag the chat window up out of the way when it covers something on the
-  // page (e.g. the bottom-most journal entry's edit button). Only the
-  // header is the grab handle, and clicks on header buttons short-circuit
-  // before drag starts. Vertical only — horizontal stays pinned to the
-  // right edge.
-  function startHeaderDrag(e: React.MouseEvent | React.TouchEvent) {
-    if ((e.target as HTMLElement).closest("button")) return;
+  // page (e.g. the bottom-most journal entry's edit button). The grab
+  // handle is the LEFT half of the header (avatar + name) — physically
+  // separate from the button cluster, so there's no chance of a button
+  // click swallowing the drag. Vertical only; horizontal stays pinned
+  // to the right edge.
+  //
+  // Uses Pointer Events + setPointerCapture so the drag continues even
+  // if the cursor leaves the handle, and the same code path covers
+  // mouse, touch and pen.
+  function startHeaderDrag(e: React.PointerEvent<HTMLDivElement>) {
     e.preventDefault();
-    const startY = "touches" in e ? e.touches[0].clientY : e.clientY;
+    const handle = e.currentTarget;
+    const pointerId = e.pointerId;
+    const startY = e.clientY;
     const startOffset = dragOffset;
+
+    handle.setPointerCapture(pointerId);
     setIsDragging(true);
 
-    const onMove = (ev: MouseEvent | TouchEvent) => {
-      const y = "touches" in ev ? (ev.touches[0]?.clientY ?? startY) : ev.clientY;
+    const onMove = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
       // dragging up = positive offset = chat moves toward the top
-      const delta = startY - y;
-      // Keep the chat fully on-screen. 580px window height + 24px default
-      // bottom margin + small buffer at viewport top.
+      const delta = startY - ev.clientY;
+      // Keep the chat fully on-screen: 580px window + 24px default bottom
+      // margin + small buffer at the viewport top.
       const maxUp = Math.max(0, window.innerHeight - 580 - 24 - 8);
-      const next = Math.max(0, Math.min(maxUp, startOffset + delta));
-      setDragOffset(next);
-      if ("touches" in ev) ev.preventDefault();
+      setDragOffset(Math.max(0, Math.min(maxUp, startOffset + delta)));
     };
-    const onEnd = () => {
+    const onEnd = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
       setIsDragging(false);
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onEnd);
-      window.removeEventListener("touchmove", onMove as EventListener);
-      window.removeEventListener("touchend", onEnd);
+      try { handle.releasePointerCapture(pointerId); } catch { /* already released */ }
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onEnd);
+      handle.removeEventListener("pointercancel", onEnd);
     };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onEnd);
-    // passive: false so we can call preventDefault to stop the page from
-    // scrolling along with the drag on touch devices.
-    window.addEventListener("touchmove", onMove as EventListener, { passive: false });
-    window.addEventListener("touchend", onEnd);
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onEnd);
+    handle.addEventListener("pointercancel", onEnd);
   }
 
   useEffect(() => {
@@ -429,18 +433,17 @@ export function ChatWidget() {
           className="fixed right-6 w-[380px] h-[580px] bg-background border border-border rounded-2xl shadow-2xl shadow-black/30 flex flex-col z-50 overflow-hidden"
           style={{ bottom: `${24 + dragOffset}px` }}
         >
-          {/* Header — also the drag handle. Click + drag anywhere on the
-              bar (except the button cluster) to slide the chat up so it
-              stops blocking page content beneath it. */}
-          <div
-            onMouseDown={startHeaderDrag}
-            onTouchStart={startHeaderDrag}
-            className={cn(
-              "bg-surface border-b border-border/50 px-4 py-3 flex items-center justify-between flex-shrink-0 select-none",
-              isDragging ? "cursor-grabbing" : "cursor-grab",
-            )}
-          >
-            <div className="flex items-center gap-3">
+          {/* Header. The avatar+name half (below) is the drag handle —
+              click and drag it up to slide the chat out of the way. */}
+          <div className="bg-surface border-b border-border/50 px-4 py-3 flex items-center justify-between flex-shrink-0">
+            <div
+              onPointerDown={startHeaderDrag}
+              className={cn(
+                "flex items-center gap-3 select-none touch-none",
+                isDragging ? "cursor-grabbing" : "cursor-grab",
+              )}
+              title="Drag up to move the chat out of the way"
+            >
               <div className={cn("w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold",
                 agentColors[conversation?.currentAgent || "base"])}>
                 {agentAvatars[conversation?.currentAgent || "base"]}
