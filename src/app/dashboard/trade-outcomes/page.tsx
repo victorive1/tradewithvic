@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
-type SourceFilter = "all" | "executed" | "virtual";
+type SourceFilter = "all" | "executed" | "virtual" | "signal";
 type OutcomeFilter = "all" | "wins" | "losses" | "breakeven" | "expired" | "invalid";
 type TimePeriod = "24h" | "7d" | "30d" | "all";
 
@@ -267,7 +267,7 @@ export default function TradeOutcomesHubPage() {
               <h2 className="text-sm font-semibold uppercase tracking-wide">Outcome Records ({filteredOutcomes.length})</h2>
               <div className="flex items-center gap-1.5 flex-wrap">
                 {([
-                  ["all", "All"], ["executed", "Brain Paper"], ["virtual", "Virtual"],
+                  ["all", "All"], ["executed", "Brain Paper"], ["virtual", "Virtual"], ["signal", "Signals Fired"],
                 ] as const).map(([id, label]) => (
                   <button
                     key={id}
@@ -366,7 +366,9 @@ export default function TradeOutcomesHubPage() {
                           <td className="py-2.5 px-3 font-mono text-muted-light">{timeAgo(o.closedAt)}</td>
                           <td className="px-2">
                             <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold uppercase",
-                              o.source === "brain_paper" ? "bg-accent/10 text-accent-light" : "bg-purple-500/10 text-purple-300"
+                              o.source === "brain_paper" ? "bg-accent/10 text-accent-light"
+                              : o.source === "brain_virtual" ? "bg-purple-500/10 text-purple-300"
+                              : "bg-warn/10 text-warn-light",
                             )}>
                               {o.sourceLabel}
                             </span>
@@ -488,7 +490,9 @@ function OutcomeDrawer({
         <div className="glass-card p-4">
           <div className="flex items-center gap-3 flex-wrap">
             <span className={cn("px-2 py-0.5 rounded text-xs font-bold uppercase",
-              outcome.source === "brain_paper" ? "bg-accent/15 text-accent-light" : "bg-purple-500/15 text-purple-300"
+              outcome.source === "brain_paper" ? "bg-accent/15 text-accent-light"
+              : outcome.source === "brain_virtual" ? "bg-purple-500/15 text-purple-300"
+              : "bg-warn/15 text-warn-light",
             )}>
               {outcome.sourceLabel}
             </span>

@@ -6,12 +6,16 @@ export const revalidate = 0;
 
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
-  const source = sp.get("source") ?? "all"; // all | executed | virtual
+  const source = sp.get("source") ?? "all"; // all | executed | virtual | signal
   const symbol = sp.get("symbol");
   const grade = sp.get("grade");
   const take = Math.min(500, parseInt(sp.get("take") ?? "100"));
 
   const rows: any[] = [];
+  // Track which setupIds we've already represented so the "signal" branch
+  // can skip TradeSetup rows that already exist in the executed or virtual
+  // sources (they'd otherwise appear twice in the "all" view).
+  const seenSetupIds = new Set<string>();
 
   if (source === "all" || source === "executed") {
     const trades = await prisma.executionTrade.findMany({
@@ -51,6 +55,7 @@ export async function GET(req: NextRequest) {
     const logById = new Map(decisionLogs.map((d: any) => [d.id, d]));
 
     for (const t of trades) {
+      if (t.setupId) seenSetupIds.add(t.setupId);
       const outcomeState = t.realizedPnl > 0
         ? (t.rMultiple >= 1.5 ? "tp_full" : "tp_partial")
         : t.realizedPnl < 0 ? "sl_hit" : "breakeven";
@@ -113,6 +118,7 @@ export async function GET(req: NextRequest) {
       const log = o.setupDecisionLog;
       if (symbol && log.symbol !== symbol) continue;
       if (grade && log.qualityLabel !== grade) continue;
+      if (log.setupId) seenSetupIds.add(log.setupId);
       const outcomeState = o.outcomeClass === "excellent" ? "tp_full"
         : o.outcomeClass === "good" ? "tp_partial"
           : o.outcomeClass === "poor" ? "sl_hit"
@@ -159,6 +165,85 @@ export async function GET(req: NextRequest) {
         mfe: o.maxFavorableExcursion ?? 0,
         mae: o.maxAdverseExcursion ?? 0,
         outcomeClass: o.outcomeClass,
+      });
+    }
+  }
+
+  // ── Source 3: raw TradeSetup rows (signals fired by the brain) ───────
+  // Most new strategies (FVG variants, BOS/CHoCH, Triple Lock, MMBM, CRT,
+  // CISD, Wyckoff, Silver Bullet, London Breakout, SMT, Engulfing+SMC,
+  // EPS Aggregation, etc.) don't get auto-executed by the bots and don't
+  // get a SetupOutcome until retroactive labeling runs — so they'd
+  // disappear from this tab entirely. Surfacing them as "Signal Fired"
+  // rows means the user sees every detection the brain has ever made.
+  if (source === "all" || source === "signal") {
+    const setups = await prisma.tradeSetup.findMany({
+      where: {
+        ...(symbol ? { symbol } : {}),
+        ...(grade ? { qualityGrade: grade } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      take,
+      include: {
+        instrument: { select: { displayName: true } },
+      },
+    });
+    // Dedup near-identical re-fires the same way the strategy-bible API
+    // does — bucket by (symbol, setupType, timeframe, direction, entry±0.1%)
+    // so a recurring setup shows once instead of 5-10 times.
+    const buckets = new Map<string, typeof setups>();
+    for (const s of setups) {
+      const entryBucket = Math.round(s.entry / Math.max(s.entry * 0.001, 1e-9));
+      const key = `${s.symbol}|${s.setupType}|${s.timeframe}|${s.direction}|${entryBucket}`;
+      const arr = buckets.get(key) ?? [];
+      arr.push(s);
+      buckets.set(key, arr);
+    }
+
+    for (const arr of buckets.values()) {
+      arr.sort((a, b) => {
+        if (a.confidenceScore !== b.confidenceScore) return b.confidenceScore - a.confidenceScore;
+        return b.createdAt.getTime() - a.createdAt.getTime();
+      });
+      const s = arr[0];
+      // Skip if the executed or virtual branch already represents this setup.
+      if (seenSetupIds.has(s.id)) continue;
+      // outcomeState — try to infer from the setup's lifecycle status.
+      // status === "expired" means the setup's validUntil passed without
+      // a recorded execution/outcome. Otherwise it's still live.
+      const outcomeState = s.status === "expired" ? "expired" : "pending";
+      rows.push({
+        id: `setup-${s.id}`,
+        source: "brain_signal",
+        sourceLabel: "Signal Fired",
+        symbol: s.symbol,
+        displayName: s.instrument?.displayName ?? s.symbol,
+        timeframe: s.timeframe,
+        strategy: s.setupType,
+        setupId: s.id,
+        grade: s.qualityGrade,
+        originalScore: s.confidenceScore,
+        scoreBreakdown: null,
+        liveScoreRange: { max: null, min: null },
+        direction: s.direction,
+        outcomeState,
+        entry: s.entry,
+        exit: null,
+        stopLoss: s.stopLoss,
+        sizeUnits: null,
+        riskAmount: null,
+        realizedPnl: null,
+        pnlPct: null,
+        rMultiple: null,
+        exitReason: outcomeState === "expired" ? "expired" : "pending",
+        openedAt: s.createdAt,
+        // No close yet — sort by createdAt so they take their natural slot
+        // in the combined timeline.
+        closedAt: s.createdAt,
+        durationMinutes: null,
+        mfe: 0,
+        mae: 0,
+        duplicateCount: arr.length - 1,
       });
     }
   }
