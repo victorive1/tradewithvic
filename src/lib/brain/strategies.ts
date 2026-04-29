@@ -5,6 +5,7 @@ import { detectBreakerBlock } from "@/lib/brain/strategies/breaker-block";
 import { detectFVGContinuation } from "@/lib/brain/strategies/fvg-continuation";
 import { detectBullishFVGInversion } from "@/lib/brain/strategies/bullish-fvg-inversion";
 import { detectTripleLock } from "@/lib/brain/strategies/triple-lock";
+import { detectBosChoch } from "@/lib/brain/strategies/bos-choch";
 import type { DetectedSetup } from "@/lib/brain/strategies-types";
 
 export type { DetectedSetup };
@@ -318,6 +319,7 @@ export async function detectStrategies(
     detectFVGContinuation,
     detectBullishFVGInversion,
     detectTripleLock,
+    detectBosChoch,
   ];
   const detected: DetectedSetup[] = [];
   for (const d of detectors) {
