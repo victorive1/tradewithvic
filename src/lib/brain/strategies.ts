@@ -6,6 +6,8 @@ import { detectFVGContinuation } from "@/lib/brain/strategies/fvg-continuation";
 import { detectBullishFVGInversion } from "@/lib/brain/strategies/bullish-fvg-inversion";
 import { detectTripleLock } from "@/lib/brain/strategies/triple-lock";
 import { detectBosChoch } from "@/lib/brain/strategies/bos-choch";
+import { detectEngulfingSmc } from "@/lib/brain/strategies/engulfing-smc";
+import { detectDealingRangeOte } from "@/lib/brain/strategies/dealing-range-ote";
 import type { DetectedSetup } from "@/lib/brain/strategies-types";
 
 export type { DetectedSetup };
@@ -320,6 +322,8 @@ export async function detectStrategies(
     detectBullishFVGInversion,
     detectTripleLock,
     detectBosChoch,
+    detectEngulfingSmc,
+    detectDealingRangeOte,
   ];
   const detected: DetectedSetup[] = [];
   for (const d of detectors) {
