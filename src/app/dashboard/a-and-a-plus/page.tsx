@@ -76,8 +76,11 @@ export default function AAndAplusPage() {
 
   useEffect(() => {
     let cancelled = false;
-    async function load() {
-      if (pausedRef.current) return;
+    // `viaInterval` distinguishes the two callers: filter changes /
+    // initial load fetch unconditionally, while interval ticks honour
+    // pausedRef so the list doesn't refresh under the user's cursor.
+    async function load(viaInterval: boolean) {
+      if (viaInterval && pausedRef.current) return;
       try {
         const params = new URLSearchParams({
           strategy: strategyFilter,
@@ -90,9 +93,6 @@ export default function AAndAplusPage() {
         const data = await res.json();
         if (!cancelled) {
           if (Array.isArray(data.signals)) {
-            // Detect which signals are NEW since the last poll so the UI
-            // can highlight them. First poll has no comparison baseline,
-            // so nothing is "new".
             const incoming: Signal[] = data.signals;
             const incomingIds = new Set(incoming.map((s) => s.id));
             if (lastSignalIds.current.size > 0) {
@@ -101,7 +101,6 @@ export default function AAndAplusPage() {
                 if (!lastSignalIds.current.has(s.id)) fresh.add(s.id);
               }
               if (fresh.size > 0) setNewSinceLastView(fresh);
-              // Clear "new" markers after 8 seconds so the highlight isn't permanent.
               setTimeout(() => setNewSinceLastView(new Set()), 8000);
             }
             lastSignalIds.current = incomingIds;
@@ -115,8 +114,8 @@ export default function AAndAplusPage() {
       }
       if (!cancelled) setLoading(false);
     }
-    load();
-    const id = setInterval(load, POLL_MS);
+    load(false);
+    const id = setInterval(() => load(true), POLL_MS);
     return () => { cancelled = true; clearInterval(id); };
   }, [strategyFilter, timeframeFilter]);
 

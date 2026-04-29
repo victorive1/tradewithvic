@@ -87,8 +87,10 @@ export default function StrategyBiblePage() {
 
   useEffect(() => {
     let cancelled = false;
-    async function load() {
-      if (pausedRef.current) return;
+    // `viaInterval` lets filter changes + initial load bypass the
+    // hover-pause; only interval ticks honour pausedRef.
+    async function load(viaInterval: boolean) {
+      if (viaInterval && pausedRef.current) return;
       try {
         const params = new URLSearchParams({
           strategy: strategyFilter,
@@ -108,8 +110,8 @@ export default function StrategyBiblePage() {
       }
       if (!cancelled) setLoading(false);
     }
-    load();
-    const id = setInterval(load, 60_000);
+    load(false);
+    const id = setInterval(() => load(true), 60_000);
     return () => { cancelled = true; clearInterval(id); };
   }, [strategyFilter, timeframeFilter, gradeQuery]);
 
