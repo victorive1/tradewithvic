@@ -38,6 +38,7 @@ interface Signal {
   validUntil: string | null;
   createdAt: string;
   metadata: unknown;
+  duplicateCount?: number; // count of near-duplicate rows the API collapsed onto this one
 }
 
 interface Facets {
@@ -274,6 +275,14 @@ export default function AAndAplusPage() {
                     <span className="bg-surface-2 px-2 py-0.5 rounded">{meta.family}</span>
                     <span>{timeAgo(s.createdAt)}</span>
                     <span className="font-mono">RR {s.riskReward.toFixed(2)}</span>
+                    {s.duplicateCount != null && s.duplicateCount > 0 && (
+                      <span
+                        className="bg-muted/10 text-muted-light px-2 py-0.5 rounded border border-border/30"
+                        title="Brain re-detected this setup multiple times; older near-duplicates collapsed"
+                      >
+                        +{s.duplicateCount} re-fires
+                      </span>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-1 text-[11px] font-mono">

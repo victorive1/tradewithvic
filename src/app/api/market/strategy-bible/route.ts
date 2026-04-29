@@ -68,9 +68,19 @@ export async function GET(req: Request) {
       }),
     ]);
 
+    // Dedup near-identical rows. The brain re-fires the same setup
+    // every 2-min scan if conditions persist; its built-in dedup only
+    // blocks within a 30-min window, so over a few hours the same
+    // setup accumulates 5–10 near-identical rows. Bucket by
+    // (symbol, setupType, timeframe, direction, ~entry price) and
+    // keep the survivor with the highest confidence (tie-break: most
+    // recent). Suppressed siblings get counted onto the survivor as
+    // `duplicateCount` so the UI can surface "+5 more like this".
+    const dedupedRows = dedupNearDuplicates(rows);
+
     return NextResponse.json(
       {
-        signals: rows.map((r) => {
+        signals: dedupedRows.map(({ row: r, duplicateCount }) => {
           let metadata: unknown = null;
           if (r.metadataJson) {
             try { metadata = JSON.parse(r.metadataJson); }
@@ -98,6 +108,7 @@ export async function GET(req: Request) {
             validUntil: r.validUntil?.toISOString() ?? null,
             createdAt: r.createdAt.toISOString(),
             metadata,
+            duplicateCount,
           };
         }),
         facets: {
@@ -106,7 +117,8 @@ export async function GET(req: Request) {
           grades: distinctGrades.map((r) => r.qualityGrade).sort(gradeSort),
         },
         timestamp: Date.now(),
-        count: rows.length,
+        count: dedupedRows.length,
+        rawCount: rows.length,
       },
       { headers: { "Cache-Control": "no-store, max-age=0" } },
     );
@@ -117,6 +129,41 @@ export async function GET(req: Request) {
       { status: 500, headers: { "Cache-Control": "no-store, max-age=0" } },
     );
   }
+}
+
+// Collapse near-identical rows. Two rows are "the same setup" if they
+// share symbol + setupType + timeframe + direction AND their entries
+// are within 0.1% of each other. Within each cluster the survivor is
+// the row with the highest confidenceScore (tie-break: most recent).
+type Row = Awaited<ReturnType<typeof prisma.tradeSetup.findMany>>[number] & {
+  instrument: { displayName: string | null; category: string | null; decimalPlaces: number | null } | null;
+};
+const ENTRY_TOLERANCE_PCT = 0.001;
+function dedupNearDuplicates(rows: Row[]): Array<{ row: Row; duplicateCount: number }> {
+  const buckets = new Map<string, Row[]>();
+  for (const r of rows) {
+    // Bucket key: include entry rounded by 0.1% so near-equal entries
+    // land in the same bucket regardless of micro drift.
+    const entryBucket = Math.round(r.entry / Math.max(r.entry * ENTRY_TOLERANCE_PCT, 1e-9));
+    const key = `${r.symbol}|${r.setupType}|${r.timeframe}|${r.direction}|${entryBucket}`;
+    const arr = buckets.get(key) ?? [];
+    arr.push(r);
+    buckets.set(key, arr);
+  }
+  const out: Array<{ row: Row; duplicateCount: number }> = [];
+  for (const arr of buckets.values()) {
+    arr.sort((a, b) => {
+      if (a.confidenceScore !== b.confidenceScore) return b.confidenceScore - a.confidenceScore;
+      return b.createdAt.getTime() - a.createdAt.getTime();
+    });
+    out.push({ row: arr[0], duplicateCount: arr.length - 1 });
+  }
+  // Re-sort the deduplicated list to mirror the input ordering: score DESC, createdAt DESC.
+  out.sort((a, b) => {
+    if (a.row.confidenceScore !== b.row.confidenceScore) return b.row.confidenceScore - a.row.confidenceScore;
+    return b.row.createdAt.getTime() - a.row.createdAt.getTime();
+  });
+  return out;
 }
 
 // Order timeframes shortest → longest for chip display.
