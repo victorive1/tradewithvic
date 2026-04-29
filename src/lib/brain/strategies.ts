@@ -14,6 +14,8 @@ import { detectLondonBreakout } from "@/lib/brain/strategies/london-breakout";
 import { detectCrt } from "@/lib/brain/strategies/crt";
 import { detectCisd } from "@/lib/brain/strategies/cisd";
 import { detectWyckoff } from "@/lib/brain/strategies/wyckoff";
+import { detectSmtDivergence } from "@/lib/brain/strategies/smt-divergence";
+import { detectEpsAggregation } from "@/lib/brain/strategies/eps-aggregation";
 import type { DetectedSetup } from "@/lib/brain/strategies-types";
 
 export type { DetectedSetup };
@@ -336,6 +338,11 @@ export async function detectStrategies(
     detectCrt,
     detectCisd,
     detectWyckoff,
+    detectSmtDivergence,
+    // Aggregation MUST be last — it reads what other detectors wrote
+    // to TradeSetup in the previous cycles and bonuses multi-strategy
+    // alignment. Running last keeps the cluster fresh.
+    detectEpsAggregation,
   ];
   const detected: DetectedSetup[] = [];
   for (const d of detectors) {
