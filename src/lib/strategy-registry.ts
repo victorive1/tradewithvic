@@ -41,6 +41,41 @@ export const STRATEGY_REGISTRY: StrategyMeta[] = [
   // ── PDF Strategy 12: PO3 / Triple Lock ──
   { setupType: "triple_lock",               label: "Power of 3 (Triple Lock)",  family: "ELITE",
     blurb: "PO3 + VP/OF + CCTE — 12-gate composite, EPS-scored." },
+  // ── PDF Strategy 03: BOS / CHoCH ──
+  { setupType: "bos_setup",                 label: "BOS Continuation",          family: "SMC",
+    blurb: "First pullback to the FVG left by a confirmed BOS impulse." },
+  { setupType: "choch_reversal",            label: "CHoCH Reversal",            family: "SMC",
+    blurb: "First M15 FVG in the new direction after a Change of Character." },
+  // ── PDF Strategy 05: SMT Divergence ──
+  { setupType: "smt_divergence",            label: "SMT Divergence",            family: "ICT",
+    blurb: "Correlated pair makes opposite extreme — non-confirmation reveals manipulation." },
+  // ── PDF Strategy 06: CRT — Candle Range Theory ──
+  { setupType: "crt",                       label: "CRT — Candle Range Theory", family: "ICT",
+    blurb: "PO3 mapped onto a single H4/D1 mother candle — sweep beyond opening range, close back inside." },
+  // ── PDF Strategy 07: CISD ──
+  { setupType: "cisd",                      label: "CISD — State Change",       family: "ICT",
+    blurb: "Delivery direction flips — first opposite-half close after sustained delivery sequence." },
+  // ── PDF Strategy 08: MMBM — Market Maker Buy/Sell Model ──
+  { setupType: "mmbm",                      label: "MMBM",                       family: "ICT",
+    blurb: "Accumulation range + engineered sweep + sharp reversal — full institutional cycle." },
+  // ── PDF Strategy 09: ICT Dealing Range / OTE ──
+  { setupType: "dealing_range_ote",         label: "Dealing Range OTE",          family: "ICT",
+    blurb: "Discount/premium-zone entry at the 62–79% Fibonacci retracement (OTE) of a swing-defined range." },
+  // ── PDF Strategy 10: ICT Silver Bullet ──
+  { setupType: "silver_bullet",             label: "ICT Silver Bullet",          family: "ICT",
+    blurb: "Time-gated FVG strategy — fires only inside 08–09 / 15–16 / 19–20 UTC windows after a sweep." },
+  // ── PDF Strategy 11: London Breakout (PDF version) ──
+  { setupType: "london_breakout",           label: "London Breakout",            family: "HYBRID",
+    blurb: "Asian range break + retest at London open — directional break from the Asian coil." },
+  // ── PDF Strategy 13: Wyckoff Method ──
+  { setupType: "wyckoff",                   label: "Wyckoff Spring/UTAD",        family: "CLASSIC",
+    blurb: "Spring (accumulation) or UTAD (distribution) with ICT OB confluence — final shakeout before markup." },
+  // ── PDF Strategy 15: Engulfing + SMC ──
+  { setupType: "engulfing_smc",             label: "Engulfing + SMC",            family: "HYBRID",
+    blurb: "Engulfing candle inside a valid HTF OB or FVG — SMC-filtered candlestick pattern." },
+  // ── PDF Strategy 16: EPS Aggregation Engine (Elite) ──
+  { setupType: "eps_aggregation",           label: "Elite Confluence (EPS)",     family: "ELITE",
+    blurb: "Master detector — fires only when 2+ strategies agree at the same price zone, multi-strategy bonus stacks." },
 ];
 
 const BY_TYPE = new Map(STRATEGY_REGISTRY.map((s) => [s.setupType, s]));
