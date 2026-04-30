@@ -129,6 +129,9 @@ export default function IntradayPredictionPage() {
   const [forming, setForming] = useState<Signal[]>([]);
   const [missed, setMissed] = useState<Signal[]>([]);
   const [modalSignal, setModalSignal] = useState<Signal | null>(null);
+  // Map of signal-id → open smart-exit alert array. Lets the live cards
+  // show a critical/warning ribbon without opening the modal.
+  const [smartExitMap, setSmartExitMap] = useState<Record<string, Array<{ alertType: string; severity: string; evidence: string }>>>({});
   const [facets, setFacets] = useState<{ templates: string[]; symbols: string[]; grades: string[] }>({ templates: [], symbols: [], grades: [] });
   const [session, setSession] = useState<SessionState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -187,6 +190,34 @@ export default function IntradayPredictionPage() {
     const id = setInterval(() => load(true), 60_000);
     return () => { cancelled = true; clearInterval(id); };
   }, [templateFilter, symbolFilter, gradeQuery]);
+
+  // Pull open smart-exit alerts for every active signal whenever the
+  // signal list changes. Single batched effort — N small fetches in
+  // parallel, throttled by the parent poll cadence.
+  useEffect(() => {
+    let cancelled = false;
+    const ids = signals
+      .filter((s) => s.status === "entry_active" || s.status === "in_trade")
+      .map((s) => s.id);
+    if (ids.length === 0) {
+      if (!cancelled) setSmartExitMap({});
+      return () => { cancelled = true; };
+    }
+    Promise.all(ids.map((id) =>
+      fetch(`/api/mini/signals/${id}/smart-exit?t=${Date.now()}`, { cache: "no-store" })
+        .then((r) => r.json())
+        .then((data) => ({ id, alerts: Array.isArray(data.alerts) ? data.alerts : [] }))
+        .catch(() => ({ id, alerts: [] })),
+    )).then((results) => {
+      if (cancelled) return;
+      const map: Record<string, Array<{ alertType: string; severity: string; evidence: string }>> = {};
+      for (const { id, alerts } of results) {
+        if (alerts.length > 0) map[id] = alerts;
+      }
+      setSmartExitMap(map);
+    });
+    return () => { cancelled = true; };
+  }, [signals]);
 
   const getId = useCallback((s: Signal) => s.id, []);
   const userModeFilteredSignals = useMemo(() => applyUserMode(signals, userMode), [signals, userMode]);
@@ -395,6 +426,22 @@ export default function IntradayPredictionPage() {
                   </div>
 
                   <AdminLotSizeForCard symbol={s.symbol} entry={(s.entryZoneLow + s.entryZoneHigh) / 2} stopLoss={s.stopLoss} />
+
+                  {/* Smart-exit alert ribbon — shows on live cards when the
+                      monitor has flagged conditions degrading. */}
+                  {smartExitMap[s.id]?.length ? (
+                    <div className="space-y-1">
+                      {smartExitMap[s.id].map((a, i) => (
+                        <div key={i} className={cn(
+                          "rounded border p-1.5 text-[10px] flex items-start gap-2",
+                          a.severity === "critical" ? "bg-bear/10 border-bear/30 text-bear-light" : "bg-warn/10 border-warn/30 text-warn-light",
+                        )}>
+                          <span className="font-bold uppercase shrink-0">⚠ {a.alertType.replace(/_/g, " ")}</span>
+                          <span className="opacity-90">{a.evidence}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
 
                   {s.explanation && (
                     <p className="text-[11px] text-muted-light leading-relaxed">{s.explanation}</p>
