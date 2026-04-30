@@ -147,6 +147,7 @@ const navItems: NavSection[] = [
     requiresAccess: "agent",
     items: [
       { label: "Copy Trading", href: "/dashboard/copy-trading", icon: "strength" },
+      { label: "Intraday Prediction", href: "/dashboard/intraday-prediction", icon: "radar" },
       { label: "Market Prediction", href: "/dashboard/screener", icon: "screener" },
       { label: "V Profile + Order Flow", href: "/dashboard/volume-profile", icon: "strength" },
       { label: "VWAP", href: "/dashboard/vwap", icon: "strength" },
@@ -157,7 +158,6 @@ const navItems: NavSection[] = [
     requiresAccess: "agent",
     items: [
       { label: "A & A+ Only", href: "/dashboard/a-and-a-plus", icon: "setups" },
-      { label: "Intraday Prediction", href: "/dashboard/intraday-prediction", icon: "radar" },
       { label: "Strategy Bible", href: "/dashboard/strategy-bible", icon: "setups" },
       { label: "Breakout Signals", href: "/dashboard/breakouts", icon: "setups" },
       { label: "Bullish FVG Inversion", href: "/dashboard/bullish-fvg-inversion", icon: "setups" },
