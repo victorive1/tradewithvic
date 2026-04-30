@@ -274,10 +274,11 @@ model Instrument {
   isActive      Boolean @default(true)
   scanTier      Int     @default(1)
 
-  setups    TradeSetup[]
-  alerts    Alert[]
-  snapshots MarketSnapshot[]
-  candles   Candle[]
+  setups       TradeSetup[]
+  alerts       Alert[]
+  snapshots    MarketSnapshot[]
+  candles      Candle[]
+  miniSignals  MiniSignal[]
 }
 
 // ==================== MARKET BRAIN — SCAN ENGINE ====================
@@ -2027,4 +2028,149 @@ model InstitutionalSignal {
   @@index([assetSymbol, active, capturedAt])
   @@index([intentScore])
   @@index([capturedAt])
+}
+
+// ==================== MARKET PREDICTION MINI ====================
+//
+// Intraday-only decision engine. Separate from the brain's swing-oriented
+// detectors (TradeSetup table) — Mini owns its own detection, scoring, and
+// lifecycle. See ~/Documents/Market_Prediction_Mini_Blueprint.docx for the
+// full spec.
+//
+// Three-layer timeframe model: 1H bias, 15m setup, 5m execution. Setup
+// templates cap at ~6h hold time and self-expire on minute-scale windows.
+
+model MiniSignal {
+  id              String   @id @default(cuid())
+  instrumentId    String
+  symbol          String
+
+  // One of the 7 named templates from the blueprint § 5.
+  // liquidity_sweep_reversal | intraday_trend_continuation | breakout_retest |
+  // vwap_reclaim | news_cooldown_continuation | compression_breakout | inverse_fvg_flip
+  template        String
+
+  direction       String   // "bullish" | "bearish"
+  // Three-layer timeframe model — bias is always 1h, entry is 5m or 15m,
+  // execution refinement is 5m. Speed class is one of: scalp_5m | intraday_15m | intraday_1h.
+  biasTimeframe   String   @default("1h")
+  entryTimeframe  String
+  speedClass      String
+
+  // Entry zone is a band, not a single price. SL is a single line; TP1/2/3
+  // are progressive targets per blueprint § 8.
+  entryZoneLow    Float
+  entryZoneHigh   Float
+  stopLoss        Float
+  takeProfit1     Float
+  takeProfit2     Float?
+  takeProfit3     Float?
+
+  // Suggested entry style at signal generation time. Lifecycle may flip
+  // this as price moves (e.g. market_entry → missed_entry).
+  entryType       String   @default("retest") // market | retest | breakout | confirmation | no_entry | missed_entry
+
+  // 0-100 score from the 8-component formula (blueprint § 6).
+  score           Int
+  // A+ ≥88, A 78-87, watchlist <78, no_trade if a hard guardrail tripped.
+  grade           String
+
+  // Bias engine snapshot at detection — kept on the row so the UI can
+  // render "Why this setup exists" without re-deriving.
+  biasState       String?  // bullish | bearish | ranging | choppy | high_risk
+  session         String?  // asian | london | ny | overlap | lunch | pre_news | post_news | end_of_day | dead
+
+  // Approximate hold time in minutes — drives the expires_at clock and the
+  // Smart Exit time-stop alarm.
+  expectedHoldMinutes Int
+
+  riskReward      Float
+  explanation     String?  @db.Text
+  invalidation    String?  @db.Text
+
+  // Lifecycle state (blueprint § 7). The lifecycle table records every
+  // transition; this column tracks the current state for fast filters.
+  status          String   @default("scanning")
+  // scanning | forming | waiting_for_entry | entry_active | in_trade |
+  // tp1_hit | tp2_hit | tp3_hit | invalidated | missed_move | expired | avoid
+
+  // Free-form per-template payload — gates that fired, derived metrics,
+  // anything the UI wants to render in the analysis modal.
+  metadataJson    String?  @db.Text
+
+  expiresAt       DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  instrument      Instrument @relation(fields: [instrumentId], references: [id])
+  scores          MiniSignalScore?
+  lifecycle       MiniSignalLifecycle[]
+  smartExits      MiniSmartExit[]
+
+  @@index([symbol, status, expiresAt])
+  @@index([status, score])
+  @@index([template, status])
+  @@index([createdAt])
+}
+
+// One row per MiniSignal — denormalised 8-component breakdown so the
+// score breakdown panel doesn't have to re-parse metadataJson on every
+// render. 1:1 relation.
+model MiniSignalScore {
+  id                  String   @id @default(cuid())
+  miniSignalId        String   @unique
+
+  biasAlignment       Int      // 0-15
+  liquidityEvent      Int      // 0-15
+  microStructure      Int      // 0-15
+  entryZoneQuality    Int      // 0-15
+  momentumDisplacement Int     // 0-15
+  volatilitySpread    Int      // 0-10
+  riskReward          Int      // 0-10
+  sessionTiming       Int      // 0-5
+  total               Int      // 0-100, denormalised from above
+
+  createdAt           DateTime @default(now())
+  miniSignal          MiniSignal @relation(fields: [miniSignalId], references: [id], onDelete: Cascade)
+}
+
+// Append-only event log — every state transition + every meaningful
+// observation that shaped the signal's life.
+model MiniSignalLifecycle {
+  id              String   @id @default(cuid())
+  miniSignalId    String
+
+  fromStatus      String?
+  toStatus        String
+  evidence        String   @db.Text
+  priceAtEvent    Float?
+  scoreAtEvent    Int?
+
+  occurredAt      DateTime @default(now())
+  miniSignal      MiniSignal @relation(fields: [miniSignalId], references: [id], onDelete: Cascade)
+
+  @@index([miniSignalId, occurredAt])
+}
+
+// Smart Exit alerts (blueprint § 8). Raised by the smart-exit monitor
+// while a signal is entry_active or in_trade. Resolved when the signal
+// closes or the condition normalises.
+model MiniSmartExit {
+  id              String   @id @default(cuid())
+  miniSignalId    String
+
+  // opposite_choch | momentum_death | time_stall | spread_spike |
+  // news_approaching | opposing_close | rejected_before_tp1
+  alertType       String
+  severity        String   @default("warning") // warning | critical
+  evidence        String   @db.Text
+
+  raisedAt        DateTime @default(now())
+  resolvedAt      DateTime?
+  resolved        Boolean  @default(false)
+
+  miniSignal      MiniSignal @relation(fields: [miniSignalId], references: [id], onDelete: Cascade)
+
+  @@index([miniSignalId, resolved])
+  @@index([alertType, raisedAt])
 }
