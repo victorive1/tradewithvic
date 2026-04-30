@@ -14,6 +14,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { computeIntradayBias } from "@/lib/mini/bias";
+import { tickLifecycle } from "@/lib/mini/lifecycle";
 import { detectLiquiditySweepReversal } from "@/lib/mini/templates/liquidity-sweep-reversal";
 import { detectIntradayTrendContinuation } from "@/lib/mini/templates/intraday-trend-continuation";
 import { detectBreakoutRetest } from "@/lib/mini/templates/breakout-retest";
@@ -38,13 +39,26 @@ export interface MiniScanResult {
   detected: number;
   persisted: number;
   expired: number;
+  lifecycleTransitions: number;
   errors: string[];
 }
 
 export async function runMiniScan(): Promise<MiniScanResult> {
   const result: MiniScanResult = {
-    symbolsScanned: 0, detected: 0, persisted: 0, expired: 0, errors: [],
+    symbolsScanned: 0, detected: 0, persisted: 0, expired: 0, lifecycleTransitions: 0, errors: [],
   };
+
+  // Run the lifecycle state machine BEFORE detecting new setups so any
+  // price move since the last cycle is reflected before dedup checks
+  // against alive signals run.
+  try {
+    const lc = await tickLifecycle();
+    result.lifecycleTransitions = lc.transitions;
+    result.expired += lc.expired;
+    result.errors.push(...lc.errors);
+  } catch (err) {
+    result.errors.push(`lifecycle: ${err instanceof Error ? err.message : String(err)}`);
+  }
 
   // Pull the same instrument set the brain scans. Mini reuses the
   // existing scanTier system so disabling an instrument in the brain
@@ -54,16 +68,8 @@ export async function runMiniScan(): Promise<MiniScanResult> {
     orderBy: { scanTier: "asc" },
   });
 
-  // Expire any signals whose validity has passed and that never reached
-  // an entry-active or in-trade state.
-  const expiry = await prisma.miniSignal.updateMany({
-    where: {
-      status: { in: ["scanning", "forming", "waiting_for_entry"] },
-      expiresAt: { lt: new Date() },
-    },
-    data: { status: "expired" },
-  });
-  result.expired = expiry.count;
+  // Lifecycle already handled expirations + transitions above. No
+  // additional expiry sweep needed here.
 
   for (const inst of instruments) {
     try {
