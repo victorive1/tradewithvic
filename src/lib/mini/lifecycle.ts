@@ -56,7 +56,7 @@ export async function tickLifecycle(): Promise<LifecycleResult> {
     try {
       // Pull latest 5m close. If we don't have a fresh candle yet, skip.
       const latest5m = await prisma.candle.findFirst({
-        where: { symbol: sig.symbol, timeframe: "5m", isClosed: true },
+        where: { symbol: sig.symbol, timeframe: "5min", isClosed: true },
         orderBy: { openTime: "desc" },
         select: { close: true, high: true, low: true, openTime: true },
       });

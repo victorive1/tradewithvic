@@ -196,28 +196,36 @@ export async function runMiniScan(): Promise<MiniScanResult> {
 }
 
 async function buildMiniContext(symbol: string, instrumentId: string): Promise<MiniContext | null> {
-  const [candles5m, candles15m, candles1h, sweeps, levels, indicators5m, indicators15m, indicators1h, structure5m, structure15m] = await Promise.all([
-    prisma.candle.findMany({ where: { symbol, timeframe: "5m",  isClosed: true }, orderBy: { openTime: "desc" }, take: 80,  select: { openTime: true, open: true, high: true, low: true, close: true, volume: true } }),
-    prisma.candle.findMany({ where: { symbol, timeframe: "15m", isClosed: true }, orderBy: { openTime: "desc" }, take: 60,  select: { openTime: true, open: true, high: true, low: true, close: true, volume: true } }),
-    prisma.candle.findMany({ where: { symbol, timeframe: "1h",  isClosed: true }, orderBy: { openTime: "desc" }, take: 30,  select: { openTime: true, open: true, high: true, low: true, close: true } }),
-    prisma.liquidityEvent.findMany({ where: { symbol, timeframe: { in: ["5m", "15m", "1h"] } }, orderBy: { detectedAt: "desc" }, take: 5 }),
+  // Brain timeframes are "5min" / "15min" / "1h". 5min only exists for
+  // crypto/indices/oil — FX/metals fall back to 15min as the finest.
+  const [c5min, c15min, c1h, sweeps, levels, ind5min, ind15min, ind1h, structure5m, structure15m] = await Promise.all([
+    prisma.candle.findMany({ where: { symbol, timeframe: "5min",  isClosed: true }, orderBy: { openTime: "desc" }, take: 80,  select: { openTime: true, open: true, high: true, low: true, close: true, volume: true } }),
+    prisma.candle.findMany({ where: { symbol, timeframe: "15min", isClosed: true }, orderBy: { openTime: "desc" }, take: 60,  select: { openTime: true, open: true, high: true, low: true, close: true, volume: true } }),
+    prisma.candle.findMany({ where: { symbol, timeframe: "1h",    isClosed: true }, orderBy: { openTime: "desc" }, take: 30,  select: { openTime: true, open: true, high: true, low: true, close: true } }),
+    prisma.liquidityEvent.findMany({ where: { symbol, timeframe: { in: ["5min", "15min", "1h"] } }, orderBy: { detectedAt: "desc" }, take: 5 }),
     prisma.liquidityLevel.findMany({ where: { symbol, status: "active" } }),
-    prisma.indicatorSnapshot.findUnique({ where: { symbol_timeframe: { symbol, timeframe: "5m"  } }, select: { atr14: true } }),
-    prisma.indicatorSnapshot.findUnique({ where: { symbol_timeframe: { symbol, timeframe: "15m" } }, select: { atr14: true } }),
-    prisma.indicatorSnapshot.findUnique({ where: { symbol_timeframe: { symbol, timeframe: "1h"  } }, select: { atr14: true } }),
-    prisma.structureState.findUnique({ where: { symbol_timeframe: { symbol, timeframe: "5m"  } }, select: { lastEventType: true, lastEventAt: true } }),
-    prisma.structureState.findUnique({ where: { symbol_timeframe: { symbol, timeframe: "15m" } }, select: { lastEventType: true, lastEventAt: true } }),
+    prisma.indicatorSnapshot.findUnique({ where: { symbol_timeframe: { symbol, timeframe: "5min"  } }, select: { atr14: true } }),
+    prisma.indicatorSnapshot.findUnique({ where: { symbol_timeframe: { symbol, timeframe: "15min" } }, select: { atr14: true } }),
+    prisma.indicatorSnapshot.findUnique({ where: { symbol_timeframe: { symbol, timeframe: "1h"    } }, select: { atr14: true } }),
+    prisma.structureState.findUnique({ where: { symbol_timeframe: { symbol, timeframe: "5min"  } }, select: { lastEventType: true, lastEventAt: true } }),
+    prisma.structureState.findUnique({ where: { symbol_timeframe: { symbol, timeframe: "15min" } }, select: { lastEventType: true, lastEventAt: true } }),
   ]);
-  if (candles5m.length < 20 || candles1h.length < 5) return null;
+  // Primary intraday: 5min if available, else 15min.
+  const candles5m  = c5min.length >= 20 ? c5min : c15min;
+  const candles15m = c15min;
+  const indicators5m  = c5min.length >= 20 ? ind5min : ind15min;
+  const indicators15m = ind15min;
+  const indicators1h  = ind1h;
+  if (candles5m.length < 20 || c1h.length < 5) return null;
 
-  const c5 = candles5m.reverse();
-  const c15 = candles15m.reverse();
-  const c1h = candles1h.reverse();
+  const c5 = [...candles5m].reverse();
+  const c15 = [...candles15m].reverse();
+  const c1hRev = [...c1h].reverse();
 
   const bias = await computeIntradayBias({
     symbol,
     candles5m: c5,
-    candles1h: c1h,
+    candles1h: c1hRev,
     atr1h: indicators1h?.atr14 ?? null,
   });
 
@@ -227,7 +235,7 @@ async function buildMiniContext(symbol: string, instrumentId: string): Promise<M
     bias,
     candles5m: c5,
     candles15m: c15,
-    candles1h: c1h,
+    candles1h: c1hRev,
     atr5m: indicators5m?.atr14 ?? null,
     atr15m: indicators15m?.atr14 ?? null,
     atr1h: indicators1h?.atr14 ?? null,

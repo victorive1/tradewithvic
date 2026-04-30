@@ -39,17 +39,17 @@ export async function tickSmartExit(): Promise<SmartExitResult> {
     try {
       const [candles5m, structure5m, indicators5m] = await Promise.all([
         prisma.candle.findMany({
-          where: { symbol: sig.symbol, timeframe: "5m", isClosed: true },
+          where: { symbol: sig.symbol, timeframe: "5min", isClosed: true },
           orderBy: { openTime: "desc" },
           take: 6,
           select: { open: true, high: true, low: true, close: true, openTime: true },
         }),
         prisma.structureState.findUnique({
-          where: { symbol_timeframe: { symbol: sig.symbol, timeframe: "5m" } },
+          where: { symbol_timeframe: { symbol: sig.symbol, timeframe: "5min" } },
           select: { lastEventType: true, lastEventAt: true },
         }),
         prisma.indicatorSnapshot.findUnique({
-          where: { symbol_timeframe: { symbol: sig.symbol, timeframe: "5m" } },
+          where: { symbol_timeframe: { symbol: sig.symbol, timeframe: "5min" } },
           select: { atr14: true },
         }),
       ]);

@@ -57,7 +57,7 @@ export async function runMiniGuardrails(miniSignalId: string): Promise<Guardrail
   // 6. Latest 5m close must still be inside or beyond entry zone (not
   // already past TP1).
   const latest = await prisma.candle.findFirst({
-    where: { symbol: sig.symbol, timeframe: "5m", isClosed: true },
+    where: { symbol: sig.symbol, timeframe: "5min", isClosed: true },
     orderBy: { openTime: "desc" },
     select: { close: true, openTime: true },
   });

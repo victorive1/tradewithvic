@@ -163,24 +163,34 @@ export async function runFlowScan(): Promise<FlowScanResult> {
 }
 
 async function buildFlowContext(symbol: string, instrumentId: string): Promise<FlowContext | null> {
-  const [c5m, c15m, c1h, c4h, sweeps, levels, ind5m, ind15m, ind1h, structure1h, structure15m, structure5m] = await Promise.all([
-    prisma.candle.findMany({ where: { symbol, timeframe: "5m",  isClosed: true }, orderBy: { openTime: "desc" }, take: 100, select: { openTime: true, open: true, high: true, low: true, close: true, volume: true } }),
-    prisma.candle.findMany({ where: { symbol, timeframe: "15m", isClosed: true }, orderBy: { openTime: "desc" }, take: 80, select:  { openTime: true, open: true, high: true, low: true, close: true, volume: true } }),
-    prisma.candle.findMany({ where: { symbol, timeframe: "1h",  isClosed: true }, orderBy: { openTime: "desc" }, take: 80, select:  { openTime: true, open: true, high: true, low: true, close: true, volume: true } }),
-    prisma.candle.findMany({ where: { symbol, timeframe: "4h",  isClosed: true }, orderBy: { openTime: "desc" }, take: 30, select:  { openTime: true, open: true, high: true, low: true, close: true, volume: true } }),
-    prisma.liquidityEvent.findMany({ where: { symbol, timeframe: { in: ["5m", "15m", "1h"] } }, orderBy: { detectedAt: "desc" }, take: 5 }),
+  // Brain candles use canonical timeframe names: "5min", "15min", "1h",
+  // "4h", "1day". 5min is only persisted for crypto + indices + oil;
+  // FX and metals top out at 15min. We prefer 5min where it exists and
+  // fall back to 15min so every MVP instrument gets a context.
+  const [c5min, c15min, c1h, c4h, sweeps, levels, ind5min, ind15min, ind1h, structure1h, structure15m, structure5m] = await Promise.all([
+    prisma.candle.findMany({ where: { symbol, timeframe: "5min",  isClosed: true }, orderBy: { openTime: "desc" }, take: 100, select: { openTime: true, open: true, high: true, low: true, close: true, volume: true } }),
+    prisma.candle.findMany({ where: { symbol, timeframe: "15min", isClosed: true }, orderBy: { openTime: "desc" }, take: 80, select:  { openTime: true, open: true, high: true, low: true, close: true, volume: true } }),
+    prisma.candle.findMany({ where: { symbol, timeframe: "1h",    isClosed: true }, orderBy: { openTime: "desc" }, take: 80, select:  { openTime: true, open: true, high: true, low: true, close: true, volume: true } }),
+    prisma.candle.findMany({ where: { symbol, timeframe: "4h",    isClosed: true }, orderBy: { openTime: "desc" }, take: 30, select:  { openTime: true, open: true, high: true, low: true, close: true, volume: true } }),
+    prisma.liquidityEvent.findMany({ where: { symbol, timeframe: { in: ["5min", "15min", "1h"] } }, orderBy: { detectedAt: "desc" }, take: 5 }),
     prisma.liquidityLevel.findMany({ where: { symbol, status: "active" } }),
-    prisma.indicatorSnapshot.findUnique({ where: { symbol_timeframe: { symbol, timeframe: "5m"  } }, select: { atr14: true } }),
-    prisma.indicatorSnapshot.findUnique({ where: { symbol_timeframe: { symbol, timeframe: "15m" } }, select: { atr14: true } }),
-    prisma.indicatorSnapshot.findUnique({ where: { symbol_timeframe: { symbol, timeframe: "1h"  } }, select: { atr14: true } }),
-    prisma.structureState.findUnique({ where: { symbol_timeframe: { symbol, timeframe: "1h"  } }, select: { bias: true, lastEventType: true } }),
-    prisma.structureState.findUnique({ where: { symbol_timeframe: { symbol, timeframe: "15m" } }, select: { bias: true, lastEventType: true } }),
-    prisma.structureState.findUnique({ where: { symbol_timeframe: { symbol, timeframe: "5m"  } }, select: { bias: true, lastEventType: true } }),
+    prisma.indicatorSnapshot.findUnique({ where: { symbol_timeframe: { symbol, timeframe: "5min"  } }, select: { atr14: true } }),
+    prisma.indicatorSnapshot.findUnique({ where: { symbol_timeframe: { symbol, timeframe: "15min" } }, select: { atr14: true } }),
+    prisma.indicatorSnapshot.findUnique({ where: { symbol_timeframe: { symbol, timeframe: "1h"    } }, select: { atr14: true } }),
+    prisma.structureState.findUnique({ where: { symbol_timeframe: { symbol, timeframe: "1h"    } }, select: { bias: true, lastEventType: true } }),
+    prisma.structureState.findUnique({ where: { symbol_timeframe: { symbol, timeframe: "15min" } }, select: { bias: true, lastEventType: true } }),
+    prisma.structureState.findUnique({ where: { symbol_timeframe: { symbol, timeframe: "5min"  } }, select: { bias: true, lastEventType: true } }),
   ]);
-  if (c5m.length < 30 || c1h.length < 5) return null;
 
-  const candles5m  = c5m.reverse();
-  const candles15m = c15m.reverse();
+  // Primary intraday TF: 5min when available (12+ bars), 15min otherwise.
+  // 12 bars covers ~1h on 5min or ~3h on 15min — enough for VWAP,
+  // synthetic CVD, recent structure read.
+  const intradayCandles = c5min.length >= 12 ? c5min : c15min;
+  const intradayAtr = c5min.length >= 12 ? (ind5min?.atr14 ?? null) : (ind15min?.atr14 ?? null);
+  if (intradayCandles.length < 12 || c1h.length < 5) return null;
+
+  const candles5m  = intradayCandles.reverse();
+  const candles15m = c15min.reverse();
   const candles1h  = c1h.reverse();
   const candles4h  = c4h.reverse();
 
@@ -191,8 +201,8 @@ async function buildFlowContext(symbol: string, instrumentId: string): Promise<F
     symbol,
     instrumentId,
     candles5m, candles15m, candles1h, candles4h,
-    atr5m: ind5m?.atr14 ?? null,
-    atr15m: ind15m?.atr14 ?? null,
+    atr5m: intradayAtr,
+    atr15m: ind15min?.atr14 ?? null,
     atr1h: ind1h?.atr14 ?? null,
     vwap,
     session,
