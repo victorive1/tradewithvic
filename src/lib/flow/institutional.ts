@@ -24,8 +24,10 @@
 
 import type { FlowContext, InstitutionalFlowResult } from "@/lib/flow/types";
 import { syntheticCvd, volumeZScore, clipScore } from "@/lib/flow/normalise";
+import { fetchCotForSymbol } from "@/lib/flow/sources/cftc-cot";
+import { fetchBinanceDerivatives } from "@/lib/flow/sources/binance-derivatives";
 
-export function computeInstitutionalFlow(ctx: FlowContext): InstitutionalFlowResult {
+export async function computeInstitutionalFlow(ctx: FlowContext): Promise<InstitutionalFlowResult> {
   const reasons: string[] = [];
 
   // ── Synthetic CVD ─────────────────────────────────────────────────
@@ -115,20 +117,77 @@ export function computeInstitutionalFlow(ctx: FlowContext): InstitutionalFlowRes
   // single signal can't push the total to 100. Volume z-score acts as
   // a multiplier on the directional contributions only.
   const W_CVD = 0.30, W_VWAP = 0.25, W_SWEEP = 0.20, W_STRUCT = 0.25;
-  const buyRaw =
+  let buyRaw =
     cvdBuyContribution    * W_CVD    * volWeight +
     vwapBuyContribution   * W_VWAP   * volWeight +
     sweepBuyContribution  * W_SWEEP  +
     structBuyContribution * W_STRUCT;
-  const sellRaw =
+  let sellRaw =
     cvdSellContribution    * W_CVD    * volWeight +
     vwapSellContribution   * W_VWAP   * volWeight +
     sweepSellContribution  * W_SWEEP  +
     structSellContribution * W_STRUCT;
 
-  // Clamp to 0-100 ints.
-  const buyScore  = Math.max(0, Math.min(100, Math.round(buyRaw)));
-  const sellScore = Math.max(0, Math.min(100, Math.round(sellRaw)));
+  // ── Phase 3: external derivatives data ──────────────────────────
+  // Crypto: Binance perp OI / funding / top-trader ratio. The OI delta
+  // and funding rate give us real institutional commitment signals.
+  // For BTCUSD/ETHUSD we boost the score directly.
+  let oiChange: number | null = null;
+  const derivs = await fetchBinanceDerivatives(ctx.symbol).catch(() => null);
+  if (derivs) {
+    oiChange = derivs.oiChange1h;
+    if (oiChange != null && Math.abs(oiChange) > 0.3) {
+      // Rising OI + bullish CVD = real buyers committing capital.
+      // Rising OI + bearish CVD = real sellers committing capital.
+      // Use sign of CVD (or absent CVD, sign of last bar) to direct.
+      const directionalSign = cvd != null && cvd !== 0 ? Math.sign(cvd)
+                            : ctx.candles5m.length > 0 ? Math.sign(ctx.candles5m[ctx.candles5m.length - 1].close - ctx.candles5m[ctx.candles5m.length - 1].open)
+                            : 0;
+      if (oiChange > 0.3 && directionalSign > 0) {
+        cvdBuyContribution = Math.min(100, cvdBuyContribution + 25);
+        reasons.push(`Binance OI +${oiChange.toFixed(2)}% in last hour with bullish CVD — committed long flow`);
+      } else if (oiChange > 0.3 && directionalSign < 0) {
+        cvdSellContribution = Math.min(100, cvdSellContribution + 25);
+        reasons.push(`Binance OI +${oiChange.toFixed(2)}% with bearish CVD — committed short flow`);
+      } else if (oiChange < -0.3) {
+        reasons.push(`Binance OI ${oiChange.toFixed(2)}% — positions being closed (deleveraging)`);
+      }
+    }
+    if (derivs.fundingRate != null) {
+      // Heavy positive funding = longs paying shorts = crowded long
+      // (contrarian SELL signal). Heavy negative = crowded short
+      // (contrarian BUY).
+      if (derivs.fundingRate > 0.05) {
+        sellRaw = sellRaw + 8;  // boost sell side via raw bump
+        reasons.push(`Binance funding +${derivs.fundingRate.toFixed(3)}% — crowded long, mean-revert risk`);
+      } else if (derivs.fundingRate < -0.05) {
+        buyRaw = buyRaw + 8;
+        reasons.push(`Binance funding ${derivs.fundingRate.toFixed(3)}% — crowded short, squeeze risk`);
+      }
+    }
+  }
+
+  // FX / metals: CFTC COT weekly net commercial position (Phase 3 stub —
+  // returns null until parser is wired).
+  let cotNet: number | null = null;
+  const cot = await fetchCotForSymbol(ctx.symbol).catch(() => null);
+  if (cot) cotNet = cot.commercialNet;
+
+  // Re-aggregate (the OI bump may have changed contributions).
+  const buyRawFinal =
+    cvdBuyContribution    * W_CVD    * volWeight +
+    vwapBuyContribution   * W_VWAP   * volWeight +
+    sweepBuyContribution  * W_SWEEP  +
+    structBuyContribution * W_STRUCT;
+  const sellRawFinal =
+    cvdSellContribution    * W_CVD    * volWeight +
+    vwapSellContribution   * W_VWAP   * volWeight +
+    sweepSellContribution  * W_SWEEP  +
+    structSellContribution * W_STRUCT;
+
+  void buyRaw; void sellRaw;
+  const buyScore  = Math.max(0, Math.min(100, Math.round(buyRawFinal)));
+  const sellScore = Math.max(0, Math.min(100, Math.round(sellRawFinal)));
 
   return {
     buyScore,
@@ -137,8 +196,8 @@ export function computeInstitutionalFlow(ctx: FlowContext): InstitutionalFlowRes
     vwapPosition: vwapPos,
     vwapSlope,
     volumeZScore: volZ,
-    oiChange: null,  // wired in Phase 3 when futures data is connected
-    cotNet: null,    // wired in Phase 3 (CFTC weekly cron)
+    oiChange,
+    cotNet,
     reasons,
   };
 }

@@ -49,9 +49,12 @@ export async function runFlowScan(): Promise<FlowScanResult> {
       if (!ctx) continue;
       result.symbolsScanned++;
 
-      // Run all 5 modules.
-      const retail = await fetchRetailSentiment(ctx);
-      const inst_ = computeInstitutionalFlow(ctx);
+      // Run all 5 modules. Institutional and retail are async (external
+      // data fetches); the rest are pure functions over the context.
+      const [retail, inst_] = await Promise.all([
+        fetchRetailSentiment(ctx),
+        computeInstitutionalFlow(ctx),
+      ]);
       const liquidity = buildLiquidityMap(ctx);
       const trap = detectTrap({ ctx, inst: inst_, retail });
       const prediction = predictFlow({ ctx, retail, inst: inst_, liquidity, trap });
