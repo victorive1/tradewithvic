@@ -21,6 +21,10 @@
     {
       "path": "/api/cron/mini-scan",
       "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/cron/flow-scan",
+      "schedule": "*/2 * * * *"
     }
   ]
 }
