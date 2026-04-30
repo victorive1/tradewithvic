@@ -100,7 +100,16 @@ export function FlowAnalysisModal({ snap, open, onClose }: { snap: Snapshot | nu
                 <BigStat label="Buy pressure"  value={`${snap.institutionalBuyScore}/100`}  tone={snap.institutionalBuyScore  >= 60 ? "bull" : "neutral"} />
                 <BigStat label="Sell pressure" value={`${snap.institutionalSellScore}/100`} tone={snap.institutionalSellScore >= 60 ? "bear" : "neutral"} />
                 <div className="text-[11px] text-muted-light mt-2">
-                  CVD {snap.syntheticCvd?.toFixed(0) ?? "—"} · VWAP {snap.vwapPosition?.toFixed(2) ?? "—"} ATR · Vol z {snap.volumeZScore?.toFixed(2) ?? "—"}
+                  {snap.metadata?.cvdSource === "real_aggressor" ? (
+                    <>
+                      <span className="text-bull-light font-bold">Real CVD</span> {snap.syntheticCvd?.toFixed(0) ?? "—"}
+                      <span className="text-muted"> ({snap.metadata.cvdTradeCount ?? "?"} trades · 30m window)</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-warn-light">Synthetic CVD</span> {snap.syntheticCvd?.toFixed(0) ?? "—"}
+                    </>
+                  )} · VWAP {snap.vwapPosition?.toFixed(2) ?? "—"} ATR · Vol z {snap.volumeZScore?.toFixed(2) ?? "—"}
                 </div>
                 {snap.oiChange != null && <div className="text-[11px] text-muted-light">Binance OI 1h: {snap.oiChange.toFixed(2)}%</div>}
                 {snap.cotNet != null && <div className="text-[11px] text-muted-light">CFTC commercial net: {snap.cotNet.toFixed(0)}</div>}

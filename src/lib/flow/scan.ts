@@ -94,6 +94,9 @@ export async function runFlowScan(): Promise<FlowScanResult> {
           metadataJson: JSON.stringify({
             instReasons: inst_.reasons,
             trapReasons: trap.reasons,
+            cvdSource: inst_.cvdSource,
+            cvdTradeCount: inst_.cvdTradeCount,
+            cvdWindowMs: inst_.cvdWindowMs,
             liquidity: {
               nearestAbove: liquidity.nearestAbove,
               nearestBelow: liquidity.nearestBelow,

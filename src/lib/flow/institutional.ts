@@ -26,27 +26,58 @@ import type { FlowContext, InstitutionalFlowResult } from "@/lib/flow/types";
 import { syntheticCvd, volumeZScore, clipScore } from "@/lib/flow/normalise";
 import { fetchCotForSymbol } from "@/lib/flow/sources/cftc-cot";
 import { fetchBinanceDerivatives } from "@/lib/flow/sources/binance-derivatives";
+import { fetchBinanceRealCvd, isCryptoSymbolForRealCvd } from "@/lib/flow/sources/binance-trades";
 
-export async function computeInstitutionalFlow(ctx: FlowContext): Promise<InstitutionalFlowResult> {
+export interface InstitutionalFlowResultWithSource extends InstitutionalFlowResult {
+  cvdSource: "synthetic" | "real_aggressor";
+  cvdTradeCount?: number;
+  cvdWindowMs?: number;
+}
+
+export async function computeInstitutionalFlow(ctx: FlowContext): Promise<InstitutionalFlowResultWithSource> {
   const reasons: string[] = [];
 
-  // ── Synthetic CVD ─────────────────────────────────────────────────
-  const cvd = syntheticCvd(ctx.candles5m, 30);
+  // ── CVD: real aggressor flow if available, otherwise synthetic ───────
+  // Crypto symbols (BTCUSD, ETHUSD) get REAL CVD computed from Binance's
+  // aggregated-trades endpoint — every trade carries an `m` flag that
+  // identifies the aggressor side. For everything else (FX, metals,
+  // indices) we fall back to the synthetic approximation which sums
+  // sign(close-open) × volume per candle.
+  let cvd: number | null = null;
+  let cvdSource: "synthetic" | "real_aggressor" = "synthetic";
+  let cvdTradeCount: number | undefined;
+  let cvdWindowMs: number | undefined;
+  let cvdRatio: number | null = null;
+
+  if (isCryptoSymbolForRealCvd(ctx.symbol)) {
+    const real = await fetchBinanceRealCvd(ctx.symbol, 30).catch(() => null);
+    if (real && real.totalVolume > 0) {
+      cvd = real.cvd;
+      cvdSource = "real_aggressor";
+      cvdTradeCount = real.tradeCount;
+      cvdWindowMs = real.windowMs;
+      cvdRatio = real.cvd / real.totalVolume;
+    }
+  }
+  if (cvd === null) {
+    cvd = syntheticCvd(ctx.candles5m, 30);
+    if (cvd != null) {
+      const totalVol = ctx.candles5m.slice(-30).reduce((s, c) => s + (c.volume ?? 1), 0);
+      if (totalVol > 0) cvdRatio = cvd / totalVol;
+    }
+  }
+
   let cvdBuyContribution = 0, cvdSellContribution = 0;
-  if (cvd != null) {
-    // Compare CVD magnitude to total signed volume in the same window.
-    const totalVol = ctx.candles5m.slice(-30).reduce((s, c) => s + (c.volume ?? 1), 0);
-    if (totalVol > 0) {
-      const cvdRatio = cvd / totalVol;          // -1..+1, dominance ratio
-      if (cvdRatio > 0.15) {
-        cvdBuyContribution = clipScore(cvdRatio, 0.15, 0.55);
-        reasons.push(`synthetic CVD strongly positive (${(cvdRatio * 100).toFixed(0)}% buy dominance)`);
-      } else if (cvdRatio < -0.15) {
-        cvdSellContribution = clipScore(-cvdRatio, 0.15, 0.55);
-        reasons.push(`synthetic CVD strongly negative (${(-cvdRatio * 100).toFixed(0)}% sell dominance)`);
-      } else {
-        reasons.push(`CVD balanced (${(cvdRatio * 100).toFixed(0)}%)`);
-      }
+  if (cvdRatio != null) {
+    const sourceLabel = cvdSource === "real_aggressor" ? "real CVD" : "synthetic CVD";
+    if (cvdRatio > 0.15) {
+      cvdBuyContribution = clipScore(cvdRatio, 0.15, 0.55);
+      reasons.push(`${sourceLabel} strongly positive (${(cvdRatio * 100).toFixed(0)}% buy dominance${cvdTradeCount ? `, ${cvdTradeCount} trades` : ""})`);
+    } else if (cvdRatio < -0.15) {
+      cvdSellContribution = clipScore(-cvdRatio, 0.15, 0.55);
+      reasons.push(`${sourceLabel} strongly negative (${(-cvdRatio * 100).toFixed(0)}% sell dominance${cvdTradeCount ? `, ${cvdTradeCount} trades` : ""})`);
+    } else {
+      reasons.push(`${sourceLabel} balanced (${(cvdRatio * 100).toFixed(0)}%)`);
     }
   }
 
@@ -199,5 +230,8 @@ export async function computeInstitutionalFlow(ctx: FlowContext): Promise<Instit
     oiChange,
     cotNet,
     reasons,
+    cvdSource,
+    cvdTradeCount,
+    cvdWindowMs,
   };
 }

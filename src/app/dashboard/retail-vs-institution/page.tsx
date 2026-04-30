@@ -224,6 +224,11 @@ function FlowRow({ snap, zones, expanded, onToggle, onOpenModal }: { snap: Snaps
             <Stat label="Buy" value={`${snap.institutionalBuyScore}/100`} tone={snap.institutionalBuyScore >= 60 ? "bull" : "neutral"} />
             <Stat label="Sell" value={`${snap.institutionalSellScore}/100`} tone={snap.institutionalSellScore >= 60 ? "bear" : "neutral"} />
             <div className="text-[10px] mt-1 text-muted">~{snap.vwapPosition != null ? (snap.vwapPosition >= 0 ? "above" : "below") : "—"} VWAP</div>
+            {snap.metadata?.cvdSource === "real_aggressor" && (
+              <div className="mt-1.5 text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-bull/15 text-bull-light border border-bull/30 inline-block">
+                ✓ Real CVD · {snap.metadata.cvdTradeCount ?? "?"} trades
+              </div>
+            )}
           </Panel>
 
           {/* Liquidity Map */}
