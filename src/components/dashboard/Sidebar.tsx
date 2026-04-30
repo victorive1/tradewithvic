@@ -149,6 +149,7 @@ const navItems: NavSection[] = [
       { label: "Copy Trading", href: "/dashboard/copy-trading", icon: "strength" },
       { label: "Intraday Prediction", href: "/dashboard/intraday-prediction", icon: "radar" },
       { label: "Market Prediction", href: "/dashboard/screener", icon: "screener" },
+      { label: "Retail vs Institution", href: "/dashboard/retail-vs-institution", icon: "radar" },
       { label: "V Profile + Order Flow", href: "/dashboard/volume-profile", icon: "strength" },
       { label: "VWAP", href: "/dashboard/vwap", icon: "strength" },
     ],
