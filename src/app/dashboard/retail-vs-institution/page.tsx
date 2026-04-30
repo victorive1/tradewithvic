@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { FlowAnalysisModal } from "@/components/flow/FlowAnalysisModal";
 
 // Retail vs Institution — front-end for the FlowVision engine. Five
 // panels per the blueprint § 4: Retail Flow / Institutional Flow /
@@ -72,6 +73,7 @@ export default function RetailVsInstitutionPage() {
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null);
+  const [modalSnap, setModalSnap] = useState<Snapshot | null>(null);
   const pausedRef = useRef(false);
   const [paused, setPaused] = useState(false);
 
@@ -156,15 +158,18 @@ export default function RetailVsInstitutionPage() {
               zones={zonesBySymbol[s.symbol] ?? []}
               expanded={expandedSymbol === s.symbol}
               onToggle={() => setExpandedSymbol(expandedSymbol === s.symbol ? null : s.symbol)}
+              onOpenModal={() => setModalSnap(s)}
             />
           ))}
         </div>
       )}
+
+      <FlowAnalysisModal snap={modalSnap} open={modalSnap !== null} onClose={() => setModalSnap(null)} />
     </div>
   );
 }
 
-function FlowRow({ snap, zones, expanded, onToggle }: { snap: Snapshot; zones: Zone[]; expanded: boolean; onToggle: () => void }) {
+function FlowRow({ snap, zones, expanded, onToggle, onOpenModal }: { snap: Snapshot; zones: Zone[]; expanded: boolean; onToggle: () => void; onOpenModal: () => void }) {
   const isBull = snap.finalBias === "bullish";
   const isBear = snap.finalBias === "bearish";
   const trapClass = snap.trapScore >= 65 ? (snap.trapType === "bull_trap" ? "text-bear-light" : "text-bull-light") : "text-muted";
@@ -256,9 +261,12 @@ function FlowRow({ snap, zones, expanded, onToggle }: { snap: Snapshot; zones: Z
           </p>
         )}
 
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-3">
           <button onClick={onToggle} className="text-[11px] text-accent-light hover:text-accent transition-smooth">
             {expanded ? "▲ less" : "▼ full breakdown"}
+          </button>
+          <button onClick={onOpenModal} className="text-[11px] text-muted hover:text-foreground transition-smooth">
+            full analysis →
           </button>
         </div>
 

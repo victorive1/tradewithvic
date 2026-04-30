@@ -81,6 +81,29 @@ export function detectTrap({ ctx, inst, retail }: TrapDetectorInputs): TrapResul
     reasons.push(`elevated 1h volume (z=${inst.volumeZScore.toFixed(2)}) on the sweep — institutional engagement`);
   }
 
+  // ── Cascade-tier gate: full A+ trap requires retail-crowded
+  // counter-direction AND institutional counter-flow ≥ 70 AND volume
+  // confirmation. When all three align, trap score floors at 80
+  // ("high-confidence trap") per blueprint scoring legend.
+  const fullCascade =
+    counterFlowScore >= 70 &&
+    inst.volumeZScore != null && inst.volumeZScore > 1.2 &&
+    ((trapType === "bull_trap"  && retail.crowding === "long_heavy") ||
+     (trapType === "bear_trap" && retail.crowding === "short_heavy"));
+  if (fullCascade) {
+    score = Math.max(score, 80);
+    reasons.push("FULL CASCADE — retail crowded + institutional counter-flow ≥70 + volume confirmation");
+  }
+
+  // ── Funding rate amplifier (crypto) ─────────────────────────────────
+  // Heavy positive funding (longs paying) on a bullish sweep = crowded
+  // longs about to be flushed = strong bear-trap evidence. (Note: the
+  // institutional module already adjusted its scores; this reasons line
+  // makes the connection explicit in the trap UI.)
+  if (inst.oiChange != null && Math.abs(inst.oiChange) > 0.5) {
+    reasons.push(`crypto OI change ${inst.oiChange.toFixed(2)}%/h reinforces ${trapType.replace(/_/g, " ")} narrative`);
+  }
+
   score = Math.max(0, Math.min(100, score));
   return { trapScore: score, trapType, reasons };
 }
