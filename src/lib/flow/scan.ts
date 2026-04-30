@@ -18,6 +18,8 @@ import { computeInstitutionalFlow } from "@/lib/flow/institutional";
 import { buildLiquidityMap } from "@/lib/flow/liquidity-map";
 import { detectTrap } from "@/lib/flow/trap-detector";
 import { predictFlow } from "@/lib/flow/prediction";
+import { predictPath, type LiquidityZone as PathZone } from "@/lib/flow/path-prediction";
+import { generateFlowSetup } from "@/lib/flow/setup-generator";
 import type { FlowContext } from "@/lib/flow/types";
 
 // MVP symbol set per blueprint § 11. Expand once data sources stabilise.
@@ -29,13 +31,14 @@ export interface FlowScanResult {
   zonesAdded: number;
   zonesFilled: number;
   zonesViolated: number;
+  flowSetupsPersisted: number;
   errors: string[];
 }
 
 export async function runFlowScan(): Promise<FlowScanResult> {
   const result: FlowScanResult = {
     symbolsScanned: 0, snapshotsPersisted: 0, zonesAdded: 0,
-    zonesFilled: 0, zonesViolated: 0, errors: [],
+    zonesFilled: 0, zonesViolated: 0, flowSetupsPersisted: 0, errors: [],
   };
 
   // Resolve instrument rows once.
@@ -58,6 +61,29 @@ export async function runFlowScan(): Promise<FlowScanResult> {
       const liquidity = buildLiquidityMap(ctx);
       const trap = detectTrap({ ctx, inst: inst_, retail });
       const prediction = predictFlow({ ctx, retail, inst: inst_, liquidity, trap });
+
+      // ── Path Prediction (Liquidity-Mapped Overlay blueprint § 8) ──
+      // Convert liquidity-map zones into the path-prediction shape and
+      // generate a sequence of phases (trap → real-move when a trap is
+      // detected, direct shot otherwise).
+      const currentPrice = ctx.candles5m[ctx.candles5m.length - 1]?.close ?? 0;
+      const pathZones: PathZone[] = liquidity.zones.map((z) => ({
+        zoneType: z.zoneType,
+        direction: z.direction ?? null,
+        priceLow: z.priceLow,
+        priceHigh: z.priceHigh,
+        strengthScore: z.strengthScore,
+      }));
+      const path = predictPath({
+        symbol: inst.symbol,
+        currentPrice,
+        zones: pathZones,
+        retailCrowding: (retail.crowding as "long_heavy" | "short_heavy" | "balanced" | "unavailable"),
+        institutionalBuyScore: inst_.buyScore,
+        institutionalSellScore: inst_.sellScore,
+        trapScore: trap.trapScore,
+        trapType: trap.trapType,
+      });
 
       // Persist snapshot (always create new row — small table, history
       // matters for trend charts later).
@@ -102,6 +128,8 @@ export async function runFlowScan(): Promise<FlowScanResult> {
               nearestBelow: liquidity.nearestBelow,
               zoneCount: liquidity.zones.length,
             },
+            // Path prediction for the Liquidity-Mapped Overlay panel.
+            path,
           }),
         },
       });
@@ -155,6 +183,54 @@ export async function runFlowScan(): Promise<FlowScanResult> {
             await prisma.liquidityZone.update({ where: { id: z.id }, data: { isViolated: true } });
             result.zonesViolated++;
           }
+        }
+      }
+
+      // ── Flow Trade Setup persistence ───────────────────────────────
+      // Turn the path prediction into an actionable TradeSetup row
+      // (setupType="flow_vision_path") so the new sub-tab + the Strategy
+      // Bible can both render it. Dedup against any alive flow setup
+      // for the same symbol+direction in the last 30 min so we don't
+      // spawn duplicates each scan.
+      const flowSetup = generateFlowSetup(inst.symbol, path);
+      if (flowSetup) {
+        const recent = new Date(Date.now() - 30 * 60 * 1000);
+        const dupe = await prisma.tradeSetup.findFirst({
+          where: {
+            symbol: inst.symbol,
+            setupType: "flow_vision_path",
+            direction: flowSetup.direction,
+            status: "active",
+            createdAt: { gte: recent },
+          },
+          select: { id: true, entry: true },
+        });
+        const tooClose = dupe && Math.abs(dupe.entry - flowSetup.entry) / Math.max(flowSetup.entry, 1e-9) < 0.002;
+        if (!tooClose) {
+          await prisma.tradeSetup.create({
+            data: {
+              instrumentId: inst.id,
+              symbol: inst.symbol,
+              direction: flowSetup.direction,
+              setupType: "flow_vision_path",
+              timeframe: "15m",
+              entry: flowSetup.entry,
+              stopLoss: flowSetup.stopLoss,
+              takeProfit1: flowSetup.takeProfit1,
+              takeProfit2: flowSetup.takeProfit2,
+              takeProfit3: flowSetup.takeProfit3,
+              riskReward: flowSetup.riskReward,
+              confidenceScore: flowSetup.confidenceScore,
+              qualityGrade: flowSetup.qualityGrade,
+              explanation: flowSetup.explanation,
+              invalidation: flowSetup.invalidation,
+              originalThesis: flowSetup.explanation,
+              metadataJson: JSON.stringify(flowSetup.metadata),
+              status: "active",
+              validUntil: new Date(Date.now() + flowSetup.validHours * 60 * 60 * 1000),
+            },
+          });
+          result.flowSetupsPersisted++;
         }
       }
     } catch (err) {

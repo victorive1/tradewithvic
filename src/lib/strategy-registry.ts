@@ -86,6 +86,10 @@ export const STRATEGY_REGISTRY: StrategyMeta[] = [
   // ── PDF Strategy 16: EPS Aggregation Engine (Elite) ──
   { setupType: "eps_aggregation",           label: "Elite Confluence (EPS)",     family: "ELITE",
     blurb: "Master detector — fires only when 2+ strategies agree at the same price zone, multi-strategy bonus stacks." },
+  // ── FlowVision Path setups (Liquidity-Mapped Overlay blueprint § 8) ──
+  { setupType: "flow_vision_path",          label: "FlowVision Path",            family: "ELITE",
+    dedicatedTab: "/dashboard/retail-vs-institution",
+    blurb: "Multi-phase path setup — trap-then-real-move when retail/institutional/liquidity align for a sweep." },
 ];
 
 const BY_TYPE = new Map(STRATEGY_REGISTRY.map((s) => [s.setupType, s]));
