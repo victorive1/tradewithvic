@@ -3,6 +3,32 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { FlowAnalysisModal } from "@/components/flow/FlowAnalysisModal";
+import { LiquidityPathOverlay } from "@/components/flow/LiquidityPathOverlay";
+import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
+import { computeOneR } from "@/lib/setups/one-r";
+
+interface FlowSetup {
+  id: string;
+  symbol: string;
+  displayName: string;
+  decimalPlaces: number;
+  category: string;
+  direction: string;
+  entry: number;
+  stopLoss: number;
+  takeProfit1: number;
+  takeProfit2: number | null;
+  takeProfit3: number | null;
+  riskReward: number;
+  confidenceScore: number;
+  qualityGrade: string;
+  explanation: string | null;
+  invalidation: string | null;
+  timeframe: string;
+  validUntil: string | null;
+  createdAt: string;
+  metadata: any;
+}
 
 // Retail vs Institution — front-end for the FlowVision engine. Five
 // panels per the blueprint § 4: Retail Flow / Institutional Flow /
@@ -70,10 +96,12 @@ function timeAgo(iso: string): string {
 export default function RetailVsInstitutionPage() {
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [zonesBySymbol, setZonesBySymbol] = useState<Record<string, Zone[]>>({});
+  const [setups, setSetups] = useState<FlowSetup[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null);
   const [modalSnap, setModalSnap] = useState<Snapshot | null>(null);
+  const [activeSubTab, setActiveSubTab] = useState<"snapshots" | "setups">("snapshots");
   const pausedRef = useRef(false);
   const [paused, setPaused] = useState(false);
 
@@ -82,8 +110,13 @@ export default function RetailVsInstitutionPage() {
     async function load(viaInterval: boolean) {
       if (viaInterval && pausedRef.current) return;
       try {
-        const res = await fetch(`/api/flow/snapshots?t=${Date.now()}`, { cache: "no-store" });
+        const [res, setupsRes] = await Promise.all([
+          fetch(`/api/flow/snapshots?t=${Date.now()}`, { cache: "no-store" }),
+          fetch(`/api/flow/setups?t=${Date.now()}`, { cache: "no-store" }),
+        ]);
         const data = await res.json();
+        const setupsData = await setupsRes.json();
+        if (!cancelled && Array.isArray(setupsData.setups)) setSetups(setupsData.setups);
         if (!cancelled && Array.isArray(data.snapshots)) {
           setSnapshots(data.snapshots);
           setLastUpdated(data.timestamp ?? Date.now());
@@ -142,29 +175,195 @@ export default function RetailVsInstitutionPage() {
         </p>
       </div>
 
+      {/* Sub-tab switcher */}
+      <div className="flex items-center gap-2 border-b border-border/30">
+        {([
+          { id: "snapshots", label: "Snapshots", count: snapshots.length },
+          { id: "setups",    label: "Trade Setups", count: setups.length },
+        ] as const).map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setActiveSubTab(t.id)}
+            className={cn(
+              "px-4 py-2 text-[13px] font-medium transition-smooth -mb-px border-b-2",
+              activeSubTab === t.id
+                ? "text-foreground border-accent"
+                : "text-muted hover:text-muted-light border-transparent",
+            )}
+          >
+            {t.label} <span className="text-[10px] opacity-70 ml-1">{t.count}</span>
+          </button>
+        ))}
+      </div>
+
       {loading ? (
-        <div className="glass-card p-12 text-center text-sm text-muted">Building flow snapshots…</div>
-      ) : snapshots.length === 0 ? (
-        <div className="glass-card p-12 text-center space-y-2">
-          <div className="text-3xl">⏸</div>
-          <p className="text-sm text-muted">No flow snapshots yet — the brain&apos;s next 2-min cycle will populate this view.</p>
+        <div className="glass-card p-12 text-center text-sm text-muted">
+          {activeSubTab === "snapshots" ? "Building flow snapshots…" : "Building trade setups…"}
         </div>
+      ) : activeSubTab === "snapshots" ? (
+        snapshots.length === 0 ? (
+          <div className="glass-card p-12 text-center space-y-2">
+            <div className="text-3xl">⏸</div>
+            <p className="text-sm text-muted">No flow snapshots yet — the brain&apos;s next 2-min cycle will populate this view.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {snapshots.map((s) => (
+              <FlowRow
+                key={s.symbol}
+                snap={s}
+                zones={zonesBySymbol[s.symbol] ?? []}
+                expanded={expandedSymbol === s.symbol}
+                onToggle={() => setExpandedSymbol(expandedSymbol === s.symbol ? null : s.symbol)}
+                onOpenModal={() => setModalSnap(s)}
+              />
+            ))}
+          </div>
+        )
       ) : (
-        <div className="space-y-3">
-          {snapshots.map((s) => (
-            <FlowRow
-              key={s.symbol}
-              snap={s}
-              zones={zonesBySymbol[s.symbol] ?? []}
-              expanded={expandedSymbol === s.symbol}
-              onToggle={() => setExpandedSymbol(expandedSymbol === s.symbol ? null : s.symbol)}
-              onOpenModal={() => setModalSnap(s)}
-            />
-          ))}
-        </div>
+        // ── Trade Setups sub-tab ─────────────────────────────────────────
+        setups.length === 0 ? (
+          <div className="glass-card p-12 text-center space-y-2">
+            <div className="text-3xl">⏸</div>
+            <p className="text-sm text-muted">No active flow setups right now.</p>
+            <p className="text-[11px] text-muted-light max-w-md mx-auto">
+              FlowVision setups fire when the path prediction has a viable trap-then-reversal or direct-shot trade with ≥1.5R. Brain re-scans every 2 min.
+            </p>
+          </div>
+        ) : (
+          <div className="grid lg:grid-cols-2 gap-3">
+            {setups.map((s) => (
+              <FlowSetupCard key={s.id} setup={s} />
+            ))}
+          </div>
+        )
       )}
 
       <FlowAnalysisModal snap={modalSnap} open={modalSnap !== null} onClose={() => setModalSnap(null)} />
+    </div>
+  );
+}
+
+// ── Flow Setup card ────────────────────────────────────────────────────
+function FlowSetupCard({ setup }: { setup: FlowSetup }) {
+  const isBuy = setup.direction === "bullish";
+  const oneR = computeOneR(setup.entry, setup.stopLoss, setup.direction);
+  const path = setup.metadata?.path as
+    | { isTrapScenario?: boolean; trapType?: string; phases?: Array<{ phase: number; classification: string; toPrice: number; pips: number }>; pathConfidence?: number }
+    | undefined;
+  const setupKind = setup.metadata?.kind as string | undefined;
+
+  return (
+    <div className="glass-card overflow-hidden">
+      <div className={cn("h-1", isBuy ? "bg-bull" : "bg-bear")} />
+      <div className="p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-bold">{setup.displayName}</h3>
+            <span className={cn(
+              "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border",
+              isBuy ? "bg-bull/15 text-bull-light border-bull/30" : "bg-bear/15 text-bear-light border-bear/30",
+            )}>
+              {isBuy ? "▲ Long" : "▼ Short"}
+            </span>
+            <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-foreground/10 text-foreground border border-foreground/30">
+              {setupKind === "post_trap_reversal" ? "Post-Trap Reversal" : "Liquidity Continuation"}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={cn(
+              "text-[10px] font-bold px-2 py-0.5 rounded",
+              setup.qualityGrade === "A+" ? "bg-bull/20 text-bull-light"
+              : setup.qualityGrade === "A" ? "bg-accent/20 text-accent-light"
+              : setup.qualityGrade === "B" ? "bg-warn/20 text-warn-light"
+              : "bg-muted/20 text-muted",
+            )}>
+              {setup.qualityGrade}
+            </span>
+            <span className="text-xs font-mono text-accent-light">{setup.confidenceScore}<span className="text-[10px] text-muted">/100</span></span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 text-[11px] font-mono">
+          <Lvl label="Entry" value={setup.entry.toFixed(setup.decimalPlaces)} tone="neutral" />
+          <Lvl label="Stop"  value={setup.stopLoss.toFixed(setup.decimalPlaces)} tone="bear" />
+          <Lvl label="1R"    value={oneR.toFixed(setup.decimalPlaces)} tone="accent" />
+          <Lvl label="TP1"   value={setup.takeProfit1.toFixed(setup.decimalPlaces)} tone="bull" />
+          {setup.takeProfit2 != null && <Lvl label="TP2" value={setup.takeProfit2.toFixed(setup.decimalPlaces)} tone="bull" />}
+        </div>
+
+        <div className="flex items-center gap-2 text-[10px] text-muted flex-wrap">
+          <span className="font-mono">RR {setup.riskReward.toFixed(2)}</span>
+          {path?.isTrapScenario && (
+            <span className="bg-warn/10 text-warn-light px-1.5 py-0.5 rounded uppercase font-bold">
+              {path.trapType?.replace(/_/g, " ")}
+            </span>
+          )}
+          {Array.isArray(path?.phases) && (
+            <span>{path.phases.length}-phase path</span>
+          )}
+          <span className="ml-auto">expires {setup.validUntil ? new Date(setup.validUntil).toLocaleTimeString() : "—"}</span>
+        </div>
+
+        {/* Path mini-summary */}
+        {Array.isArray(path?.phases) && (
+          <div className="bg-surface-2/40 border border-border/30 rounded-lg p-2 space-y-1">
+            <div className="text-[10px] uppercase tracking-wider text-muted">Path</div>
+            {path!.phases.map((p) => (
+              <div key={p.phase} className="flex items-center gap-2 text-[11px]">
+                <span className={cn(
+                  "shrink-0 px-1.5 py-0.5 rounded text-[9px] uppercase font-bold",
+                  p.classification === "trap" ? "bg-warn/20 text-warn-light"
+                  : p.classification === "real_move" ? "bg-accent/20 text-accent-light"
+                  : "bg-muted/20 text-muted-light",
+                )}>P{p.phase} {p.classification.replace(/_/g, " ")}</span>
+                <span className="font-mono text-foreground">→ {p.toPrice.toFixed(setup.decimalPlaces)}</span>
+                <span className="text-muted">({p.pips.toFixed(0)}p)</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {setup.explanation && (
+          <p className="text-[11px] text-muted-light leading-relaxed">{setup.explanation}</p>
+        )}
+
+        <div className="flex items-center justify-end">
+          <ExecuteTradeButton
+            setup={{
+              symbol: setup.symbol,
+              direction: isBuy ? "buy" : "sell",
+              entry: setup.entry,
+              stopLoss: setup.stopLoss,
+              takeProfit: setup.takeProfit1,
+              takeProfit2: setup.takeProfit2,
+              timeframe: setup.timeframe,
+              setupType: "flow_vision_path",
+              qualityGrade: setup.qualityGrade,
+              confidenceScore: setup.confidenceScore,
+              sourceType: "setup",
+              sourceRef: setup.id,
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Lvl({ label, value, tone }: { label: string; value: string; tone: "bull" | "bear" | "accent" | "neutral" }) {
+  const cls = tone === "bull" ? "bg-bull/5 border-bull/20 text-bull-light"
+            : tone === "bear" ? "bg-bear/5 border-bear/20 text-bear-light"
+            : tone === "accent" ? "bg-accent/5 border-accent/20 text-accent-light"
+            : "bg-surface-3/40 border-border/30 text-foreground";
+  const labelCls = tone === "bull" ? "text-bull-light"
+                : tone === "bear" ? "text-bear-light"
+                : tone === "accent" ? "text-accent-light"
+                : "text-muted";
+  return (
+    <div className={cn("rounded-lg border p-2 text-center", cls)}>
+      <div className={cn("text-[9px] uppercase mb-0.5", labelCls)}>{label}</div>
+      <div className="font-mono">{value}</div>
     </div>
   );
 }
@@ -277,6 +476,13 @@ function FlowRow({ snap, zones, expanded, onToggle, onOpenModal }: { snap: Snaps
 
         {expanded && (
           <div className="pt-3 border-t border-border/30 space-y-3">
+            {/* Liquidity-Mapped Overlay path visualization */}
+            <LiquidityPathOverlay
+              path={snap.metadata?.path ?? null}
+              zones={zones}
+              decimals={snap.decimalPlaces}
+            />
+
             {/* Score components */}
             <div>
               <div className="text-[10px] uppercase tracking-wider text-muted mb-2">Score Components</div>
