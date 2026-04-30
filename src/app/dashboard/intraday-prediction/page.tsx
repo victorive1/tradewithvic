@@ -107,6 +107,8 @@ export default function IntradayPredictionPage() {
   const [gradeFilter, setGradeFilter] = useState<"A_PLUS_AND_A" | "A+" | "A">("A_PLUS_AND_A");
 
   const [signals, setSignals] = useState<Signal[]>([]);
+  const [forming, setForming] = useState<Signal[]>([]);
+  const [missed, setMissed] = useState<Signal[]>([]);
   const [facets, setFacets] = useState<{ templates: string[]; symbols: string[]; grades: string[] }>({ templates: [], symbols: [], grades: [] });
   const [session, setSession] = useState<SessionState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -128,20 +130,30 @@ export default function IntradayPredictionPage() {
     async function load(viaInterval: boolean) {
       if (viaInterval && pausedRef.current) return;
       try {
-        const params = new URLSearchParams({
+        const baseParams = (status: string) => new URLSearchParams({
+          status,
           template: templateFilter,
           symbol: symbolFilter,
           grade: gradeQuery,
           t: String(Date.now()),
         });
-        const [sigRes, sessRes] = await Promise.all([
-          fetch(`/api/mini/signals?${params}`, { cache: "no-store" }),
+        const [sigRes, formingRes, missedRes, sessRes] = await Promise.all([
+          // Active = waiting_for_entry, entry_active, in_trade — actionable now.
+          fetch(`/api/mini/signals?${baseParams("waiting_for_entry,entry_active,in_trade")}`, { cache: "no-store" }),
+          // Forming = scanning + forming — close to ready but missing one piece.
+          fetch(`/api/mini/signals?${baseParams("scanning,forming")}&take=20`, { cache: "no-store" }),
+          // Missed/Expired in last hour — for context.
+          fetch(`/api/mini/signals?${baseParams("missed_move,expired")}&take=15`, { cache: "no-store" }),
           fetch(`/api/mini/session-state?t=${Date.now()}`, { cache: "no-store" }),
         ]);
         const sigData = await sigRes.json();
+        const formingData = await formingRes.json();
+        const missedData = await missedRes.json();
         const sessData = await sessRes.json();
         if (!cancelled) {
-          if (Array.isArray(sigData.signals)) setSignals(sigData.signals);
+          if (Array.isArray(sigData.signals))     setSignals(sigData.signals);
+          if (Array.isArray(formingData.signals)) setForming(formingData.signals);
+          if (Array.isArray(missedData.signals))  setMissed(missedData.signals);
           if (sigData.facets) setFacets(sigData.facets);
           if (sessData?.phase) setSession(sessData);
           setLastUpdated(sigData.timestamp ?? Date.now());
@@ -417,6 +429,93 @@ export default function IntradayPredictionPage() {
           })}
         </div>
       )}
+
+      {/* ── Forming Setups section — scanning + forming statuses ─────── */}
+      {forming.length > 0 && (
+        <section className="space-y-3 pt-4 border-t border-border/30">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-muted-light">⏳ Forming Setups</h2>
+            <span className="text-[10px] text-muted">{forming.length} candidate{forming.length === 1 ? "" : "s"} one confirmation away</span>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {forming.map((s) => (
+              <CompactCard key={s.id} signal={s} tone="forming" />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── Missed Moves section — recently missed/expired ───────────── */}
+      {missed.length > 0 && (
+        <section className="space-y-3 pt-4 border-t border-border/30">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-muted-light">↗ Missed / Expired</h2>
+            <span className="text-[10px] text-muted">{missed.length} signal{missed.length === 1 ? "" : "s"} that ran or aged out — review only</span>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {missed.map((s) => (
+              <CompactCard key={s.id} signal={s} tone="missed" />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── No-Trade Warnings ──────────────────────────────────────────── */}
+      {(session?.noTradeZone || session?.newsLockout) && (
+        <section className="space-y-3 pt-4 border-t border-bear/30">
+          <div className="glass-card p-4 border border-bear/30 bg-bear/5">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">⛔</span>
+              <div>
+                <h2 className="text-sm font-bold uppercase tracking-wider text-bear-light">No-Trade Window</h2>
+                <p className="text-[12px] text-muted-light mt-1">
+                  {session.newsLockout
+                    ? "News lockout is active. The Mini engine will not generate new signals until the lockout window passes."
+                    : `Session phase = ${session.label}. ${session.noTradeReason ?? "Trade quality drops outside active sessions."}`}
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function CompactCard({ signal: s, tone }: { signal: Signal; tone: "forming" | "missed" }) {
+  const isBuy = s.direction === "bullish";
+  const toneCls = tone === "forming"
+    ? "border-warn/30 bg-warn/5"
+    : "border-muted/30 bg-muted/5 opacity-70";
+  return (
+    <div className={cn("glass-card overflow-hidden border", toneCls)}>
+      <div className={cn("h-0.5", isBuy ? "bg-bull" : "bg-bear")} />
+      <div className="p-3 space-y-1.5">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-xs font-bold">{s.displayName}</span>
+          <span className={cn(
+            "text-[9px] font-bold px-1.5 py-0.5 rounded",
+            s.grade === "A+" ? "bg-bull/15 text-bull-light"
+            : s.grade === "A" ? "bg-accent/15 text-accent-light"
+            : "bg-muted/20 text-muted",
+          )}>
+            {s.grade}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5 text-[9px] text-muted">
+          <span className={cn("px-1.5 py-0.5 rounded uppercase font-bold",
+            isBuy ? "bg-bull/10 text-bull-light" : "bg-bear/10 text-bear-light")}>
+            {isBuy ? "long" : "short"}
+          </span>
+          <span className="bg-surface-2 px-1.5 py-0.5 rounded">{TEMPLATE_LABELS[s.template] ?? s.template}</span>
+          <span className="font-mono">{s.entryTimeframe}</span>
+        </div>
+        <div className="text-[10px] text-muted-light">
+          {tone === "forming"
+            ? `Score ${s.score}/100 · ${s.status.replace(/_/g, " ")} · expires ${expiresIn(s.expiresAt)}`
+            : `Score was ${s.score}/100 · ${s.status === "missed_move" ? "ran past entry" : "expired"} ${timeAgo(s.createdAt)}`}
+        </div>
+      </div>
     </div>
   );
 }
