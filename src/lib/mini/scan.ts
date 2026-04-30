@@ -16,11 +16,21 @@ import { prisma } from "@/lib/prisma";
 import { computeIntradayBias } from "@/lib/mini/bias";
 import { detectLiquiditySweepReversal } from "@/lib/mini/templates/liquidity-sweep-reversal";
 import { detectIntradayTrendContinuation } from "@/lib/mini/templates/intraday-trend-continuation";
+import { detectBreakoutRetest } from "@/lib/mini/templates/breakout-retest";
+import { detectVwapReclaim } from "@/lib/mini/templates/vwap-reclaim";
+import { detectInverseFvgFlip } from "@/lib/mini/templates/inverse-fvg-flip";
+import { detectCompressionBreakout } from "@/lib/mini/templates/compression-breakout";
+import { detectNewsCooldownContinuation } from "@/lib/mini/templates/news-cooldown-continuation";
 import type { DetectedMiniSetup, MiniContext } from "@/lib/mini/types";
 
 const TEMPLATES = [
   { id: "liquidity_sweep_reversal",      run: detectLiquiditySweepReversal },
   { id: "intraday_trend_continuation",   run: detectIntradayTrendContinuation },
+  { id: "breakout_retest",               run: detectBreakoutRetest },
+  { id: "vwap_reclaim",                  run: detectVwapReclaim },
+  { id: "inverse_fvg_flip",              run: detectInverseFvgFlip },
+  { id: "compression_breakout",          run: detectCompressionBreakout },
+  { id: "news_cooldown_continuation",    run: detectNewsCooldownContinuation },
 ];
 
 export interface MiniScanResult {
