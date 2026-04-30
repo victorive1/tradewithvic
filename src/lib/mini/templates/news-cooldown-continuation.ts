@@ -100,7 +100,6 @@ export async function detectNewsCooldownContinuation(ctx: MiniContext): Promise<
     entryZoneQuality, momentumDisplacement: momentum,
     volatilitySpread, riskReward: rrScore, sessionTiming,
   });
-  if (score.grade === "watchlist" || score.grade === "no_trade") return null;
 
   const gates: MiniGate[] = [
     { id: "spike",       label: `News-like spike ≥${SPIKE_ATR_MULT}× ATR detected`, passed: true, evidence: `${spikeDir} spike, range ${(spikeRange / ctx.atr5m).toFixed(2)}× ATR, ${barsSinceSpike} bars ago`, hard: true },

@@ -116,7 +116,6 @@ export async function detectBreakoutRetest(ctx: MiniContext): Promise<DetectedMi
     entryZoneQuality, momentumDisplacement: momentum,
     volatilitySpread, riskReward: rrScore, sessionTiming,
   });
-  if (score.grade === "watchlist" || score.grade === "no_trade") return null;
 
   const gates: MiniGate[] = [
     { id: "compression", label: `Compression coil (${COMPRESSION_LOOKBACK} bars, ≤${COMPRESSION_RANGE_MAX_ATR}× ATR)`, passed: true, evidence: `range ${compressionRange.toFixed(5)} = ${compressionRatio.toFixed(2)}× ATR15m`, hard: true },

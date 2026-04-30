@@ -107,7 +107,6 @@ export async function detectLiquiditySweepReversal(ctx: MiniContext): Promise<De
   });
 
   // Suppress watchlist + lower — Mini's premise is "fewer but cleaner".
-  if (score.grade === "watchlist" || score.grade === "no_trade") return null;
 
   const gates: MiniGate[] = [
     { id: "session",  label: "Active session, no news lockout",          passed: !ctx.bias.session.noTradeZone, evidence: ctx.bias.session.label, hard: true },

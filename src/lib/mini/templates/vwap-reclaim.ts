@@ -87,7 +87,6 @@ export async function detectVwapReclaim(ctx: MiniContext): Promise<DetectedMiniS
     entryZoneQuality, momentumDisplacement: momentum,
     volatilitySpread, riskReward: rrScore, sessionTiming,
   });
-  if (score.grade === "watchlist" || score.grade === "no_trade") return null;
 
   const gates: MiniGate[] = [
     { id: "reclaim",  label: `${direction === "bullish" ? "Bullish" : "Bearish"} VWAP reclaim detected`, passed: true, evidence: `VWAP ${v.current.toFixed(5)}, last close ${last5m.close.toFixed(5)}`, hard: true },

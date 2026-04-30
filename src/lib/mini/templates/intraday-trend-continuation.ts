@@ -114,7 +114,6 @@ export async function detectIntradayTrendContinuation(ctx: MiniContext): Promise
     entryZoneQuality, momentumDisplacement: momentum,
     volatilitySpread, riskReward: rrScore, sessionTiming,
   });
-  if (score.grade === "watchlist" || score.grade === "no_trade") return null;
 
   const gates: MiniGate[] = [
     { id: "session",   label: "Active session",                              passed: !ctx.bias.session.noTradeZone, evidence: ctx.bias.session.label, hard: true },

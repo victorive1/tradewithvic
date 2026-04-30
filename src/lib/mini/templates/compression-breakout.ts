@@ -91,7 +91,6 @@ export async function detectCompressionBreakout(ctx: MiniContext): Promise<Detec
     entryZoneQuality, momentumDisplacement: momentum,
     volatilitySpread, riskReward: rrScore, sessionTiming,
   });
-  if (score.grade === "watchlist" || score.grade === "no_trade") return null;
 
   const gates: MiniGate[] = [
     { id: "session",     label: "Prime session window (LDN/NY)",        passed: true, evidence: ctx.bias.session.label, hard: true },

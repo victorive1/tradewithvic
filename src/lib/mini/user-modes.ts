@@ -9,7 +9,7 @@
 // Modes live in localStorage on the page, so each user can pick the
 // preset that matches their style. Default = Day Trader.
 
-export type UserMode = "scalper" | "day_trader" | "confirmation" | "aggressive";
+export type UserMode = "all_setups" | "scalper" | "day_trader" | "confirmation" | "aggressive";
 
 export interface UserModeConfig {
   id: UserMode;
@@ -33,6 +33,16 @@ const ALL_TEMPLATES = [
 ];
 
 export const USER_MODES: Record<UserMode, UserModeConfig> = {
+  all_setups: {
+    id: "all_setups",
+    label: "All Setups",
+    description: "Show every detection — A+, A, and watchlist. You decide what to take.",
+    minScore: 0,
+    allowedGrades: ["A+", "A", "watchlist"],
+    allowedTemplates: "all",
+    allowedEntryTypes: "all",
+    allowedSpeedClasses: "all",
+  },
   scalper: {
     id: "scalper",
     label: "Scalper",

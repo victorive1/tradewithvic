@@ -20,10 +20,13 @@ export async function GET(req: NextRequest) {
   if (!symbol) return NextResponse.json({ error: "missing_symbol" }, { status: 400 });
 
   try {
-    // One query per timeframe — small, indexed lookups.
+    // Return ALL alive signals per timeframe (top 5 by score) — the user
+    // wants to see every available setup and decide for themselves, not
+    // just the top one. Watchlist-grade signals come through too now
+    // that the templates no longer suppress them.
     const perTf = await Promise.all(
       TIMEFRAMES.map(async (tf) => {
-        const sig = await prisma.miniSignal.findFirst({
+        const sigs = await prisma.miniSignal.findMany({
           where: {
             symbol,
             entryTimeframe: tf,
@@ -31,55 +34,58 @@ export async function GET(req: NextRequest) {
             expiresAt: { gt: new Date() },
           },
           orderBy: [{ score: "desc" }, { createdAt: "desc" }],
+          take: 5,
           include: {
             instrument: { select: { displayName: true, decimalPlaces: true, category: true } },
             scores: true,
           },
         });
-        if (!sig) return [tf, null] as const;
-        let metadata: unknown = null;
-        if (sig.metadataJson) { try { metadata = JSON.parse(sig.metadataJson); } catch { /* malformed */ } }
-        return [tf, {
-          id: sig.id,
-          symbol: sig.symbol,
-          displayName: sig.instrument?.displayName ?? sig.symbol,
-          decimalPlaces: sig.instrument?.decimalPlaces ?? 5,
-          category: sig.instrument?.category ?? "forex",
-          template: sig.template,
-          direction: sig.direction,
-          entryTimeframe: sig.entryTimeframe,
-          speedClass: sig.speedClass,
-          entryZoneLow: sig.entryZoneLow,
-          entryZoneHigh: sig.entryZoneHigh,
-          stopLoss: sig.stopLoss,
-          takeProfit1: sig.takeProfit1,
-          takeProfit2: sig.takeProfit2,
-          takeProfit3: sig.takeProfit3,
-          entryType: sig.entryType,
-          score: sig.score,
-          grade: sig.grade,
-          biasState: sig.biasState,
-          session: sig.session,
-          expectedHoldMinutes: sig.expectedHoldMinutes,
-          riskReward: sig.riskReward,
-          explanation: sig.explanation,
-          invalidation: sig.invalidation,
-          status: sig.status,
-          expiresAt: sig.expiresAt.toISOString(),
-          createdAt: sig.createdAt.toISOString(),
-          scoreBreakdown: sig.scores ? {
-            biasAlignment: sig.scores.biasAlignment,
-            liquidityEvent: sig.scores.liquidityEvent,
-            microStructure: sig.scores.microStructure,
-            entryZoneQuality: sig.scores.entryZoneQuality,
-            momentumDisplacement: sig.scores.momentumDisplacement,
-            volatilitySpread: sig.scores.volatilitySpread,
-            riskReward: sig.scores.riskReward,
-            sessionTiming: sig.scores.sessionTiming,
-            total: sig.scores.total,
-          } : null,
-          metadata,
-        }] as const;
+        const list = sigs.map((sig) => {
+          let metadata: unknown = null;
+          if (sig.metadataJson) { try { metadata = JSON.parse(sig.metadataJson); } catch { /* malformed */ } }
+          return {
+            id: sig.id,
+            symbol: sig.symbol,
+            displayName: sig.instrument?.displayName ?? sig.symbol,
+            decimalPlaces: sig.instrument?.decimalPlaces ?? 5,
+            category: sig.instrument?.category ?? "forex",
+            template: sig.template,
+            direction: sig.direction,
+            entryTimeframe: sig.entryTimeframe,
+            speedClass: sig.speedClass,
+            entryZoneLow: sig.entryZoneLow,
+            entryZoneHigh: sig.entryZoneHigh,
+            stopLoss: sig.stopLoss,
+            takeProfit1: sig.takeProfit1,
+            takeProfit2: sig.takeProfit2,
+            takeProfit3: sig.takeProfit3,
+            entryType: sig.entryType,
+            score: sig.score,
+            grade: sig.grade,
+            biasState: sig.biasState,
+            session: sig.session,
+            expectedHoldMinutes: sig.expectedHoldMinutes,
+            riskReward: sig.riskReward,
+            explanation: sig.explanation,
+            invalidation: sig.invalidation,
+            status: sig.status,
+            expiresAt: sig.expiresAt.toISOString(),
+            createdAt: sig.createdAt.toISOString(),
+            scoreBreakdown: sig.scores ? {
+              biasAlignment: sig.scores.biasAlignment,
+              liquidityEvent: sig.scores.liquidityEvent,
+              microStructure: sig.scores.microStructure,
+              entryZoneQuality: sig.scores.entryZoneQuality,
+              momentumDisplacement: sig.scores.momentumDisplacement,
+              volatilitySpread: sig.scores.volatilitySpread,
+              riskReward: sig.scores.riskReward,
+              sessionTiming: sig.scores.sessionTiming,
+              total: sig.scores.total,
+            } : null,
+            metadata,
+          };
+        });
+        return [tf, list] as const;
       }),
     );
 

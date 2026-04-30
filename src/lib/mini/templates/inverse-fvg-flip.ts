@@ -106,7 +106,6 @@ export async function detectInverseFvgFlip(ctx: MiniContext): Promise<DetectedMi
     entryZoneQuality, momentumDisplacement: momentum,
     volatilitySpread, riskReward: rrScore, sessionTiming,
   });
-  if (score.grade === "watchlist" || score.grade === "no_trade") return null;
 
   const flippedAt = ctx.candles5m[flipped.flippedAtIdx].openTime;
   const gates: MiniGate[] = [

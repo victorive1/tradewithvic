@@ -43,7 +43,9 @@ interface PerSymbolResponse {
   displayName: string;
   decimalPlaces: number;
   category: string;
-  signalsByTimeframe: Record<string, PerSymbolSignal | null>;
+  // Each timeframe slot returns an array of all alive signals for that TF
+  // (top 5 by score). Empty array = no setups currently → "No Trade".
+  signalsByTimeframe: Record<string, PerSymbolSignal[]>;
   timestamp: number;
 }
 
@@ -210,14 +212,14 @@ export default function IntradayPredictionPage() {
 
   const [templateFilter, setTemplateFilter] = useState<"all" | string>("all");
   const [symbolFilter, setSymbolFilter] = useState<"all" | string>("all");
-  const [gradeFilter, setGradeFilter] = useState<"A_PLUS_AND_A" | "A+" | "A">("A_PLUS_AND_A");
-  const [userMode, setUserMode] = useState<UserMode>("day_trader");
+  const [gradeFilter, setGradeFilter] = useState<"all" | "A_PLUS_AND_A" | "A+" | "A" | "watchlist">("all");
+  const [userMode, setUserMode] = useState<UserMode>("all_setups");
 
   // Hydrate user mode from localStorage once on mount.
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem(USER_MODE_KEY);
-      if (saved && (saved === "scalper" || saved === "day_trader" || saved === "confirmation" || saved === "aggressive")) {
+      if (saved && (saved === "all_setups" || saved === "scalper" || saved === "day_trader" || saved === "confirmation" || saved === "aggressive")) {
         setUserMode(saved);
       }
     } catch { /* localStorage unavailable */ }
@@ -246,7 +248,9 @@ export default function IntradayPredictionPage() {
     switch (gradeFilter) {
       case "A+": return "A+";
       case "A": return "A";
-      default: return "A+,A";
+      case "watchlist": return "watchlist";
+      case "A_PLUS_AND_A": return "A+,A";
+      default: return "all";
     }
   }, [gradeFilter]);
 
@@ -524,7 +528,7 @@ export default function IntradayPredictionPage() {
         />
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[11px] uppercase tracking-wider text-muted w-24 shrink-0">Grade</span>
-          {(["A_PLUS_AND_A", "A+", "A"] as const).map((g) => (
+          {(["all", "A_PLUS_AND_A", "A+", "A", "watchlist"] as const).map((g) => (
             <button
               key={g}
               onClick={() => setGradeFilter(g)}
@@ -533,7 +537,7 @@ export default function IntradayPredictionPage() {
                 gradeFilter === g ? "bg-accent text-white border-accent" : "bg-surface-2 text-muted-light border-border/50",
               )}
             >
-              {g === "A_PLUS_AND_A" ? "A+ and A" : g === "A+" ? "A+ only" : "A only"}
+              {g === "all" ? "All" : g === "A_PLUS_AND_A" ? "A+ and A" : g === "A+" ? "A+ only" : g === "A" ? "A only" : "Watchlist"}
             </button>
           ))}
         </div>
@@ -900,11 +904,12 @@ function PerSymbolPanel({
         {loading && <span className="text-[10px] text-muted">scanning…</span>}
       </div>
 
-      {/* Three TF prediction cards side-by-side */}
+      {/* Three TF columns side-by-side. Each column may contain multiple
+          signals (different templates firing on the same TF). */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         {TF_ROW.map((tf) => {
-          const sig = signalsByTf[tf] ?? null;
-          return <TfCard key={tf} timeframe={tf} signal={sig} onOpenAnalysis={onOpenAnalysis} symbolDecimals={data?.decimalPlaces ?? 5} />;
+          const list = signalsByTf[tf] ?? [];
+          return <TfColumn key={tf} timeframe={tf} signals={list} onOpenAnalysis={onOpenAnalysis} symbolDecimals={data?.decimalPlaces ?? 5} />;
         })}
       </div>
 
@@ -917,13 +922,13 @@ function PerSymbolPanel({
   );
 }
 
-function TfCard({ timeframe, signal, onOpenAnalysis, symbolDecimals }: {
+function TfColumn({ timeframe, signals, onOpenAnalysis, symbolDecimals }: {
   timeframe: "5m" | "15m" | "1h";
-  signal: PerSymbolSignal | null;
+  signals: PerSymbolSignal[];
   onOpenAnalysis: (s: Signal) => void;
   symbolDecimals: number;
 }) {
-  if (!signal) {
+  if (signals.length === 0) {
     return (
       <div className="glass-card border border-bear/20 p-4 space-y-2">
         <div className="flex items-center justify-between">
@@ -934,44 +939,66 @@ function TfCard({ timeframe, signal, onOpenAnalysis, symbolDecimals }: {
           <svg className="w-4 h-4 text-bear-light shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636" />
           </svg>
-          <span className="text-[12px] text-muted-light">No clean setup on {timeframe} right now.</span>
+          <span className="text-[12px] text-muted-light">No setups on {timeframe} right now.</span>
         </div>
         <p className="text-[10px] text-muted leading-relaxed">
-          The Mini engine suppresses anything below A grade. Wait for the next 2-min scan or pick a different pair.
+          The brain re-scans every 2 minutes. Setups can be A+, A, or watchlist grade — they all show up here when they fire.
         </p>
       </div>
     );
   }
 
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between px-1">
+        <span className="text-[11px] uppercase tracking-wider text-muted font-mono">{timeframe}</span>
+        <span className="text-[10px] text-muted">{signals.length} setup{signals.length === 1 ? "" : "s"}</span>
+      </div>
+      {signals.map((sig) => (
+        <TfSignalCard key={sig.id} signal={sig} onOpenAnalysis={onOpenAnalysis} symbolDecimals={symbolDecimals} />
+      ))}
+    </div>
+  );
+}
+
+function TfSignalCard({ signal, onOpenAnalysis, symbolDecimals }: {
+  signal: PerSymbolSignal;
+  onOpenAnalysis: (s: Signal) => void;
+  symbolDecimals: number;
+}) {
   const isBuy = signal.direction === "bullish" || signal.direction === "buy" || signal.direction === "long";
   const oneR = computeOneR((signal.entryZoneLow + signal.entryZoneHigh) / 2, signal.stopLoss, signal.direction);
+
+  // Grade pill colour. Watchlist signals get a muted/warn tone so the
+  // user can spot them at a glance without losing them in the feed.
+  const gradeCls =
+    signal.grade === "A+" ? "bg-bull/20 text-bull-light"
+    : signal.grade === "A" ? "bg-accent/20 text-accent-light"
+    : signal.grade === "watchlist" ? "bg-warn/15 text-warn-light"
+    : "bg-muted/15 text-muted";
+  const gradeLabel = signal.grade === "watchlist" ? "WATCH" : signal.grade.toUpperCase();
 
   return (
     <div className="glass-card overflow-hidden">
       <div className={cn("h-1", isBuy ? "bg-bull" : "bg-bear")} />
       <div className="p-4 space-y-3">
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] uppercase tracking-wider text-muted font-mono">{timeframe}</span>
+          <div className="flex items-center gap-2 flex-wrap">
             <span className={cn(
               "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border",
               isBuy ? "bg-bull/15 text-bull-light border-bull/30" : "bg-bear/15 text-bear-light border-bear/30",
             )}>
               {isBuy ? "▲ Long" : "▼ Short"}
             </span>
+            <span className="text-[11px] text-muted-light truncate">{signal.template.replace(/_/g, " ")}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className={cn(
-              "text-[10px] font-bold px-2 py-0.5 rounded",
-              signal.grade === "A+" ? "bg-bull/20 text-bull-light" : "bg-accent/20 text-accent-light",
-            )}>
-              {signal.grade}
+            <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded", gradeCls)}>
+              {gradeLabel}
             </span>
             <span className="text-xs font-mono text-accent-light">{signal.score}<span className="text-[10px] text-muted">/100</span></span>
           </div>
         </div>
-
-        <div className="text-[11px] text-muted-light truncate">{signal.template.replace(/_/g, " ")}</div>
 
         <div className="grid grid-cols-2 gap-1.5 text-[11px] font-mono">
           <Lvl label="Entry" value={`${fmt(signal.entryZoneLow, symbolDecimals)} – ${fmt(signal.entryZoneHigh, symbolDecimals)}`} tone="neutral" />
