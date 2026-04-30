@@ -274,11 +274,13 @@ model Instrument {
   isActive      Boolean @default(true)
   scanTier      Int     @default(1)
 
-  setups       TradeSetup[]
-  alerts       Alert[]
-  snapshots    MarketSnapshot[]
-  candles      Candle[]
-  miniSignals  MiniSignal[]
+  setups         TradeSetup[]
+  alerts         Alert[]
+  snapshots      MarketSnapshot[]
+  candles        Candle[]
+  miniSignals    MiniSignal[]
+  flowSnapshots  FlowSnapshot[]
+  liquidityZones LiquidityZone[]
 }
 
 // ==================== MARKET BRAIN — SCAN ENGINE ====================
@@ -2173,4 +2175,111 @@ model MiniSmartExit {
 
   @@index([miniSignalId, resolved])
   @@index([alertType, raisedAt])
+}
+
+// ==================== RETAIL vs INSTITUTION (FlowVision) ====================
+//
+// Probabilistic flow intelligence engine. Estimates retail crowding,
+// institutional pressure (proxied from VWAP, synthetic CVD, volume
+// z-scores, structure events, and — when available — futures OI / COT /
+// options), maps liquidity, detects bull/bear traps, and emits a final
+// bias + confidence + invalidation per symbol.
+//
+// Design constraint per blueprint: this is NOT exact order flow. Every
+// "institutional" number is an estimate. UI must say "estimated",
+// "likely", "approximate" — never "$800M was bought".
+
+model FlowSnapshot {
+  id              String   @id @default(cuid())
+  instrumentId    String
+  symbol          String
+  // Anchoring timeframe — defaults to 15m (the primary intraday cadence).
+  timeframe       String   @default("15m")
+
+  // ── Retail panel ────────────────────────────────────────────────────
+  retailLongPct      Float?    // 0-100
+  retailShortPct     Float?    // 0-100
+  retailCrowding     String?   // "long_heavy" | "short_heavy" | "balanced" | "unavailable"
+  retailDataSource   String?   // "myfxbook" | "stub" | etc.
+  retailBuyScore     Int       @default(0)  // 0-100
+  retailSellScore    Int       @default(0)  // 0-100
+
+  // ── Institutional panel (proxy/derived) ─────────────────────────────
+  institutionalBuyScore   Int    @default(0)
+  institutionalSellScore  Int    @default(0)
+  syntheticCvd            Float?
+  vwapPosition            Float?  // close - vwap, normalised by ATR
+  vwapSlope               Float?
+  volumeZScore            Float?
+  oiChange                Float?  // open interest delta when source available
+  cotNet                  Float?  // net commercial position (bonus signal)
+
+  // ── Trap detection ──────────────────────────────────────────────────
+  trapScore       Int      @default(0)
+  trapType        String?   // "bull_trap" | "bear_trap" | "neutral"
+
+  // ── Final prediction ─────────────────────────────────────────────────
+  finalBias       String   // "bullish" | "bearish" | "neutral"
+  confidence      Int      // 0-100
+  invalidation    Float?
+  targetLiquidity Float?
+  expectedHoldMinutes Int  @default(180)
+
+  // Plain-English narrative for the prediction feed.
+  narrative       String?  @db.Text
+  // Structured list of contributing reasons for the analysis modal.
+  reasonsJson     String?  @db.Text
+
+  // Context
+  session         String?
+  biasState       String?
+
+  // Free-form per-snapshot payload — gates that fired, signal contributions.
+  metadataJson    String?  @db.Text
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  instrument      Instrument @relation(fields: [instrumentId], references: [id])
+
+  @@index([symbol, createdAt])
+  @@index([finalBias, confidence])
+  @@index([trapScore])
+}
+
+// Liquidity zones — FVGs, order blocks, equal highs/lows, session
+// extremes, prev day/week. Persisted so the trap-detector and prediction
+// modules can reference them across scans without recomputing every cycle.
+model LiquidityZone {
+  id              String   @id @default(cuid())
+  instrumentId    String
+  symbol          String
+  timeframe       String
+
+  // "fvg" | "order_block" | "equal_highs" | "equal_lows" |
+  // "session_high" | "session_low" | "prev_day_high" | "prev_day_low" |
+  // "swing_high" | "swing_low"
+  zoneType        String
+  // For directional zones (FVG / OB): "bullish" | "bearish". null for
+  // pure liquidity references like equal highs.
+  direction       String?
+  priceLow        Float
+  priceHigh       Float
+  // 0-100 — strength heuristic. Based on touches, displacement size,
+  // age, and confluence with HTF zones.
+  strengthScore   Int      @default(50)
+
+  formedAt        DateTime
+  // Filled = price returned to the zone (for FVGs/OBs).
+  isFilled        Boolean  @default(false)
+  // Violated = a body close broke through the zone in the wrong direction.
+  isViolated      Boolean  @default(false)
+
+  metadataJson    String?  @db.Text
+  updatedAt       DateTime @updatedAt
+
+  instrument      Instrument @relation(fields: [instrumentId], references: [id])
+
+  @@index([symbol, timeframe, isFilled, isViolated])
+  @@index([zoneType, formedAt])
 }
