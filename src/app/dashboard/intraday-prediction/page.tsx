@@ -8,6 +8,49 @@ import { AdminRiskTargetBar, AdminLotSizeForCard } from "@/components/admin/Admi
 import { useStableSetups } from "@/lib/dashboard/use-stable-setups";
 import { USER_MODES, applyUserMode, type UserMode } from "@/lib/mini/user-modes";
 import { AnalysisModal } from "@/components/mini/AnalysisModal";
+import { ALL_INSTRUMENTS } from "@/lib/constants";
+import { TradingViewWidget } from "@/components/charts/TradingViewWidget";
+import { useTheme } from "@/components/ui/ThemeProvider";
+
+// ── Per-symbol Mini API response shape ─────────────────────────────
+interface PerSymbolSignal {
+  id: string;
+  symbol: string;
+  displayName: string;
+  decimalPlaces: number;
+  template: string;
+  direction: string;
+  entryTimeframe: string;
+  entryZoneLow: number;
+  entryZoneHigh: number;
+  stopLoss: number;
+  takeProfit1: number;
+  takeProfit2: number | null;
+  takeProfit3: number | null;
+  entryType: string;
+  score: number;
+  grade: string;
+  riskReward: number;
+  explanation: string | null;
+  invalidation: string | null;
+  status: string;
+  expiresAt: string;
+  createdAt: string;
+  metadata: any;
+}
+interface PerSymbolResponse {
+  symbol: string;
+  displayName: string;
+  decimalPlaces: number;
+  category: string;
+  signalsByTimeframe: Record<string, PerSymbolSignal | null>;
+  timestamp: number;
+}
+
+const TF_ROW = ["5m", "15m", "1h"] as const;
+
+// 7 MVP quick-pick symbols matching the FlowVision MVP set.
+const QUICK_PICKS = ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "BTCUSD", "NAS100"] as const;
 
 // Intraday Prediction tab — the front-end for the Market Prediction
 // Mini engine. Polls /api/mini/signals every 60s. Top section is a
@@ -104,8 +147,67 @@ function expiresIn(iso: string): string {
 }
 
 const USER_MODE_KEY = "mini_user_mode";
+const SELECTED_SYMBOL_KEY = "intraday_selected_symbol";
 
 export default function IntradayPredictionPage() {
+  const { theme } = useTheme();
+
+  // ── Search-driven per-symbol view ─────────────────────────────────
+  const [query, setQuery] = useState("");
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const [perSymbol, setPerSymbol] = useState<PerSymbolResponse | null>(null);
+  const [perSymbolLoading, setPerSymbolLoading] = useState(false);
+
+  const filteredInstruments = useMemo(() => {
+    if (!query.trim()) return [];
+    const q = query.toLowerCase();
+    return ALL_INSTRUMENTS.filter(
+      (i) => i.symbol.toLowerCase().includes(q) || i.displayName.toLowerCase().includes(q),
+    ).slice(0, 8);
+  }, [query]);
+
+  // Hydrate last-selected symbol from localStorage.
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(SELECTED_SYMBOL_KEY);
+      if (saved) setSelectedSymbol(saved);
+    } catch { /* ignore */ }
+  }, []);
+
+  // Fetch per-symbol Mini signals (latest per timeframe) on selection
+  // change + every 30s while the symbol is selected.
+  useEffect(() => {
+    if (!selectedSymbol) { setPerSymbol(null); return; }
+    let cancelled = false;
+    async function load() {
+      try {
+        setPerSymbolLoading(true);
+        const res = await fetch(`/api/mini/by-symbol?symbol=${encodeURIComponent(selectedSymbol!)}&t=${Date.now()}`, { cache: "no-store" });
+        const data = await res.json();
+        if (!cancelled) setPerSymbol(data);
+      } catch (e) {
+        console.error("Failed to load per-symbol signals:", e);
+      } finally {
+        if (!cancelled) setPerSymbolLoading(false);
+      }
+    }
+    load();
+    const id = setInterval(load, 30_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [selectedSymbol]);
+
+  function handleSelectInstrument(symbol: string) {
+    setSelectedSymbol(symbol);
+    setQuery("");
+    setShowDropdown(false);
+    try { window.localStorage.setItem(SELECTED_SYMBOL_KEY, symbol); } catch { /* ignore */ }
+  }
+  function handleClearSelection() {
+    setSelectedSymbol(null);
+    try { window.localStorage.removeItem(SELECTED_SYMBOL_KEY); } catch { /* ignore */ }
+  }
+
   const [templateFilter, setTemplateFilter] = useState<"all" | string>("all");
   const [symbolFilter, setSymbolFilter] = useState<"all" | string>("all");
   const [gradeFilter, setGradeFilter] = useState<"A_PLUS_AND_A" | "A+" | "A">("A_PLUS_AND_A");
@@ -245,6 +347,84 @@ export default function IntradayPredictionPage() {
       onMouseLeave={() => { pausedRef.current = false; setPaused(false); }}
     >
       <AdminRiskTargetBar />
+
+      {/* Search-driven per-symbol view ─────────────────────────────────
+          Mirrors the Market Prediction tab's UX: type to find any pair,
+          see live 5m / 15m / 1h prediction cards, and a TradingView
+          chart. Each TF renders "No Trade" when the brain has no alive
+          signal for that timeframe. */}
+      <div className="space-y-3">
+        <div className="relative max-w-lg">
+          <div className="glass-card flex items-center px-4 py-3 gap-3">
+            <svg className="w-5 h-5 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => { setQuery(e.target.value); setShowDropdown(true); }}
+              onFocus={() => setShowDropdown(true)}
+              onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+              placeholder='Search any pair (e.g. "EUR", "XAU", "BTC")'
+              className="bg-transparent outline-none text-foreground text-sm flex-1 placeholder:text-muted"
+            />
+          </div>
+          {showDropdown && filteredInstruments.length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-surface-2 border border-border/50 rounded-lg shadow-xl z-50 overflow-hidden">
+              {filteredInstruments.map((inst) => (
+                <button
+                  key={inst.symbol}
+                  onMouseDown={() => handleSelectInstrument(inst.symbol)}
+                  className="w-full text-left px-4 py-3 hover:bg-surface-2/80 transition-smooth flex items-center justify-between"
+                >
+                  <div>
+                    <span className="text-sm font-semibold text-foreground">{inst.displayName}</span>
+                    <span className="text-xs text-muted ml-2 capitalize">{inst.category}</span>
+                  </div>
+                  <span className="text-xs text-muted font-mono">{inst.symbol}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Quick-pick row */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] uppercase tracking-wider text-muted">Quick pick</span>
+          {QUICK_PICKS.map((sym) => (
+            <button
+              key={sym}
+              onClick={() => handleSelectInstrument(sym)}
+              className={cn(
+                "px-2 py-1 rounded text-[11px] font-mono border transition-smooth",
+                selectedSymbol === sym ? "bg-accent text-white border-accent" : "bg-surface-2 text-muted-light border-border/50 hover:bg-surface-3",
+              )}
+            >
+              {sym}
+            </button>
+          ))}
+          {selectedSymbol && (
+            <button
+              onClick={handleClearSelection}
+              className="ml-auto px-2 py-1 rounded text-[11px] text-muted hover:text-foreground transition-smooth"
+              title="Clear selection and view the global feed"
+            >
+              ✕ clear
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Per-symbol view — only renders when a symbol is picked */}
+      {selectedSymbol && (
+        <PerSymbolPanel
+          symbol={selectedSymbol}
+          data={perSymbol}
+          loading={perSymbolLoading}
+          theme={theme}
+          onOpenAnalysis={(s) => setModalSignal(s)}
+        />
+      )}
 
       {/* Header + session banner */}
       <div className="space-y-2">
@@ -682,6 +862,154 @@ function ScorePill({ label, value, max }: { label: string; value: number; max: n
     <div className={cn("rounded p-1.5 text-center border border-border/20", tone)}>
       <div className="text-[9px] uppercase opacity-70">{label}</div>
       <div className="text-[11px] font-mono font-bold">{value}<span className="opacity-50">/{max}</span></div>
+    </div>
+  );
+}
+
+// ── Per-symbol panel ─────────────────────────────────────────────────
+// Renders three TF prediction cards (5m / 15m / 1h) plus a TradingView
+// chart for the selected pair. Each TF card either shows the live Mini
+// signal for that timeframe or a "No Trade" placeholder.
+
+function PerSymbolPanel({
+  symbol, data, loading, theme, onOpenAnalysis,
+}: {
+  symbol: string;
+  data: PerSymbolResponse | null;
+  loading: boolean;
+  theme: string;
+  onOpenAnalysis: (s: Signal) => void;
+}) {
+  const display = data?.displayName ?? symbol;
+  const signalsByTf = data?.signalsByTimeframe ?? {};
+
+  return (
+    <div className="space-y-4">
+      {/* Symbol header */}
+      <div className="glass-card p-4 flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-xl font-bold text-foreground">{display}</h2>
+            <span className="text-[10px] uppercase text-muted bg-surface-2 px-2 py-0.5 rounded">{data?.category ?? "—"}</span>
+            <span className="text-[10px] text-muted">{symbol}</span>
+          </div>
+          <div className="text-[11px] text-muted mt-1">
+            Live 5m / 15m / 1h predictions from the Mini engine. Brain re-scans every 2 min.
+          </div>
+        </div>
+        {loading && <span className="text-[10px] text-muted">scanning…</span>}
+      </div>
+
+      {/* Three TF prediction cards side-by-side */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        {TF_ROW.map((tf) => {
+          const sig = signalsByTf[tf] ?? null;
+          return <TfCard key={tf} timeframe={tf} signal={sig} onOpenAnalysis={onOpenAnalysis} symbolDecimals={data?.decimalPlaces ?? 5} />;
+        })}
+      </div>
+
+      {/* TradingView chart */}
+      <div className="glass-card overflow-hidden">
+        <div className="px-4 pt-3 pb-2 text-[10px] uppercase tracking-wider text-muted">Live chart · {display}</div>
+        <TradingViewWidget symbol={symbol} theme={theme as "dark" | "light"} height={520} autosize />
+      </div>
+    </div>
+  );
+}
+
+function TfCard({ timeframe, signal, onOpenAnalysis, symbolDecimals }: {
+  timeframe: "5m" | "15m" | "1h";
+  signal: PerSymbolSignal | null;
+  onOpenAnalysis: (s: Signal) => void;
+  symbolDecimals: number;
+}) {
+  if (!signal) {
+    return (
+      <div className="glass-card border border-bear/20 p-4 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] uppercase tracking-wider text-muted font-mono">{timeframe}</span>
+          <span className="text-[10px] uppercase text-bear-light bg-bear/10 border border-bear/30 px-2 py-0.5 rounded font-bold">No Trade</span>
+        </div>
+        <div className="flex items-center gap-2 py-2">
+          <svg className="w-4 h-4 text-bear-light shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636" />
+          </svg>
+          <span className="text-[12px] text-muted-light">No clean setup on {timeframe} right now.</span>
+        </div>
+        <p className="text-[10px] text-muted leading-relaxed">
+          The Mini engine suppresses anything below A grade. Wait for the next 2-min scan or pick a different pair.
+        </p>
+      </div>
+    );
+  }
+
+  const isBuy = signal.direction === "bullish" || signal.direction === "buy" || signal.direction === "long";
+  const oneR = computeOneR((signal.entryZoneLow + signal.entryZoneHigh) / 2, signal.stopLoss, signal.direction);
+
+  return (
+    <div className="glass-card overflow-hidden">
+      <div className={cn("h-1", isBuy ? "bg-bull" : "bg-bear")} />
+      <div className="p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] uppercase tracking-wider text-muted font-mono">{timeframe}</span>
+            <span className={cn(
+              "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border",
+              isBuy ? "bg-bull/15 text-bull-light border-bull/30" : "bg-bear/15 text-bear-light border-bear/30",
+            )}>
+              {isBuy ? "▲ Long" : "▼ Short"}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={cn(
+              "text-[10px] font-bold px-2 py-0.5 rounded",
+              signal.grade === "A+" ? "bg-bull/20 text-bull-light" : "bg-accent/20 text-accent-light",
+            )}>
+              {signal.grade}
+            </span>
+            <span className="text-xs font-mono text-accent-light">{signal.score}<span className="text-[10px] text-muted">/100</span></span>
+          </div>
+        </div>
+
+        <div className="text-[11px] text-muted-light truncate">{signal.template.replace(/_/g, " ")}</div>
+
+        <div className="grid grid-cols-2 gap-1.5 text-[11px] font-mono">
+          <Lvl label="Entry" value={`${fmt(signal.entryZoneLow, symbolDecimals)} – ${fmt(signal.entryZoneHigh, symbolDecimals)}`} tone="neutral" />
+          <Lvl label="Stop"  value={fmt(signal.stopLoss, symbolDecimals)} tone="bear" />
+          <Lvl label="1R"    value={fmt(oneR, symbolDecimals)} tone="accent" />
+          <Lvl label="TP1"   value={fmt(signal.takeProfit1, symbolDecimals)} tone="bull" />
+        </div>
+
+        <div className="flex items-center justify-between text-[10px] text-muted">
+          <span>RR {signal.riskReward.toFixed(2)} · {signal.status.replace(/_/g, " ")}</span>
+          <span>expires {expiresIn(signal.expiresAt)}</span>
+        </div>
+
+        <div className="flex items-center justify-between gap-2">
+          <button
+            onClick={() => onOpenAnalysis(signal as unknown as Signal)}
+            className="text-[11px] text-accent-light hover:text-accent transition-smooth"
+          >
+            full analysis →
+          </button>
+          <ExecuteTradeButton
+            setup={{
+              symbol: signal.symbol,
+              direction: isBuy ? "buy" : "sell",
+              entry: (signal.entryZoneLow + signal.entryZoneHigh) / 2,
+              stopLoss: signal.stopLoss,
+              takeProfit: signal.takeProfit1,
+              takeProfit2: signal.takeProfit2,
+              timeframe: signal.entryTimeframe,
+              setupType: `mini_${signal.template}`,
+              qualityGrade: signal.grade,
+              confidenceScore: signal.score,
+              sourceType: "setup",
+              sourceRef: signal.id,
+            }}
+          />
+        </div>
+      </div>
     </div>
   );
 }
