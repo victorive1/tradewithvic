@@ -7,6 +7,7 @@ import { computeOneR } from "@/lib/setups/one-r";
 import { AdminRiskTargetBar, AdminLotSizeForCard } from "@/components/admin/AdminRiskTarget";
 import { useStableSetups } from "@/lib/dashboard/use-stable-setups";
 import { USER_MODES, applyUserMode, type UserMode } from "@/lib/mini/user-modes";
+import { AnalysisModal } from "@/components/mini/AnalysisModal";
 
 // Intraday Prediction tab — the front-end for the Market Prediction
 // Mini engine. Polls /api/mini/signals every 60s. Top section is a
@@ -127,6 +128,7 @@ export default function IntradayPredictionPage() {
   const [signals, setSignals] = useState<Signal[]>([]);
   const [forming, setForming] = useState<Signal[]>([]);
   const [missed, setMissed] = useState<Signal[]>([]);
+  const [modalSignal, setModalSignal] = useState<Signal | null>(null);
   const [facets, setFacets] = useState<{ templates: string[]; symbols: string[]; grades: string[] }>({ templates: [], symbols: [], grades: [] });
   const [session, setSession] = useState<SessionState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -399,12 +401,20 @@ export default function IntradayPredictionPage() {
                   )}
 
                   <div className="flex items-center justify-between gap-2">
-                    <button
-                      onClick={() => setExpandedId(expanded ? null : s.id)}
-                      className="text-[11px] text-accent-light hover:text-accent transition-smooth"
-                    >
-                      {expanded ? "▲ less" : "▼ score breakdown + analysis"}
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setExpandedId(expanded ? null : s.id)}
+                        className="text-[11px] text-accent-light hover:text-accent transition-smooth"
+                      >
+                        {expanded ? "▲ less" : "▼ score + gates"}
+                      </button>
+                      <button
+                        onClick={() => setModalSignal(s)}
+                        className="text-[11px] text-muted hover:text-foreground transition-smooth"
+                      >
+                        full analysis →
+                      </button>
+                    </div>
                     <ExecuteTradeButton
                       setup={{
                         symbol: s.symbol,
@@ -503,6 +513,9 @@ export default function IntradayPredictionPage() {
           </div>
         </section>
       )}
+
+      {/* Per-signal Analysis modal */}
+      <AnalysisModal signal={modalSignal} open={modalSignal !== null} onClose={() => setModalSignal(null)} />
 
       {/* ── No-Trade Warnings ──────────────────────────────────────────── */}
       {(session?.noTradeZone || session?.newsLockout) && (
