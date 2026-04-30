@@ -15,6 +15,7 @@
 import { prisma } from "@/lib/prisma";
 import { computeIntradayBias } from "@/lib/mini/bias";
 import { tickLifecycle } from "@/lib/mini/lifecycle";
+import { tickSmartExit } from "@/lib/mini/smart-exit";
 import { detectLiquiditySweepReversal } from "@/lib/mini/templates/liquidity-sweep-reversal";
 import { detectIntradayTrendContinuation } from "@/lib/mini/templates/intraday-trend-continuation";
 import { detectBreakoutRetest } from "@/lib/mini/templates/breakout-retest";
@@ -40,17 +41,16 @@ export interface MiniScanResult {
   persisted: number;
   expired: number;
   lifecycleTransitions: number;
+  smartExitAlerts: number;
   errors: string[];
 }
 
 export async function runMiniScan(): Promise<MiniScanResult> {
   const result: MiniScanResult = {
-    symbolsScanned: 0, detected: 0, persisted: 0, expired: 0, lifecycleTransitions: 0, errors: [],
+    symbolsScanned: 0, detected: 0, persisted: 0, expired: 0, lifecycleTransitions: 0, smartExitAlerts: 0, errors: [],
   };
 
-  // Run the lifecycle state machine BEFORE detecting new setups so any
-  // price move since the last cycle is reflected before dedup checks
-  // against alive signals run.
+  // 1. Lifecycle first — promote/demote based on price moves since last cycle.
   try {
     const lc = await tickLifecycle();
     result.lifecycleTransitions = lc.transitions;
@@ -58,6 +58,15 @@ export async function runMiniScan(): Promise<MiniScanResult> {
     result.errors.push(...lc.errors);
   } catch (err) {
     result.errors.push(`lifecycle: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // 2. Smart Exit pass on entry_active / in_trade signals.
+  try {
+    const se = await tickSmartExit();
+    result.smartExitAlerts = se.alertsRaised;
+    result.errors.push(...se.errors);
+  } catch (err) {
+    result.errors.push(`smart_exit: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // Pull the same instrument set the brain scans. Mini reuses the
