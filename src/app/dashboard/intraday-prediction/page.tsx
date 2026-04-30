@@ -6,6 +6,7 @@ import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
 import { computeOneR } from "@/lib/setups/one-r";
 import { AdminRiskTargetBar, AdminLotSizeForCard } from "@/components/admin/AdminRiskTarget";
 import { useStableSetups } from "@/lib/dashboard/use-stable-setups";
+import { USER_MODES, applyUserMode, type UserMode } from "@/lib/mini/user-modes";
 
 // Intraday Prediction tab — the front-end for the Market Prediction
 // Mini engine. Polls /api/mini/signals every 60s. Top section is a
@@ -101,10 +102,27 @@ function expiresIn(iso: string): string {
   return `${Math.round(ms / 3_600_000)}h`;
 }
 
+const USER_MODE_KEY = "mini_user_mode";
+
 export default function IntradayPredictionPage() {
   const [templateFilter, setTemplateFilter] = useState<"all" | string>("all");
   const [symbolFilter, setSymbolFilter] = useState<"all" | string>("all");
   const [gradeFilter, setGradeFilter] = useState<"A_PLUS_AND_A" | "A+" | "A">("A_PLUS_AND_A");
+  const [userMode, setUserMode] = useState<UserMode>("day_trader");
+
+  // Hydrate user mode from localStorage once on mount.
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(USER_MODE_KEY);
+      if (saved && (saved === "scalper" || saved === "day_trader" || saved === "confirmation" || saved === "aggressive")) {
+        setUserMode(saved);
+      }
+    } catch { /* localStorage unavailable */ }
+  }, []);
+  const updateUserMode = (m: UserMode) => {
+    setUserMode(m);
+    try { window.localStorage.setItem(USER_MODE_KEY, m); } catch { /* ignore */ }
+  };
 
   const [signals, setSignals] = useState<Signal[]>([]);
   const [forming, setForming] = useState<Signal[]>([]);
@@ -169,7 +187,8 @@ export default function IntradayPredictionPage() {
   }, [templateFilter, symbolFilter, gradeQuery]);
 
   const getId = useCallback((s: Signal) => s.id, []);
-  const { items: stable, changedIds } = useStableSetups(signals, getId, paused);
+  const userModeFilteredSignals = useMemo(() => applyUserMode(signals, userMode), [signals, userMode]);
+  const { items: stable, changedIds } = useStableSetups(userModeFilteredSignals, getId, paused);
 
   const counts = useMemo(() => {
     const aPlus = stable.filter((s) => s.grade === "A+").length;
@@ -242,6 +261,31 @@ export default function IntradayPredictionPage() {
           <Tally label="A"  value={counts.a}     tone="accent" />
           <Tally label="Total" value={counts.total} tone="neutral" />
         </div>
+      </div>
+
+      {/* User Mode picker */}
+      <div className="glass-card p-3 flex items-center gap-3 flex-wrap">
+        <span className="text-[11px] uppercase tracking-wider text-muted shrink-0">Mode</span>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {(Object.keys(USER_MODES) as UserMode[]).map((m) => {
+            const cfg = USER_MODES[m];
+            const active = userMode === m;
+            return (
+              <button
+                key={m}
+                onClick={() => updateUserMode(m)}
+                title={cfg.description}
+                className={cn(
+                  "px-3 py-1 rounded-lg text-[11px] font-medium transition-smooth border",
+                  active ? "bg-accent text-white border-accent" : "bg-surface-2 text-muted-light border-border/50 hover:bg-surface-3",
+                )}
+              >
+                {cfg.label}
+              </button>
+            );
+          })}
+        </div>
+        <span className="text-[10px] text-muted ml-auto max-w-md text-right">{USER_MODES[userMode].description}</span>
       </div>
 
       {/* Filter row */}
