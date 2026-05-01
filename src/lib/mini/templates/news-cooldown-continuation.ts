@@ -6,7 +6,7 @@
 // in the last hour ≥3× ATR_5m followed by a stabilising structure.
 
 import type { DetectedMiniSetup, MiniContext } from "@/lib/mini/types";
-import { computeMiniScore, scoreRR, scoreVolatility, type MiniGate } from "@/lib/mini/scoring";
+import { computeMiniScore, scoreRR, scoreVolatility, type MiniGate, isDirectionallyConsistent } from "@/lib/mini/scoring";
 
 const SPIKE_LOOKBACK = 12; // last hour on 5m
 const SPIKE_ATR_MULT = 3;
@@ -100,6 +100,8 @@ export async function detectNewsCooldownContinuation(ctx: MiniContext): Promise<
     entryZoneQuality, momentumDisplacement: momentum,
     volatilitySpread, riskReward: rrScore, sessionTiming,
   });
+
+  if (!isDirectionallyConsistent(spikeDir, entryMid, stopLoss, tp1)) return null;
 
   const gates: MiniGate[] = [
     { id: "spike",       label: `News-like spike ≥${SPIKE_ATR_MULT}× ATR detected`, passed: true, evidence: `${spikeDir} spike, range ${(spikeRange / ctx.atr5m).toFixed(2)}× ATR, ${barsSinceSpike} bars ago`, hard: true },

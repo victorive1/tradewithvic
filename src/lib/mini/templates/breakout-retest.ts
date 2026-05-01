@@ -11,7 +11,7 @@
 // frequently break with displacement.
 
 import type { DetectedMiniSetup, MiniContext } from "@/lib/mini/types";
-import { computeMiniScore, scoreRR, scoreVolatility, type MiniGate } from "@/lib/mini/scoring";
+import { computeMiniScore, scoreRR, scoreVolatility, type MiniGate, isDirectionallyConsistent } from "@/lib/mini/scoring";
 
 const COMPRESSION_LOOKBACK = 8;
 const COMPRESSION_RANGE_MAX_ATR = 0.7;
@@ -116,6 +116,8 @@ export async function detectBreakoutRetest(ctx: MiniContext): Promise<DetectedMi
     entryZoneQuality, momentumDisplacement: momentum,
     volatilitySpread, riskReward: rrScore, sessionTiming,
   });
+
+  if (!isDirectionallyConsistent(direction, entryMid, stopLoss, tp1)) return null;
 
   const gates: MiniGate[] = [
     { id: "compression", label: `Compression coil (${COMPRESSION_LOOKBACK} bars, ≤${COMPRESSION_RANGE_MAX_ATR}× ATR)`, passed: true, evidence: `range ${compressionRange.toFixed(5)} = ${compressionRatio.toFixed(2)}× ATR15m`, hard: true },

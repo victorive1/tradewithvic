@@ -6,7 +6,7 @@
 // extreme. Triggers only inside London/NY/Overlap.
 
 import type { DetectedMiniSetup, MiniContext } from "@/lib/mini/types";
-import { computeMiniScore, scoreRR, scoreVolatility, type MiniGate } from "@/lib/mini/scoring";
+import { computeMiniScore, scoreRR, scoreVolatility, type MiniGate, isDirectionallyConsistent } from "@/lib/mini/scoring";
 import { isInPrimeWindow } from "@/lib/mini/session";
 
 const COMPRESSION_BARS = 10;
@@ -91,6 +91,8 @@ export async function detectCompressionBreakout(ctx: MiniContext): Promise<Detec
     entryZoneQuality, momentumDisplacement: momentum,
     volatilitySpread, riskReward: rrScore, sessionTiming,
   });
+
+  if (!isDirectionallyConsistent(direction, entryMid, stopLoss, tp1)) return null;
 
   const gates: MiniGate[] = [
     { id: "session",     label: "Prime session window (LDN/NY)",        passed: true, evidence: ctx.bias.session.label, hard: true },

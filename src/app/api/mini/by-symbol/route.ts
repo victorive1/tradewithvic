@@ -40,11 +40,19 @@ export async function GET(req: NextRequest) {
             scores: true,
           },
         });
+        // Drop directionally-inverted rows before dedup — never show a
+        // long card with SL above entry / TP1 below, or its mirror.
+        const cleanSigs = sigs.filter((s) => {
+          const entry = (s.entryZoneLow + s.entryZoneHigh) / 2;
+          const isBull = s.direction === "bullish" || s.direction === "buy" || s.direction === "long";
+          if (isBull) return s.stopLoss < entry && s.takeProfit1 > entry;
+          return s.stopLoss > entry && s.takeProfit1 < entry;
+        });
         // Dedup: bucket by (template, direction, entry-±0.2%) and keep
         // the highest-scoring most-recent row per bucket. Stops the same
         // setup re-firing every cycle from clogging the column.
-        const buckets = new Map<string, typeof sigs>();
-        for (const s of sigs) {
+        const buckets = new Map<string, typeof cleanSigs>();
+        for (const s of cleanSigs) {
           const entryMid = (s.entryZoneLow + s.entryZoneHigh) / 2;
           const bucket = Math.round(entryMid / Math.max(entryMid * 0.002, 1e-9));
           const k = `${s.template}|${s.direction}|${bucket}`;
@@ -52,7 +60,7 @@ export async function GET(req: NextRequest) {
           arr.push(s);
           buckets.set(k, arr);
         }
-        const deduped: typeof sigs = [];
+        const deduped: typeof cleanSigs = [];
         for (const arr of buckets.values()) {
           arr.sort((a, b) => {
             if (a.score !== b.score) return b.score - a.score;

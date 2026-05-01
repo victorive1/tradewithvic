@@ -6,7 +6,7 @@
 // VWAP.
 
 import type { DetectedMiniSetup, MiniContext } from "@/lib/mini/types";
-import { computeMiniScore, scoreRR, scoreVolatility, type MiniGate } from "@/lib/mini/scoring";
+import { computeMiniScore, scoreRR, scoreVolatility, type MiniGate, isDirectionallyConsistent } from "@/lib/mini/scoring";
 
 export async function detectVwapReclaim(ctx: MiniContext): Promise<DetectedMiniSetup | null> {
   if (ctx.bias.session.noTradeZone) return null;
@@ -87,6 +87,8 @@ export async function detectVwapReclaim(ctx: MiniContext): Promise<DetectedMiniS
     entryZoneQuality, momentumDisplacement: momentum,
     volatilitySpread, riskReward: rrScore, sessionTiming,
   });
+
+  if (!isDirectionallyConsistent(direction, entryMid, stopLoss, tp1)) return null;
 
   const gates: MiniGate[] = [
     { id: "reclaim",  label: `${direction === "bullish" ? "Bullish" : "Bearish"} VWAP reclaim detected`, passed: true, evidence: `VWAP ${v.current.toFixed(5)}, last close ${last5m.close.toFixed(5)}`, hard: true },

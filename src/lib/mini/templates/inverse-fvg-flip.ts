@@ -6,7 +6,7 @@
 // last 6 bars, and price must be retesting the flipped zone right now.
 
 import type { DetectedMiniSetup, MiniContext } from "@/lib/mini/types";
-import { computeMiniScore, scoreRR, scoreVolatility, type MiniGate } from "@/lib/mini/scoring";
+import { computeMiniScore, scoreRR, scoreVolatility, type MiniGate, isDirectionallyConsistent } from "@/lib/mini/scoring";
 
 const DISPLACEMENT_BODY_RATIO = 0.55;
 const FLIP_LOOKBACK = 6;
@@ -67,6 +67,14 @@ export async function detectInverseFvgFlip(ctx: MiniContext): Promise<DetectedMi
   const dirOk = direction === "bullish" ? last5m.close > last5m.open : last5m.close < last5m.open;
   if (!dirOk) return null;
 
+  // Close must be on the correct side of the zone for the trade direction.
+  // Without this, a candle can wick into the zone but close just past it
+  // on the wrong side — producing a setup whose SL ends up on the same
+  // side as the entry. Bullish needs close >= zoneLow (rejected up out
+  // of the zone or held inside it). Bearish needs close <= zoneHigh.
+  if (direction === "bullish" && last5m.close < zoneLow) return null;
+  if (direction === "bearish" && last5m.close > zoneHigh) return null;
+
   // ── Levels ────────────────────────────────────────────────────────────
   const entryMid = last5m.close;
   const buffer = ctx.atr5m * 0.2;
@@ -106,6 +114,9 @@ export async function detectInverseFvgFlip(ctx: MiniContext): Promise<DetectedMi
     entryZoneQuality, momentumDisplacement: momentum,
     volatilitySpread, riskReward: rrScore, sessionTiming,
   });
+
+  // Final guard: never emit a setup where SL/TP geometry is inverted.
+  if (!isDirectionallyConsistent(direction, entryMid, stopLoss, tp1)) return null;
 
   const flippedAt = ctx.candles5m[flipped.flippedAtIdx].openTime;
   const gates: MiniGate[] = [

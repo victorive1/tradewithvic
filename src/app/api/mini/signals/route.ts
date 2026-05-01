@@ -45,6 +45,19 @@ export async function GET(req: NextRequest) {
       prisma.miniSignal.findMany({ where: { status: { in: ACTIVE_STATUSES } }, distinct: ["grade"   ], select: { grade:    true } }),
     ]);
 
+    // ── Drop directionally-inverted rows ──────────────────────────────
+    // Defensive guard against template bugs that emit signals where SL
+    // is on the same side as TP — e.g. "long" with SL above entry.
+    // Templates have explicit guards now too, but old rows persisted
+    // before the fix should never display.
+    const consistent = (r: typeof rows[number]): boolean => {
+      const entry = (r.entryZoneLow + r.entryZoneHigh) / 2;
+      const isBull = r.direction === "bullish" || r.direction === "buy" || r.direction === "long";
+      if (isBull) return r.stopLoss < entry && r.takeProfit1 > entry;
+      return r.stopLoss > entry && r.takeProfit1 < entry;
+    };
+    const cleanRows = rows.filter(consistent);
+
     // ── API-side dedup safety net ────────────────────────────────────
     // Even with the per-cycle dedup in scan.ts, historical duplicates
     // can exist in the table (e.g. from before the fix shipped). Bucket
@@ -56,7 +69,7 @@ export async function GET(req: NextRequest) {
       return `${r.symbol}|${r.template}|${r.direction}|${r.entryTimeframe}|${bucket}`;
     };
     const buckets = new Map<string, typeof rows>();
-    for (const r of rows) {
+    for (const r of cleanRows) {
       const k = dedupKey(r);
       const arr = buckets.get(k) ?? [];
       arr.push(r);

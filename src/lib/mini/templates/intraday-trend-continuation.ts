@@ -7,7 +7,7 @@
 // within the next bar, not "sometime today".
 
 import type { DetectedMiniSetup, MiniContext } from "@/lib/mini/types";
-import { computeMiniScore, scoreRR, scoreVolatility, type MiniGate } from "@/lib/mini/scoring";
+import { computeMiniScore, scoreRR, scoreVolatility, type MiniGate, isDirectionallyConsistent } from "@/lib/mini/scoring";
 
 export async function detectIntradayTrendContinuation(ctx: MiniContext): Promise<DetectedMiniSetup | null> {
   if (ctx.bias.session.noTradeZone) return null;
@@ -114,6 +114,8 @@ export async function detectIntradayTrendContinuation(ctx: MiniContext): Promise
     entryZoneQuality, momentumDisplacement: momentum,
     volatilitySpread, riskReward: rrScore, sessionTiming,
   });
+
+  if (!isDirectionallyConsistent(direction, entryMid, stopLoss, tp1)) return null;
 
   const gates: MiniGate[] = [
     { id: "session",   label: "Active session",                              passed: !ctx.bias.session.noTradeZone, evidence: ctx.bias.session.label, hard: true },

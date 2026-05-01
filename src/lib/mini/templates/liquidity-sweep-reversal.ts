@@ -9,7 +9,7 @@
 //   • TP1 = previous 5m high/low or 1.5R minimum
 
 import type { DetectedMiniSetup, MiniContext } from "@/lib/mini/types";
-import { computeMiniScore, scoreRR, scoreVolatility, type MiniGate } from "@/lib/mini/scoring";
+import { computeMiniScore, scoreRR, scoreVolatility, type MiniGate, isDirectionallyConsistent } from "@/lib/mini/scoring";
 import { isInPrimeWindow } from "@/lib/mini/session";
 
 export async function detectLiquiditySweepReversal(ctx: MiniContext): Promise<DetectedMiniSetup | null> {
@@ -106,7 +106,7 @@ export async function detectLiquiditySweepReversal(ctx: MiniContext): Promise<De
     volatilitySpread, riskReward: rrScore, sessionTiming,
   });
 
-  // Suppress watchlist + lower — Mini's premise is "fewer but cleaner".
+  if (!isDirectionallyConsistent(direction, entryMid, stopLoss, tp1)) return null;
 
   const gates: MiniGate[] = [
     { id: "session",  label: "Active session, no news lockout",          passed: !ctx.bias.session.noTradeZone, evidence: ctx.bias.session.label, hard: true },

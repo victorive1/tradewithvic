@@ -101,3 +101,22 @@ export interface MiniGate {
   // (failing just lowers the relevant component score).
   hard?: boolean;
 }
+
+// Guards against inverted setups — a signal where direction says
+// "long" but SL is above entry / TP1 below, or the mirror case for
+// short. These are always bugs in the template logic; this helper
+// catches them BEFORE the signal goes to the persistence layer so we
+// never write an inverted row.
+//
+// Returns true if the directional geometry is correct.
+export function isDirectionallyConsistent(
+  direction: "bullish" | "bearish",
+  entry: number,
+  stopLoss: number,
+  takeProfit1: number,
+): boolean {
+  if (direction === "bullish") {
+    return stopLoss < entry && takeProfit1 > entry;
+  }
+  return stopLoss > entry && takeProfit1 < entry;
+}
