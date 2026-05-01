@@ -45,9 +45,39 @@ export async function GET(req: NextRequest) {
       prisma.miniSignal.findMany({ where: { status: { in: ACTIVE_STATUSES } }, distinct: ["grade"   ], select: { grade:    true } }),
     ]);
 
+    // ── API-side dedup safety net ────────────────────────────────────
+    // Even with the per-cycle dedup in scan.ts, historical duplicates
+    // can exist in the table (e.g. from before the fix shipped). Bucket
+    // alive rows by (symbol, template, direction, entry-±0.2%) and
+    // keep the most-recent highest-scoring survivor in each bucket.
+    const dedupKey = (r: typeof rows[number]) => {
+      const entryMid = (r.entryZoneLow + r.entryZoneHigh) / 2;
+      const bucket = Math.round(entryMid / Math.max(entryMid * 0.002, 1e-9));
+      return `${r.symbol}|${r.template}|${r.direction}|${r.entryTimeframe}|${bucket}`;
+    };
+    const buckets = new Map<string, typeof rows>();
+    for (const r of rows) {
+      const k = dedupKey(r);
+      const arr = buckets.get(k) ?? [];
+      arr.push(r);
+      buckets.set(k, arr);
+    }
+    const dedupedRows: typeof rows = [];
+    for (const arr of buckets.values()) {
+      arr.sort((a, b) => {
+        if (a.score !== b.score) return b.score - a.score;
+        return b.createdAt.getTime() - a.createdAt.getTime();
+      });
+      dedupedRows.push(arr[0]);
+    }
+    dedupedRows.sort((a, b) => {
+      if (a.score !== b.score) return b.score - a.score;
+      return b.createdAt.getTime() - a.createdAt.getTime();
+    });
+
     return NextResponse.json(
       {
-        signals: rows.map((r) => {
+        signals: dedupedRows.map((r) => {
           let metadata: unknown = null;
           if (r.metadataJson) {
             try { metadata = JSON.parse(r.metadataJson); } catch { /* malformed */ }
@@ -101,7 +131,8 @@ export async function GET(req: NextRequest) {
           grades:    distinctGrades.map((r) => r.grade).sort(gradeSort),
         },
         timestamp: Date.now(),
-        count: rows.length,
+        count: dedupedRows.length,
+        rawCount: rows.length,
       },
       { headers: { "Cache-Control": "no-store, max-age=0" } },
     );

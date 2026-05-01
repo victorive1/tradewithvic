@@ -89,12 +89,22 @@ export async function tickLifecycle(): Promise<LifecycleResult> {
 
   // Expire any signals whose validity passed without resolving — separate
   // pass so the lifecycle log gets the explicit "expired" row.
+  //
+  // pre-trigger statuses (scanning/forming/waiting_for_entry): expire
+  //   immediately once expiresAt passes.
+  // active-trade statuses (entry_active/in_trade): expire 60 min
+  //   beyond expiresAt — gives a real held trade a buffer before the
+  //   system force-closes it off the live feed. Without this, signals
+  //   that reached entry_active and never hit TP/SL stayed alive
+  //   forever, polluting the feed (125+ stuck rows shipped this way).
   const overdue = await prisma.miniSignal.findMany({
     where: {
-      status: { in: ["scanning", "forming", "waiting_for_entry"] },
-      expiresAt: { lt: new Date() },
+      OR: [
+        { status: { in: ["scanning", "forming", "waiting_for_entry"] }, expiresAt: { lt: new Date() } },
+        { status: { in: ["entry_active", "in_trade"] }, expiresAt: { lt: new Date(Date.now() - 60 * 60 * 1000) } },
+      ],
     },
-    take: 200,
+    take: 500,
   });
   for (const sig of overdue) {
     try {

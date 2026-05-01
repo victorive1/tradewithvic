@@ -34,13 +34,38 @@ export async function GET(req: NextRequest) {
             expiresAt: { gt: new Date() },
           },
           orderBy: [{ score: "desc" }, { createdAt: "desc" }],
-          take: 5,
+          take: 25,  // pull more so the dedup has the full picture, then trim
           include: {
             instrument: { select: { displayName: true, decimalPlaces: true, category: true } },
             scores: true,
           },
         });
-        const list = sigs.map((sig) => {
+        // Dedup: bucket by (template, direction, entry-±0.2%) and keep
+        // the highest-scoring most-recent row per bucket. Stops the same
+        // setup re-firing every cycle from clogging the column.
+        const buckets = new Map<string, typeof sigs>();
+        for (const s of sigs) {
+          const entryMid = (s.entryZoneLow + s.entryZoneHigh) / 2;
+          const bucket = Math.round(entryMid / Math.max(entryMid * 0.002, 1e-9));
+          const k = `${s.template}|${s.direction}|${bucket}`;
+          const arr = buckets.get(k) ?? [];
+          arr.push(s);
+          buckets.set(k, arr);
+        }
+        const deduped: typeof sigs = [];
+        for (const arr of buckets.values()) {
+          arr.sort((a, b) => {
+            if (a.score !== b.score) return b.score - a.score;
+            return b.createdAt.getTime() - a.createdAt.getTime();
+          });
+          deduped.push(arr[0]);
+        }
+        deduped.sort((a, b) => {
+          if (a.score !== b.score) return b.score - a.score;
+          return b.createdAt.getTime() - a.createdAt.getTime();
+        });
+        const sigsTrimmed = deduped.slice(0, 5);
+        const list = sigsTrimmed.map((sig) => {
           let metadata: unknown = null;
           if (sig.metadataJson) { try { metadata = JSON.parse(sig.metadataJson); } catch { /* malformed */ } }
           return {

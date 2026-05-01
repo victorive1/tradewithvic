@@ -98,7 +98,16 @@ export async function runMiniScan(): Promise<MiniScanResult> {
         result.detected++;
 
         // Dedup: skip if there's an alive signal for this same (symbol,
-        // template, direction) within entry-zone tolerance.
+        // template, direction) within entry-zone tolerance. Two
+        // important details:
+        //
+        //   1. orderBy createdAt DESC — without this, findFirst returns
+        //      "any" matching row (often the OLDEST), whose entry zone
+        //      may have drifted from the latest detection by enough to
+        //      fail the tol check, letting duplicates slip through.
+        //   2. expiresAt: gt now — ignore rows the lifecycle should
+        //      have expired (covers the historical bug where stale
+        //      entry_active signals weren't being marked expired).
         const tol = (Math.abs(detected.entryZoneHigh - detected.entryZoneLow) || ctx.atr5m || 0) * 1.5;
         const entryMid = (detected.entryZoneLow + detected.entryZoneHigh) / 2;
         const existing = await prisma.miniSignal.findFirst({
@@ -107,7 +116,9 @@ export async function runMiniScan(): Promise<MiniScanResult> {
             template: detected.template,
             direction: detected.direction,
             status: { in: ["scanning", "forming", "waiting_for_entry", "entry_active", "in_trade"] },
+            expiresAt: { gt: new Date() },
           },
+          orderBy: { createdAt: "desc" },
           select: { id: true, entryZoneLow: true, entryZoneHigh: true },
         });
         if (existing) {
