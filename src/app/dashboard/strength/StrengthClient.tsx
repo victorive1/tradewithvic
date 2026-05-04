@@ -250,7 +250,10 @@ function fmtPrice(n: number, decimals: number): string {
   return n.toFixed(decimals);
 }
 
-function formatPostedAt(ts: number): { label: string; title: string } {
+function formatPostedAt(rawTs: number): { label: string; title: string } {
+  // MarketQuote.timestamp is stored as Unix seconds; Date expects ms.
+  // Anything < 1e12 is seconds (year 2001+ in ms is > 1e12).
+  const ts = rawTs < 1e12 ? rawTs * 1000 : rawTs;
   const now = Date.now();
   const diffSec = Math.max(0, Math.round((now - ts) / 1000));
   let rel: string;
