@@ -37,6 +37,7 @@ interface TradeSetup {
   riskPips: number;
   // Context
   liveChange?: number;
+  postedAt: number; // epoch ms — when underlying quote was sampled
   reasons: string[];
   // Score breakdown for transparency
   breakdown: {
@@ -160,6 +161,7 @@ function generateTradeSetups(strength: CurrencyStrength[], quotes: MarketQuote[]
       pipPrecision: priceDecimals,
       riskPips: Math.round(riskPips),
       liveChange: change,
+      postedAt: quote.timestamp || Date.now(),
       reasons,
       breakdown: { spread: spreadPts, rankGap: rankPts, alignment: alignPts, momentum: momPts },
     });
@@ -248,6 +250,20 @@ function fmtPrice(n: number, decimals: number): string {
   return n.toFixed(decimals);
 }
 
+function formatPostedAt(ts: number): { label: string; title: string } {
+  const now = Date.now();
+  const diffSec = Math.max(0, Math.round((now - ts) / 1000));
+  let rel: string;
+  if (diffSec < 60) rel = "just now";
+  else if (diffSec < 3600) rel = `${Math.round(diffSec / 60)}m ago`;
+  else if (diffSec < 86400) rel = `${Math.round(diffSec / 3600)}h ago`;
+  else rel = `${Math.round(diffSec / 86400)}d ago`;
+  const d = new Date(ts);
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const full = d.toLocaleString([], { dateStyle: "medium", timeStyle: "medium" });
+  return { label: `Posted ${time} · ${rel}`, title: full };
+}
+
 function TradeSetupCard({ setup }: { setup: TradeSetup }) {
   const isLong = setup.direction === "LONG";
   const tpDeltas = [
@@ -258,18 +274,25 @@ function TradeSetupCard({ setup }: { setup: TradeSetup }) {
   const convColor = setup.conviction >= 80 ? "text-bull-light" : setup.conviction >= 65 ? "text-bull" : setup.conviction >= 50 ? "text-accent-light" : "text-muted-light";
   const convBar = setup.conviction >= 80 ? "bg-bull" : setup.conviction >= 65 ? "bg-bull/80" : setup.conviction >= 50 ? "bg-accent" : "bg-surface-3";
   const dec = setup.pipPrecision;
+  const posted = formatPostedAt(setup.postedAt);
 
   return (
     <div className="glass-card p-5">
       {/* Header */}
       <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-3 flex-wrap">
-          <h3 className="text-lg font-black text-foreground tracking-tight">{setup.pair}</h3>
-          <span className={cn("text-[11px] font-black px-2.5 py-1 rounded-md", isLong ? "badge-bull" : "badge-bear")}>{setup.direction}</span>
-          <TierBadge tier={setup.tier} />
-          <span className="text-[10px] text-muted">
-            #{setup.strongRank} {setup.strongCurrency} → #{setup.weakRank} {setup.weakCurrency}
-          </span>
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h3 className="text-lg font-black text-foreground tracking-tight">{setup.pair}</h3>
+            <span className={cn("text-[11px] font-black px-2.5 py-1 rounded-md", isLong ? "badge-bull" : "badge-bear")}>{setup.direction}</span>
+            <TierBadge tier={setup.tier} />
+            <span className="text-[10px] text-muted">
+              #{setup.strongRank} {setup.strongCurrency} → #{setup.weakRank} {setup.weakCurrency}
+            </span>
+          </div>
+          <div className="text-[10px] text-muted" title={posted.title}>
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-bull mr-1.5 align-middle" />
+            {posted.label}
+          </div>
         </div>
         <div className="text-right shrink-0">
           <div className="text-[10px] text-muted">Conviction</div>
