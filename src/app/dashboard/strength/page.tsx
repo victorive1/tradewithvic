@@ -7,6 +7,7 @@ import type { MarketQuote, CurrencyStrength } from "@/lib/market-data";
 export default function StrengthPage() {
   const [quotes, setQuotes] = useState<MarketQuote[]>([]);
   const [strength, setStrength] = useState<CurrencyStrength[]>([]);
+  const [capturedAt, setCapturedAt] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -16,6 +17,10 @@ export default function StrengthPage() {
         const data = await res.json();
         if (data.quotes) setQuotes(data.quotes);
         if (data.currencyStrength) setStrength(data.currencyStrength);
+        // Prefer the scanner's capturedAt (when our snapshot was taken) over
+        // TwelveData's bar-close time. Fall back to the API response time.
+        const cap = data.capturedAt ? new Date(data.capturedAt).getTime() : null;
+        setCapturedAt(cap || data.timestamp || Date.now());
       } catch (e) {
         console.error("Failed to load:", e);
       }
@@ -35,5 +40,5 @@ export default function StrengthPage() {
     );
   }
 
-  return <StrengthClient strength={strength} quotes={quotes} />;
+  return <StrengthClient strength={strength} quotes={quotes} capturedAt={capturedAt} />;
 }

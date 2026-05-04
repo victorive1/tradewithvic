@@ -63,7 +63,7 @@ function pipMetricsFor(symbol: string): { pipSize: number; pipPrecision: number;
   return { pipSize: 0.0001, pipPrecision: 0, priceDecimals: 5 };
 }
 
-function generateTradeSetups(strength: CurrencyStrength[], quotes: MarketQuote[]): TradeSetup[] {
+function generateTradeSetups(strength: CurrencyStrength[], quotes: MarketQuote[], postedAt: number): TradeSetup[] {
   const scoreMap: Record<string, number> = {};
   const rankMap: Record<string, number> = {};
   strength.forEach((s) => { scoreMap[s.currency] = s.score; rankMap[s.currency] = s.rank; });
@@ -161,7 +161,7 @@ function generateTradeSetups(strength: CurrencyStrength[], quotes: MarketQuote[]
       pipPrecision: priceDecimals,
       riskPips: Math.round(riskPips),
       liveChange: change,
-      postedAt: quote.timestamp || Date.now(),
+      postedAt,
       reasons,
       breakdown: { spread: spreadPts, rankGap: rankPts, alignment: alignPts, momentum: momPts },
     });
@@ -365,13 +365,14 @@ function TradeSetupCard({ setup }: { setup: TradeSetup }) {
   );
 }
 
-export function StrengthClient({ strength, quotes }: { strength: CurrencyStrength[]; quotes: MarketQuote[] }) {
+export function StrengthClient({ strength, quotes, capturedAt }: { strength: CurrencyStrength[]; quotes: MarketQuote[]; capturedAt?: number | null }) {
   const [view, setView] = useState<"ranking" | "heatmap" | "opportunities" | "setups">("ranking");
   const maxScore = Math.max(...strength.map((s) => s.score), 1);
   const strongest = strength[0];
   const weakest = strength[strength.length - 1];
   const opportunities = generateOpportunities(strength, quotes);
-  const setups = generateTradeSetups(strength, quotes);
+  const postedAt = capturedAt || Date.now();
+  const setups = generateTradeSetups(strength, quotes, postedAt);
   const bestOpp = opportunities[0];
 
   // Heatmap data
