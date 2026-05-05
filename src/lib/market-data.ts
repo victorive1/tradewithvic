@@ -32,6 +32,11 @@ function toTwelveDataSymbol(symbol: string): string {
     EURUSD: "EUR/USD", GBPUSD: "GBP/USD", USDJPY: "USD/JPY", USDCHF: "USD/CHF",
     AUDUSD: "AUD/USD", NZDUSD: "NZD/USD", USDCAD: "USD/CAD", EURJPY: "EUR/JPY",
     GBPJPY: "GBP/JPY", EURGBP: "EUR/GBP", AUDJPY: "AUD/JPY",
+    EURAUD: "EUR/AUD", EURNZD: "EUR/NZD", EURCAD: "EUR/CAD", EURCHF: "EUR/CHF",
+    GBPAUD: "GBP/AUD", GBPNZD: "GBP/NZD", GBPCAD: "GBP/CAD", GBPCHF: "GBP/CHF",
+    AUDNZD: "AUD/NZD", AUDCAD: "AUD/CAD", AUDCHF: "AUD/CHF",
+    NZDCAD: "NZD/CAD", NZDCHF: "NZD/CHF", NZDJPY: "NZD/JPY",
+    CADJPY: "CAD/JPY", CADCHF: "CAD/CHF",
     XAUUSD: "XAU/USD", XAGUSD: "XAG/USD",
     USOIL: "WTI/USD",
     BTCUSD: "BTC/USD", ETHUSD: "ETH/USD", SOLUSD: "SOL/USD", XRPUSD: "XRP/USD",
@@ -112,16 +117,20 @@ export async function fetchAllQuotes(): Promise<MarketQuote[]> {
   // Priority symbols first (most important for the platform)
   const prioritySymbols = ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "BTCUSD", "GBPJPY", "AUDUSD", "ETHUSD"];
   const secondarySymbols = ["USDCHF", "NZDUSD", "USDCAD", "EURJPY", "EURGBP", "XAGUSD", "AUDJPY", "USOIL"];
+  // Cross pairs (no USD leg). Needed so currency strength sees full picture
+  // for AUD/NZD/CAD/CHF and so the strength tab can surface every pair.
+  const crossesA = ["EURAUD", "EURNZD", "EURCAD", "EURCHF", "GBPAUD", "GBPNZD", "GBPCAD", "GBPCHF"];
+  const crossesB = ["AUDNZD", "AUDCAD", "AUDCHF", "NZDCAD", "NZDCHF", "NZDJPY", "CADJPY", "CADCHF"];
 
-  // Fetch priority first, secondary after
   const batch1 = await fetchBatch(prioritySymbols);
-
-  // Small delay to respect rate limits
   await new Promise((r) => setTimeout(r, 1000));
-
   const batch2 = await fetchBatch(secondarySymbols);
+  await new Promise((r) => setTimeout(r, 1000));
+  const batch3 = await fetchBatch(crossesA);
+  await new Promise((r) => setTimeout(r, 1000));
+  const batch4 = await fetchBatch(crossesB);
 
-  return [...batch1, ...batch2];
+  return [...batch1, ...batch2, ...batch3, ...batch4];
 }
 
 // Convenience: fetch just the top symbols
@@ -140,6 +149,11 @@ export function calculateCurrencyStrength(quotes: MarketQuote[]): CurrencyStreng
     USDCHF: ["USD", "CHF"], AUDUSD: ["AUD", "USD"], NZDUSD: ["NZD", "USD"],
     USDCAD: ["USD", "CAD"], EURJPY: ["EUR", "JPY"], GBPJPY: ["GBP", "JPY"],
     EURGBP: ["EUR", "GBP"], AUDJPY: ["AUD", "JPY"],
+    EURAUD: ["EUR", "AUD"], EURNZD: ["EUR", "NZD"], EURCAD: ["EUR", "CAD"], EURCHF: ["EUR", "CHF"],
+    GBPAUD: ["GBP", "AUD"], GBPNZD: ["GBP", "NZD"], GBPCAD: ["GBP", "CAD"], GBPCHF: ["GBP", "CHF"],
+    AUDNZD: ["AUD", "NZD"], AUDCAD: ["AUD", "CAD"], AUDCHF: ["AUD", "CHF"],
+    NZDCAD: ["NZD", "CAD"], NZDCHF: ["NZD", "CHF"], NZDJPY: ["NZD", "JPY"],
+    CADJPY: ["CAD", "JPY"], CADCHF: ["CAD", "CHF"],
   };
 
   for (const quote of quotes) {

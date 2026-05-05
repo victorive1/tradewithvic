@@ -52,6 +52,11 @@ const PAIR_MAP: Record<string, [string, string]> = {
   EURUSD: ["EUR", "USD"], GBPUSD: ["GBP", "USD"], USDJPY: ["USD", "JPY"], USDCHF: ["USD", "CHF"],
   AUDUSD: ["AUD", "USD"], NZDUSD: ["NZD", "USD"], USDCAD: ["USD", "CAD"], EURJPY: ["EUR", "JPY"],
   GBPJPY: ["GBP", "JPY"], EURGBP: ["EUR", "GBP"], AUDJPY: ["AUD", "JPY"],
+  EURAUD: ["EUR", "AUD"], EURNZD: ["EUR", "NZD"], EURCAD: ["EUR", "CAD"], EURCHF: ["EUR", "CHF"],
+  GBPAUD: ["GBP", "AUD"], GBPNZD: ["GBP", "NZD"], GBPCAD: ["GBP", "CAD"], GBPCHF: ["GBP", "CHF"],
+  AUDNZD: ["AUD", "NZD"], AUDCAD: ["AUD", "CAD"], AUDCHF: ["AUD", "CHF"],
+  NZDCAD: ["NZD", "CAD"], NZDCHF: ["NZD", "CHF"], NZDJPY: ["NZD", "JPY"],
+  CADJPY: ["CAD", "JPY"], CADCHF: ["CAD", "CHF"],
 };
 
 function isJpyPair(symbol: string): boolean {

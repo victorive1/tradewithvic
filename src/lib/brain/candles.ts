@@ -1,7 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
 
-const API_KEY = process.env.TWELVEDATA_API_KEY || "";
+// Read at call time, not module-import time — Next.js 16 build imports
+// route modules eagerly during compile, and process.env is empty then.
+function getApiKey(): string {
+  return process.env.TWELVEDATA_API_KEY || "";
+}
 const BASE_URL = "https://api.twelvedata.com";
 
 export const CANDLE_TIMEFRAMES = ["4h", "1h", "15min", "5min", "1day"] as const;
@@ -26,14 +30,20 @@ export const CANDLE_SYMBOLS = ALL_INSTRUMENTS
 // /api/brain/crypto-refresh cron. 24/7 markets + oversight canary.
 export const CRYPTO_PRIORITY_SYMBOLS = ["BTCUSD", "ETHUSD"] as const;
 
-// Total symbols analyzed per main cycle = priority crypto (2) + 4 rotated
-// forex/metals. Full non-crypto rotation in ~4 cycles (~8 min).
-const PER_CYCLE_SYMBOL_BUDGET = 6;
+// Total symbols analyzed per main cycle = priority crypto (2) + 6 rotated
+// forex/metals. Bumped from 6→8 when the FX universe expanded from 11 to
+// 27 pairs so per-pair candle freshness stays around ~7 min full rotation.
+const PER_CYCLE_SYMBOL_BUDGET = 8;
 
 const SYMBOL_MAP: Record<string, string> = {
   EURUSD: "EUR/USD", GBPUSD: "GBP/USD", USDJPY: "USD/JPY", USDCHF: "USD/CHF",
   AUDUSD: "AUD/USD", NZDUSD: "NZD/USD", USDCAD: "USD/CAD", EURJPY: "EUR/JPY",
   GBPJPY: "GBP/JPY", EURGBP: "EUR/GBP", AUDJPY: "AUD/JPY",
+  EURAUD: "EUR/AUD", EURNZD: "EUR/NZD", EURCAD: "EUR/CAD", EURCHF: "EUR/CHF",
+  GBPAUD: "GBP/AUD", GBPNZD: "GBP/NZD", GBPCAD: "GBP/CAD", GBPCHF: "GBP/CHF",
+  AUDNZD: "AUD/NZD", AUDCAD: "AUD/CAD", AUDCHF: "AUD/CHF",
+  NZDCAD: "NZD/CAD", NZDCHF: "NZD/CHF", NZDJPY: "NZD/JPY",
+  CADJPY: "CAD/JPY", CADCHF: "CAD/CHF",
   XAUUSD: "XAU/USD", XAGUSD: "XAG/USD",
   USOIL: "WTI/USD",
   NAS100: "NDX", US30: "DJI", SPX500: "SPX", GER40: "DAX",
@@ -116,7 +126,7 @@ async function fetchCandlesFromTwelveData(
   outputsize = 50
 ): Promise<TwelveDataCandle[]> {
   const tdSymbol = SYMBOL_MAP[symbol] || symbol;
-  const url = `${BASE_URL}/time_series?symbol=${encodeURIComponent(tdSymbol)}&interval=${timeframe}&outputsize=${outputsize}&apikey=${API_KEY}`;
+  const url = `${BASE_URL}/time_series?symbol=${encodeURIComponent(tdSymbol)}&interval=${timeframe}&outputsize=${outputsize}&apikey=${getApiKey()}`;
 
   const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
   if (!res.ok) throw new Error(`TwelveData ${res.status} for ${symbol} ${timeframe}`);
@@ -145,7 +155,7 @@ export async function fetchAndPersistCandles(
   instrumentId: string | null,
   outputsize = 50
 ): Promise<CandleFetchResult> {
-  if (!API_KEY) return { symbol, timeframe, written: 0, fetched: 0, error: "TWELVEDATA_API_KEY not set" };
+  if (!getApiKey()) return { symbol, timeframe, written: 0, fetched: 0, error: "TWELVEDATA_API_KEY not set" };
 
   try {
     const raw = await fetchCandlesFromTwelveData(symbol, timeframe, outputsize);
