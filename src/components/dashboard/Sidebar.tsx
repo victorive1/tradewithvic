@@ -151,6 +151,7 @@ const navItems: NavSection[] = [
       { label: "Market Prediction", href: "/dashboard/screener", icon: "screener" },
       { label: "Retail vs Institution", href: "/dashboard/retail-vs-institution", icon: "radar" },
       { label: "V Profile + Order Flow", href: "/dashboard/volume-profile", icon: "strength" },
+      { label: "Volume Meter", href: "/dashboard/volume-meter", icon: "strength" },
       { label: "VWAP", href: "/dashboard/vwap", icon: "strength" },
     ],
   },
