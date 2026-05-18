@@ -85,7 +85,7 @@ export interface GeneratorContext {
 function fallbackBuffer(symbol: string): number {
   if (/JPY$/.test(symbol)) return 0.05;
   if (/^XAU/.test(symbol)) return 0.5;
-  if (/^US30|NAS100|SPX500|GER40/.test(symbol)) return 0.5;
+  if (/^(US30|NAS100|SPX500|GER40)$/.test(symbol)) return 0.5;
   return 0.0005;
 }
 
@@ -140,9 +140,13 @@ export function generateStructureSetup(ctx: GeneratorContext): StructureSetupSpe
   const rr = Math.abs(tp1 - entry) / risk;
   if (rr < 1.5) return null;
 
-  // TP2: second liquidity zone beyond TP1, or 3R fallback.
+  // TP2: second liquidity zone beyond TP1, or 3R fallback. Guard against
+  // the same zone being picked again (e.g. two zones sharing the same
+  // priceHigh) — TP2 must be strictly beyond TP1 in the trade direction.
   const tp2Target = pickLiquidityTarget(liquidityZones, tp1, direction, risk * 0.5);
-  const tp2 = tp2Target.price ?? (direction === "bullish" ? entry + risk * 3 : entry - risk * 3);
+  const tp2Raw = tp2Target.price ?? (direction === "bullish" ? entry + risk * 3 : entry - risk * 3);
+  const tp2Valid = direction === "bullish" ? tp2Raw > tp1 : tp2Raw < tp1;
+  const tp2 = tp2Valid ? tp2Raw : (direction === "bullish" ? entry + risk * 3 : entry - risk * 3);
 
   // ── Scoring ───────────────────────────────────────────────────────
   let eventQuality: number;
