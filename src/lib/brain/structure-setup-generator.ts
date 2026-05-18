@@ -122,7 +122,7 @@ export function generateStructureSetup(ctx: GeneratorContext): StructureSetupSpe
   const entry = event.priceLevel;
   const stopLoss = direction === "bullish" ? oppositeSwing - buffer : oppositeSwing + buffer;
   const risk = Math.abs(entry - stopLoss);
-  if (risk <= 0) return null;
+  if (!(risk > 0)) return null;
 
   // "Already moved past" filter — if price has already left the entry
   // zone by more than 0.2 * ATR, there's no retest edge.

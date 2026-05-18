@@ -14,6 +14,8 @@ import {
 } from "@/lib/brain/structure-setup-generator";
 import { persistStructureSetup } from "@/lib/brain/structure-setup-persister";
 
+const VALID_EVENT_TYPES = new Set(["bos_bullish", "bos_bearish", "choch_bullish", "choch_bearish"] as const);
+
 const ELIGIBLE_TIMEFRAMES = new Set(["15min", "1h", "4h"]);
 
 function higherTfFor(tf: string): string | null {
@@ -81,6 +83,7 @@ export async function runStructureSetupGeneration(
 
   for (const event of events) {
     if (!ELIGIBLE_TIMEFRAMES.has(event.timeframe)) continue;
+    if (!VALID_EVENT_TYPES.has(event.eventType as "bos_bullish" | "bos_bearish" | "choch_bullish" | "choch_bearish")) continue;
     result.eventsConsidered++;
 
     try {
