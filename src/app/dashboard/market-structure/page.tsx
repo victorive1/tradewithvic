@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { ALL_INSTRUMENTS, MARKET_CATEGORIES } from "@/lib/constants";
+import { cn, getDirectionBg, getDirectionColor, getGradeColor } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,6 +50,25 @@ interface AlignmentData {
   timeframes: Record<string, { state: StructureState; confidence: number; bias: string }>;
   overallBias: string;
   aligned: boolean;
+}
+
+interface StructureSetupRow {
+  id: string;
+  symbol: string;
+  timeframe: string;
+  direction: string;
+  setupType: string;
+  entry: number;
+  stopLoss: number;
+  takeProfit1: number;
+  takeProfit2: number | null;
+  riskReward: number;
+  confidenceScore: number;
+  qualityGrade: string;
+  explanation: string | null;
+  invalidation: string | null;
+  createdAt: string;
+  validUntil: string | null;
 }
 
 // ─── Swing Detection Engine ───────────────────────────────────────────────────
@@ -347,7 +367,8 @@ export default function MarketStructurePage() {
   const [alignment, setAlignment] = useState<AlignmentData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<"overview" | "swings" | "events" | "alignment" | "settings">("overview");
+  const [tab, setTab] = useState<"overview" | "swings" | "events" | "alignment" | "setups" | "settings">("overview");
+  const [setupsList, setSetupsList] = useState<StructureSetupRow[]>([]);
   const [showSwings, setShowSwings] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(false);
@@ -437,12 +458,23 @@ export default function MarketStructurePage() {
     return () => clearInterval(id);
   }, [autoRefresh, analyze]);
 
+  useEffect(() => {
+    if (tab !== "setups") return;
+    let cancelled = false;
+    fetch("/api/brain/market-structure/setups")
+      .then((r) => r.json())
+      .then((d) => { if (!cancelled) setSetupsList(d.setups ?? []); })
+      .catch(() => { if (!cancelled) setSetupsList([]); });
+    return () => { cancelled = true; };
+  }, [tab]);
+
   const displayName = ALL_INSTRUMENTS.find(i => i.symbol === selectedInstrument)?.displayName || selectedInstrument;
 
   const tabs = [
     { id: "overview" as const, label: "Overview" },
     { id: "swings" as const, label: "Swing Points" },
     { id: "events" as const, label: "BOS / MSS Events" },
+    { id: "setups" as const, label: "Trade Setups" },
     { id: "alignment" as const, label: "MTF Alignment" },
     { id: "settings" as const, label: "Preferences" },
   ];
@@ -761,6 +793,48 @@ export default function MarketStructurePage() {
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* ─── SETUPS TAB ────────────────────────────────────────────── */}
+          {tab === "setups" && (
+            <div className="space-y-3">
+              {setupsList.length === 0 ? (
+                <div className="text-sm text-zinc-400">
+                  No active market-structure setups. Setups appear here once a BOS or CHoCH event qualifies on 15m, 1h, or 4h.
+                </div>
+              ) : (
+                setupsList.map((s) => (
+                  <div key={s.id} className={cn("rounded-xl border p-4", getDirectionBg(s.direction))}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium">
+                          <span className={cn("mr-2 font-semibold", getDirectionColor(s.direction))}>
+                            {s.direction.toUpperCase()}
+                          </span>
+                          {s.symbol} · {s.timeframe} ·{" "}
+                          <span className="uppercase text-zinc-300">{s.setupType.replace("market_structure_", "")}</span>
+                        </div>
+                        <div className="mt-1 text-xs text-zinc-400">
+                          Posted {new Date(s.createdAt).toLocaleString()} · expires{" "}
+                          {s.validUntil ? new Date(s.validUntil).toLocaleString() : "—"}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className={cn("text-sm font-semibold", getGradeColor(s.qualityGrade))}>{s.qualityGrade}</div>
+                        <div className="text-xs text-zinc-400">conv {s.confidenceScore}/100</div>
+                      </div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                      <div><div className="text-zinc-500">Entry</div><div>{s.entry.toFixed(5)}</div></div>
+                      <div><div className="text-zinc-500">Stop</div><div>{s.stopLoss.toFixed(5)}</div></div>
+                      <div><div className="text-zinc-500">TP1</div><div>{s.takeProfit1.toFixed(5)}</div></div>
+                      <div><div className="text-zinc-500">RR</div><div>{s.riskReward.toFixed(2)}R</div></div>
+                    </div>
+                    {s.explanation && <div className="mt-3 text-xs text-zinc-300">{s.explanation}</div>}
+                  </div>
+                ))
+              )}
             </div>
           )}
 
