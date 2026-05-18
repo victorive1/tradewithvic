@@ -17,6 +17,7 @@ import { trackAllSetups } from "@/lib/brain/tracking";
 import { runExecutionCycle } from "@/lib/brain/execution";
 import { classifyAllRegimes, captureMacroRegime } from "@/lib/brain/regime";
 import { runOversightCycle } from "@/lib/brain/oversight";
+import { runStructureSetupGeneration } from "@/lib/brain/structure-setup-runner";
 
 export interface ScanCycleResult {
   scanCycleId: string;
@@ -28,6 +29,12 @@ export interface ScanCycleResult {
   candlesWritten: number;
   structureAnalyses: number;
   structureEvents: number;
+  structureSetups: {
+    considered: number;
+    created: number;
+    skippedExisting: number;
+    rejected: number;
+  };
   indicatorsComputed: number;
   liquidityLevels: number;
   liquiditySweeps: number;
@@ -126,6 +133,13 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       CANDLE_TIMEFRAMES,
       cycle.id
     );
+
+    // Structure-setup generation. Runs after liquidity so the
+    // generator can use fresh LiquidityZone rows for TP targets.
+    const structureSetupResult = await runStructureSetupGeneration(cycleSymbols).catch((err) => {
+      errors.push(`structure-setups: ${err?.message ?? String(err)}`);
+      return { eventsConsidered: 0, setupsCreated: 0, setupsSkippedExisting: 0, setupsRejectedByGenerator: 0, errors: [] };
+    });
 
     // Supply & Demand zone detection + lifecycle update. Runs on the same
     // symbols/timeframes as every other analyzer so it reuses hot candles.
@@ -241,6 +255,12 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       candlesWritten: candleResult.totalWritten,
       structureAnalyses: structureResult.analyses.length,
       structureEvents: structureResult.eventsDetected,
+      structureSetups: {
+        considered: structureSetupResult.eventsConsidered,
+        created: structureSetupResult.setupsCreated,
+        skippedExisting: structureSetupResult.setupsSkippedExisting,
+        rejected: structureSetupResult.setupsRejectedByGenerator,
+      },
       indicatorsComputed: indicatorResult.computed,
       liquidityLevels: liquidityResult.totalLevels,
       liquiditySweeps: liquidityResult.totalSweeps,
@@ -298,6 +318,12 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       candlesWritten: 0,
       structureAnalyses: 0,
       structureEvents: 0,
+      structureSetups: {
+        considered: 0,
+        created: 0,
+        skippedExisting: 0,
+        rejected: 0,
+      },
       indicatorsComputed: 0,
       liquidityLevels: 0,
       liquiditySweeps: 0,
