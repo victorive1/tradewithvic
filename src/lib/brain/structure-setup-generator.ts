@@ -153,7 +153,12 @@ export function generateStructureSetup(ctx: GeneratorContext): StructureSetupSpe
   if (setupType === "market_structure_bos") {
     eventQuality = event.priorBias === event.newBias ? 25 : 18;
   } else {
-    eventQuality = regime && regime.state !== "high_risk" ? 20 : 10;
+    // CHoCH = trend reversal. Penalize against a confirmed trending
+    // regime (counter-trend reversal during strong trend = highest-risk
+    // case). The runner maps RegimeSnapshot.structureRegime → state, so
+    // valid values here are trending/ranging/compression/expansion/
+    // transitioning. A null regime is treated conservatively (10).
+    eventQuality = regime && regime.state !== "trending" ? 20 : 10;
   }
 
   const recentSwings = state.candlesAnalyzed > 0 ? Math.min(5, state.candlesAnalyzed / 40) : 0;

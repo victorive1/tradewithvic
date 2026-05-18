@@ -71,8 +71,10 @@ Confidence score 0–100, mapped to `qualityGrade`:
 Components:
 
 - **Event quality** (0–25): BOS clean continuation (newBias === priorBias)
-  gets 25. CHoCH gets 20 if the current `Regime.state` is not
-  `"high_risk"`, 10 if it is.
+  gets 25. CHoCH gets 20 if the current `RegimeSnapshot.structureRegime`
+  is NOT `"trending"` (i.e. the regime allows a reversal), 10 if it is
+  trending or no snapshot exists. Trending-regime CHoCH is the highest-
+  risk reversal case.
 - **Structure quality** (0–20): more recent confirmed swings = stronger
   trend. `min(20, swingsLast24h × 4)`.
 - **RR** (0–20): `min(20, round(RR × 8))`. Caps at RR=2.5.
