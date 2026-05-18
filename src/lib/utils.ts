@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { isBullishDirection, isBearishDirection } from "@/lib/setups/direction";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -19,14 +20,14 @@ export function formatNumber(value: number): string {
 }
 
 export function getDirectionColor(direction: string): string {
-  if (direction === "bullish" || direction === "buy") return "text-emerald-400";
-  if (direction === "bearish" || direction === "sell") return "text-rose-400";
+  if (isBullishDirection(direction)) return "text-emerald-400";
+  if (isBearishDirection(direction)) return "text-rose-400";
   return "text-zinc-400";
 }
 
 export function getDirectionBg(direction: string): string {
-  if (direction === "bullish" || direction === "buy") return "bg-emerald-500/10 border-emerald-500/20";
-  if (direction === "bearish" || direction === "sell") return "bg-rose-500/10 border-rose-500/20";
+  if (isBullishDirection(direction)) return "bg-emerald-500/10 border-emerald-500/20";
+  if (isBearishDirection(direction)) return "bg-rose-500/10 border-rose-500/20";
   return "bg-zinc-500/10 border-zinc-500/20";
 }
 

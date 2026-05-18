@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { safeEqual } from "@/lib/security/safe-equal";
 
 /**
  * Shared auth for the EA-webhook endpoints. The EA doesn't have a session
@@ -59,7 +60,7 @@ export async function authenticateEa(
   }
 
   const cfg = parseEaConfig(account.adapterConfigJson);
-  if (!cfg.webhookSecret || cfg.webhookSecret !== secret) {
+  if (!safeEqual(cfg.webhookSecret, secret)) {
     return {
       ok: false,
       response: NextResponse.json({ error: "bad_secret" }, { status: 403 }),

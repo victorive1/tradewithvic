@@ -8,7 +8,7 @@ import { strategyPolicyFor, isStrategyAllowed } from "@/lib/brain/regime-policy"
 // the count cap is hard-coded for v1 and can be lifted to a per-bot or
 // per-account field later if needed.
 const MAX_NET_SAME_DIRECTION_PER_CURRENCY = 4;
-import { validateOrderTicket } from "@/lib/trading/validation";
+import { validateOrderTicket, clampToBrokerVolume } from "@/lib/trading/validation";
 import { resolveAdapter, type NormalizedOrder } from "@/lib/trading/adapter";
 import { computeLotSize } from "@/lib/trading/lot-sizing";
 import { isBullishDirection } from "@/lib/setups/direction";
@@ -375,7 +375,11 @@ async function routeOne(
       riskUSD: bot.autoLotSizingAmount,
     });
     if (lot.lotSize > 0 && Number.isFinite(lot.lotSize)) {
-      effectiveLot = lot.lotSize;
+      effectiveLot = clampToBrokerVolume(lot.lotSize, {
+        minVolume: mapping.rule?.minVolume ?? null,
+        maxVolume: mapping.rule?.maxVolume ?? null,
+        volumeStep: mapping.rule?.volumeStep ?? null,
+      });
     }
   }
 

@@ -1,6 +1,7 @@
 // FlowVision scan cron — same auth pattern as brain/mini scans.
 import { NextRequest, NextResponse } from "next/server";
 import { runFlowScan } from "@/lib/flow/scan";
+import { safeEqual } from "@/lib/security/safe-equal";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -10,10 +11,9 @@ function isAuthorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
   if (!secret) return false;
   const auth = req.headers.get("authorization");
-  if (auth === `Bearer ${secret}`) return true;
+  if (auth && safeEqual(auth, `Bearer ${secret}`)) return true;
   const header = req.headers.get("x-cron-secret");
-  if (header === secret) return true;
-  return false;
+  return safeEqual(header, secret);
 }
 
 export async function GET(req: NextRequest) {

@@ -148,6 +148,27 @@ function fail(msg: string): ValidationReport {
 }
 
 /**
+ * Round a computed lot size to the broker's volumeStep and clamp to its
+ * min/max range. Brokers reject volumes that aren't an exact multiple of
+ * volumeStep ("Invalid volume"), so anything sized from $-risk must pass
+ * through this before submission.
+ */
+export function clampToBrokerVolume(
+  lots: number,
+  rule: { minVolume?: number | null; maxVolume?: number | null; volumeStep?: number | null },
+): number {
+  if (!Number.isFinite(lots) || lots <= 0) return 0;
+  const step = rule.volumeStep && rule.volumeStep > 0 ? rule.volumeStep : 0.01;
+  let v = Math.round(lots / step) * step;
+  // Avoid floating-point drift like 0.30000000000000004
+  const decimals = Math.max(0, -Math.floor(Math.log10(step)));
+  v = Number(v.toFixed(decimals));
+  if (rule.minVolume && v < rule.minVolume) v = rule.minVolume;
+  if (rule.maxVolume && v > rule.maxVolume) v = rule.maxVolume;
+  return v;
+}
+
+/**
  * Risk-based volume calculation. Returns lots given account balance, risk %,
  * stop distance in price, and contract size.
  */

@@ -6,12 +6,16 @@ import { signSession, setSessionCookie, type SessionUser } from "@/lib/auth/sess
 export const dynamic = "force-dynamic";
 
 const ADMIN_USERNAME = "victorive";
-const ADMIN_HASH = "$2b$12$4d2xSvnM1d3VhbrZSPeXteHVdnB1S2WHki97eSTS6502akne6rgZG";
 
 let seedAttempted = false;
 async function ensureAdminSeeded() {
   if (seedAttempted) return;
   seedAttempted = true;
+  // Hash lives in ADMIN_SEED_BCRYPT_HASH (gitignored .env). If the env
+  // is unset we silently skip — the existing admin row keeps working,
+  // and a leaked source tree no longer reveals the credential.
+  const adminHash = process.env.ADMIN_SEED_BCRYPT_HASH;
+  if (!adminHash) return;
   try {
     await prisma.user.upsert({
       where: { email: ADMIN_USERNAME },
@@ -19,12 +23,11 @@ async function ensureAdminSeeded() {
       create: {
         email: ADMIN_USERNAME,
         name: "Victor",
-        password: ADMIN_HASH,
+        password: adminHash,
         role: "admin",
       },
     });
   } catch (err) {
-    // Retry on next call if the DB wasn't reachable.
     seedAttempted = false;
     console.error("Admin seed failed:", err);
   }
