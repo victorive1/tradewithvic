@@ -796,48 +796,6 @@ export default function MarketStructurePage() {
             </div>
           )}
 
-          {/* ─── SETUPS TAB ────────────────────────────────────────────── */}
-          {tab === "setups" && (
-            <div className="space-y-3">
-              {setupsList.length === 0 ? (
-                <div className="text-sm text-zinc-400">
-                  No active market-structure setups. Setups appear here once a BOS or CHoCH event qualifies on 15m, 1h, or 4h.
-                </div>
-              ) : (
-                setupsList.map((s) => (
-                  <div key={s.id} className={cn("rounded-xl border p-4", getDirectionBg(s.direction))}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-medium">
-                          <span className={cn("mr-2 font-semibold", getDirectionColor(s.direction))}>
-                            {s.direction.toUpperCase()}
-                          </span>
-                          {s.symbol} · {s.timeframe} ·{" "}
-                          <span className="uppercase text-zinc-300">{s.setupType.replace("market_structure_", "")}</span>
-                        </div>
-                        <div className="mt-1 text-xs text-zinc-400">
-                          Posted {new Date(s.createdAt).toLocaleString()} · expires{" "}
-                          {s.validUntil ? new Date(s.validUntil).toLocaleString() : "—"}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className={cn("text-sm font-semibold", getGradeColor(s.qualityGrade))}>{s.qualityGrade}</div>
-                        <div className="text-xs text-zinc-400">conv {s.confidenceScore}/100</div>
-                      </div>
-                    </div>
-                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-                      <div><div className="text-zinc-500">Entry</div><div>{s.entry.toFixed(5)}</div></div>
-                      <div><div className="text-zinc-500">Stop</div><div>{s.stopLoss.toFixed(5)}</div></div>
-                      <div><div className="text-zinc-500">TP1</div><div>{s.takeProfit1.toFixed(5)}</div></div>
-                      <div><div className="text-zinc-500">RR</div><div>{s.riskReward.toFixed(2)}R</div></div>
-                    </div>
-                    {s.explanation && <div className="mt-3 text-xs text-zinc-300">{s.explanation}</div>}
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-
           {/* ─── ALIGNMENT TAB ─────────────────────────────────────────── */}
           {tab === "alignment" && (
             <div className="space-y-4">
@@ -972,6 +930,48 @@ export default function MarketStructurePage() {
             </div>
           )}
         </>
+      )}
+
+      {/* ─── SETUPS TAB (global — independent of per-instrument snapshot) ─── */}
+      {tab === "setups" && (
+        <div className="space-y-3">
+          {setupsList.length === 0 ? (
+            <div className="text-sm text-zinc-400">
+              No active market-structure setups. Setups appear here once a BOS or CHoCH event qualifies on 15m, 1h, or 4h.
+            </div>
+          ) : (
+            setupsList.map((s) => (
+              <div key={s.id} className={cn("rounded-xl border p-4", getDirectionBg(s.direction))}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium">
+                      <span className={cn("mr-2 font-semibold", getDirectionColor(s.direction))}>
+                        {s.direction.toUpperCase()}
+                      </span>
+                      {s.symbol} · {s.timeframe} ·{" "}
+                      <span className="uppercase text-zinc-300">{s.setupType.replace("market_structure_", "")}</span>
+                    </div>
+                    <div className="mt-1 text-xs text-zinc-400">
+                      Posted {new Date(s.createdAt).toLocaleString()} · expires{" "}
+                      {s.validUntil ? new Date(s.validUntil).toLocaleString() : "—"}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className={cn("text-sm font-semibold", getGradeColor(s.qualityGrade))}>{s.qualityGrade}</div>
+                    <div className="text-xs text-zinc-400">conv {s.confidenceScore}/100</div>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                  <div><div className="text-zinc-500">Entry</div><div>{s.entry.toFixed(5)}</div></div>
+                  <div><div className="text-zinc-500">Stop</div><div>{s.stopLoss.toFixed(5)}</div></div>
+                  <div><div className="text-zinc-500">TP1</div><div>{s.takeProfit1.toFixed(5)}</div></div>
+                  <div><div className="text-zinc-500">RR</div><div>{s.riskReward.toFixed(2)}R</div></div>
+                </div>
+                {s.explanation && <div className="mt-3 text-xs text-zinc-300">{s.explanation}</div>}
+              </div>
+            ))
+          )}
+        </div>
       )}
     </div>
   );
