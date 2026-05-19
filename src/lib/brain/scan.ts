@@ -155,8 +155,11 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       return { detected: 0, persisted: 0, lifecycleTransitions: 0 };
     });
 
-    // S&R setup generation. Runs after persistZonesForCycle so any
-    // zones violated this cycle have isViolated=true persisted.
+    // S&R setup generation. LiquidityZone.isViolated is mutated by the
+    // separate flow-scan cron (src/lib/flow/scan.ts via /api/cron/flow-scan),
+    // not by anything earlier in this brain scan. The runner's 10-min
+    // updatedAt lookback bridges the two cron schedules, so its position
+    // here in the cycle is arbitrary.
     const srSetupResult = await runSrSetupGeneration(cycleSymbols).catch((err) => {
       errors.push(`sr-setups: ${err?.message ?? String(err)}`);
       return { zonesConsidered: 0, setupsCreated: 0, setupsSkippedExisting: 0, setupsRejectedByGenerator: 0, errors: [] };

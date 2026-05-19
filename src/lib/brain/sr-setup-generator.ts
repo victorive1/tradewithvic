@@ -183,13 +183,16 @@ export function generateSrSetup(ctx: SrGeneratorContext): SrSetupSpec | null {
   const rr = Math.abs(tp1 - entry) / risk;
   if (rr < 1.5) return null;
 
-  // TP2: second opposing zone beyond TP1 with min 0.5*risk distance, with
-  // a strict-beyond-TP1 guard against tied prices. Fallback to 3R.
+  // TP2: second opposing zone beyond TP1 with min 0.5*risk distance.
+  // The fallback "ratchet" extends TP1 by another 0.5*risk so TP2 is
+  // always strictly beyond TP1 in the trade direction, even when TP1
+  // itself came from a far-away (>3R) liquidity zone.
   const tp2Zone = pickOpposingZone(sameTfZones, tp1, direction, risk * 0.5);
   const tp2FromZone = tp2Zone ? (direction === "bullish" ? tp2Zone.priceLow : tp2Zone.priceHigh) : null;
-  const tp2Raw = tp2FromZone ?? (direction === "bullish" ? entry + risk * 3 : entry - risk * 3);
+  const tp2Ratchet = direction === "bullish" ? tp1 + risk * 0.5 : tp1 - risk * 0.5;
+  const tp2Raw = tp2FromZone ?? tp2Ratchet;
   const tp2Valid = direction === "bullish" ? tp2Raw > tp1 : tp2Raw < tp1;
-  const tp2 = tp2Valid ? tp2Raw : (direction === "bullish" ? entry + risk * 3 : entry - risk * 3);
+  const tp2 = tp2Valid ? tp2Raw : tp2Ratchet;
 
   // ── Scoring ───────────────────────────────────────────────────────
   const zoneStrength = Math.min(25, Math.round(zone.strengthScore * 0.25));
