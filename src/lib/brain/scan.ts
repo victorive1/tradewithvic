@@ -18,6 +18,7 @@ import { runExecutionCycle } from "@/lib/brain/execution";
 import { classifyAllRegimes, captureMacroRegime } from "@/lib/brain/regime";
 import { runOversightCycle } from "@/lib/brain/oversight";
 import { runStructureSetupGeneration } from "@/lib/brain/structure-setup-runner";
+import { runSrSetupGeneration } from "@/lib/brain/sr-setup-runner";
 
 export interface ScanCycleResult {
   scanCycleId: string;
@@ -30,6 +31,12 @@ export interface ScanCycleResult {
   structureAnalyses: number;
   structureEvents: number;
   structureSetups: {
+    considered: number;
+    created: number;
+    skippedExisting: number;
+    rejected: number;
+  };
+  srSetups: {
     considered: number;
     created: number;
     skippedExisting: number;
@@ -148,6 +155,13 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       return { detected: 0, persisted: 0, lifecycleTransitions: 0 };
     });
 
+    // S&R setup generation. Runs after persistZonesForCycle so any
+    // zones violated this cycle have isViolated=true persisted.
+    const srSetupResult = await runSrSetupGeneration(cycleSymbols).catch((err) => {
+      errors.push(`sr-setups: ${err?.message ?? String(err)}`);
+      return { zonesConsidered: 0, setupsCreated: 0, setupsSkippedExisting: 0, setupsRejectedByGenerator: 0, errors: [] };
+    });
+
     // Volume proxy — fetch real ETF volume for spot FX + metals so VWAP
     // has institutional flow to weight bars by. Automatically skipped
     // outside NYSE hours (13:00–21:30 UTC weekdays) and throttled to
@@ -261,6 +275,12 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
         skippedExisting: structureSetupResult.setupsSkippedExisting,
         rejected: structureSetupResult.setupsRejectedByGenerator,
       },
+      srSetups: {
+        considered: srSetupResult.zonesConsidered,
+        created: srSetupResult.setupsCreated,
+        skippedExisting: srSetupResult.setupsSkippedExisting,
+        rejected: srSetupResult.setupsRejectedByGenerator,
+      },
       indicatorsComputed: indicatorResult.computed,
       liquidityLevels: liquidityResult.totalLevels,
       liquiditySweeps: liquidityResult.totalSweeps,
@@ -319,6 +339,12 @@ export async function runScanCycle(triggeredBy = "vercel-cron"): Promise<ScanCyc
       structureAnalyses: 0,
       structureEvents: 0,
       structureSetups: {
+        considered: 0,
+        created: 0,
+        skippedExisting: 0,
+        rejected: 0,
+      },
+      srSetups: {
         considered: 0,
         created: 0,
         skippedExisting: 0,
