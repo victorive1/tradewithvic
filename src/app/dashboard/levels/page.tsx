@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { cn } from "@/lib/utils";
+import { cn, getDirectionBg, getDirectionColor, getGradeColor } from "@/lib/utils";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
 import { TradingViewWidget } from "@/components/charts/TradingViewWidget";
 import { useTheme } from "@/components/ui/ThemeProvider";
@@ -19,6 +19,25 @@ interface SRZone {
   source: string;
   explanation: string;
   factors: { name: string; score: number; max: number }[];
+}
+
+interface SrSetupRow {
+  id: string;
+  symbol: string;
+  timeframe: string;
+  direction: string;
+  setupType: string;
+  entry: number;
+  stopLoss: number;
+  takeProfit1: number;
+  takeProfit2: number | null;
+  riskReward: number;
+  confidenceScore: number;
+  qualityGrade: string;
+  explanation: string | null;
+  invalidation: string | null;
+  createdAt: string;
+  validUntil: string | null;
 }
 
 // Generate SR zones from live quote data
@@ -99,7 +118,19 @@ export default function SREnginePage() {
   const [showChart, setShowChart] = useState(false);
   const [timeframeFilter, setTimeframeFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [activeTab, setActiveTab] = useState<"zones" | "setups">("zones");
+  const [setupsList, setSetupsList] = useState<SrSetupRow[]>([]);
   const { theme } = useTheme();
+
+  useEffect(() => {
+    if (activeTab !== "setups") return;
+    let cancelled = false;
+    fetch("/api/sr/setups")
+      .then((r) => r.json())
+      .then((d) => { if (!cancelled) setSetupsList(d.setups ?? []); })
+      .catch(() => { if (!cancelled) setSetupsList([]); });
+    return () => { cancelled = true; };
+  }, [activeTab]);
 
   useEffect(() => {
     async function load() {
@@ -123,7 +154,7 @@ export default function SREnginePage() {
   if (typeFilter !== "all") filteredZones = filteredZones.filter((z) => z.type === typeFilter);
   if (timeframeFilter !== "all") filteredZones = filteredZones.filter((z) => z.timeframe.toLowerCase().includes(timeframeFilter));
 
-  if (loading) {
+  if (loading && activeTab === "zones") {
     return (
       <div className="space-y-6">
         <div><h1 className="text-2xl font-bold text-foreground">Support & Resistance Engine</h1><p className="text-sm text-muted mt-1">Loading levels...</p></div>
@@ -188,74 +219,140 @@ export default function SREnginePage() {
         </div>
       )}
 
-      {/* Zones */}
-      <div className="space-y-3">
-        {filteredZones.map((zone) => {
-          const typeColor = zone.type === "support" ? "border-l-bull" : zone.type === "resistance" ? "border-l-bear" : "border-l-accent";
-          const typeLabel = zone.type === "support" ? "badge-bull" : zone.type === "resistance" ? "badge-bear" : "bg-accent/10 text-accent-light border border-accent/20 rounded-full px-2.5 py-0.5 text-xs";
-          const freshnessColor = zone.freshness === "fresh" ? "text-bull-light" : zone.freshness === "tested" ? "text-warn" : "text-muted";
-          const isExpanded = expandedZone === zone.id;
-
-          return (
-            <div key={zone.id} className={cn("glass-card overflow-hidden border-l-4", typeColor)}>
-              <div className="p-5">
-                {/* Header */}
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <span className={cn("text-xs font-medium capitalize", typeLabel)}>{zone.type === "flip" ? "Flip Zone" : zone.type}</span>
-                    <span className="text-sm font-bold font-mono text-foreground">{zone.priceLow} — {zone.priceHigh}</span>
-                    <span className="text-xs text-muted bg-surface-2 px-1.5 py-0.5 rounded">{zone.timeframe}</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className={cn("text-[10px] font-medium capitalize", freshnessColor)}>{zone.freshness.replace("_", " ")}</span>
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-16 h-2 rounded-full bg-surface-3 overflow-hidden">
-                        <div className={cn("h-full rounded-full", zone.strength >= 75 ? "bg-bull" : zone.strength >= 60 ? "bg-accent" : "bg-warn")} style={{ width: `${zone.strength}%` }} />
-                      </div>
-                      <span className="text-xs font-bold font-mono text-foreground">{zone.strength}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Source & quick info */}
-                <div className="flex items-center gap-4 mb-3 text-xs text-muted">
-                  <span className="text-foreground font-medium">{zone.source}</span>
-                  <span>{zone.touches} touches</span>
-                  <span>Last: {zone.lastReaction}</span>
-                </div>
-
-                {/* Explanation */}
-                <p className="text-xs text-muted-light leading-relaxed mb-3">{zone.explanation}</p>
-
-                <button onClick={() => setExpandedZone(isExpanded ? null : zone.id)} className="text-xs text-accent-light hover:text-accent transition-smooth">
-                  {isExpanded ? "Hide scoring factors" : "View scoring factors"}
-                </button>
-
-                {isExpanded && (
-                  <div className="mt-4 pt-4 border-t border-border/30">
-                    <h5 className="text-xs font-semibold mb-3 text-foreground">Strength Score Breakdown</h5>
-                    <div className="space-y-2">
-                      {zone.factors.map((f) => (
-                        <div key={f.name} className="flex items-center gap-3">
-                          <span className="text-[10px] text-muted w-32">{f.name}</span>
-                          <div className="flex-1 h-2 rounded-full bg-surface-3 overflow-hidden">
-                            <div className={cn("h-full rounded-full", f.score >= 8 ? "bg-bull" : f.score >= 6 ? "bg-accent" : "bg-warn")} style={{ width: `${(f.score / f.max) * 100}%` }} />
-                          </div>
-                          <span className="text-[10px] font-mono text-muted w-10 text-right">{f.score}/{f.max}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-3 pt-3 border-t border-border/20 flex items-center justify-between">
-                      <span className="text-xs text-muted">Total Strength</span>
-                      <span className={cn("text-sm font-bold", zone.strength >= 75 ? "text-bull-light" : zone.strength >= 60 ? "text-accent-light" : "text-warn")}>{zone.strength}/100</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
+      {/* Tab toggle */}
+      <div className="mb-4 flex gap-2 border-b border-zinc-800">
+        <button
+          onClick={() => setActiveTab("zones")}
+          className={cn(
+            "px-3 py-2 text-sm",
+            activeTab === "zones" ? "border-b-2 border-emerald-400 text-emerald-400" : "text-zinc-400"
+          )}
+        >
+          Zones
+        </button>
+        <button
+          onClick={() => setActiveTab("setups")}
+          className={cn(
+            "px-3 py-2 text-sm",
+            activeTab === "setups" ? "border-b-2 border-emerald-400 text-emerald-400" : "text-zinc-400"
+          )}
+        >
+          Trade Setups
+        </button>
       </div>
+
+      {/* Zones */}
+      {activeTab === "zones" && (
+        <div className="space-y-3">
+          {filteredZones.map((zone) => {
+            const typeColor = zone.type === "support" ? "border-l-bull" : zone.type === "resistance" ? "border-l-bear" : "border-l-accent";
+            const typeLabel = zone.type === "support" ? "badge-bull" : zone.type === "resistance" ? "badge-bear" : "bg-accent/10 text-accent-light border border-accent/20 rounded-full px-2.5 py-0.5 text-xs";
+            const freshnessColor = zone.freshness === "fresh" ? "text-bull-light" : zone.freshness === "tested" ? "text-warn" : "text-muted";
+            const isExpanded = expandedZone === zone.id;
+
+            return (
+              <div key={zone.id} className={cn("glass-card overflow-hidden border-l-4", typeColor)}>
+                <div className="p-5">
+                  {/* Header */}
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <span className={cn("text-xs font-medium capitalize", typeLabel)}>{zone.type === "flip" ? "Flip Zone" : zone.type}</span>
+                      <span className="text-sm font-bold font-mono text-foreground">{zone.priceLow} — {zone.priceHigh}</span>
+                      <span className="text-xs text-muted bg-surface-2 px-1.5 py-0.5 rounded">{zone.timeframe}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className={cn("text-[10px] font-medium capitalize", freshnessColor)}>{zone.freshness.replace("_", " ")}</span>
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-16 h-2 rounded-full bg-surface-3 overflow-hidden">
+                          <div className={cn("h-full rounded-full", zone.strength >= 75 ? "bg-bull" : zone.strength >= 60 ? "bg-accent" : "bg-warn")} style={{ width: `${zone.strength}%` }} />
+                        </div>
+                        <span className="text-xs font-bold font-mono text-foreground">{zone.strength}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Source & quick info */}
+                  <div className="flex items-center gap-4 mb-3 text-xs text-muted">
+                    <span className="text-foreground font-medium">{zone.source}</span>
+                    <span>{zone.touches} touches</span>
+                    <span>Last: {zone.lastReaction}</span>
+                  </div>
+
+                  {/* Explanation */}
+                  <p className="text-xs text-muted-light leading-relaxed mb-3">{zone.explanation}</p>
+
+                  <button onClick={() => setExpandedZone(isExpanded ? null : zone.id)} className="text-xs text-accent-light hover:text-accent transition-smooth">
+                    {isExpanded ? "Hide scoring factors" : "View scoring factors"}
+                  </button>
+
+                  {isExpanded && (
+                    <div className="mt-4 pt-4 border-t border-border/30">
+                      <h5 className="text-xs font-semibold mb-3 text-foreground">Strength Score Breakdown</h5>
+                      <div className="space-y-2">
+                        {zone.factors.map((f) => (
+                          <div key={f.name} className="flex items-center gap-3">
+                            <span className="text-[10px] text-muted w-32">{f.name}</span>
+                            <div className="flex-1 h-2 rounded-full bg-surface-3 overflow-hidden">
+                              <div className={cn("h-full rounded-full", f.score >= 8 ? "bg-bull" : f.score >= 6 ? "bg-accent" : "bg-warn")} style={{ width: `${(f.score / f.max) * 100}%` }} />
+                            </div>
+                            <span className="text-[10px] font-mono text-muted w-10 text-right">{f.score}/{f.max}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-3 pt-3 border-t border-border/20 flex items-center justify-between">
+                        <span className="text-xs text-muted">Total Strength</span>
+                        <span className={cn("text-sm font-bold", zone.strength >= 75 ? "text-bull-light" : zone.strength >= 60 ? "text-accent-light" : "text-warn")}>{zone.strength}/100</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Trade Setups */}
+      {activeTab === "setups" && (
+        <div className="space-y-3">
+          {setupsList.length === 0 ? (
+            <div className="text-sm text-zinc-400">
+              No active S&R setups. Setups appear here once a LiquidityZone is broken on a 15m, 1h, or 4h timeframe.
+            </div>
+          ) : (
+            setupsList.map((s) => (
+              <div key={s.id} className={cn("rounded-xl border p-4", getDirectionBg(s.direction))}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium">
+                      <span className={cn("mr-2 font-semibold", getDirectionColor(s.direction))}>
+                        {s.direction.toUpperCase()}
+                      </span>
+                      {s.symbol} · {s.timeframe} ·{" "}
+                      <span className="uppercase text-zinc-300">S&R BREAK</span>
+                    </div>
+                    <div className="mt-1 text-xs text-zinc-400">
+                      Posted {new Date(s.createdAt).toLocaleString()} · expires{" "}
+                      {s.validUntil ? new Date(s.validUntil).toLocaleString() : "—"}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className={cn("text-sm font-semibold", getGradeColor(s.qualityGrade))}>{s.qualityGrade}</div>
+                    <div className="text-xs text-zinc-400">conv {s.confidenceScore}/100</div>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                  <div><div className="text-zinc-500">Entry</div><div>{s.entry.toFixed(5)}</div></div>
+                  <div><div className="text-zinc-500">Stop</div><div>{s.stopLoss.toFixed(5)}</div></div>
+                  <div><div className="text-zinc-500">TP1</div><div>{s.takeProfit1.toFixed(5)}</div></div>
+                  <div><div className="text-zinc-500">RR</div><div>{s.riskReward.toFixed(2)}R</div></div>
+                </div>
+                {s.explanation && <div className="mt-3 text-xs text-zinc-300">{s.explanation}</div>}
+              </div>
+            ))
+          )}
+        </div>
+      )}
 
       {/* How it works */}
       <div className="glass-card p-5">
