@@ -220,12 +220,14 @@ export default function SREnginePage() {
       )}
 
       {/* Tab toggle */}
-      <div className="mb-4 flex gap-2 border-b border-zinc-800">
+      <div className="flex gap-1 border-b border-border/50">
         <button
           onClick={() => setActiveTab("zones")}
           className={cn(
-            "px-3 py-2 text-sm",
-            activeTab === "zones" ? "border-b-2 border-emerald-400 text-emerald-400" : "text-zinc-400"
+            "px-4 py-2 text-sm font-medium transition-smooth -mb-px",
+            activeTab === "zones"
+              ? "border-b-2 border-accent text-accent"
+              : "text-muted hover:text-foreground border-b-2 border-transparent"
           )}
         >
           Zones
@@ -233,8 +235,10 @@ export default function SREnginePage() {
         <button
           onClick={() => setActiveTab("setups")}
           className={cn(
-            "px-3 py-2 text-sm",
-            activeTab === "setups" ? "border-b-2 border-emerald-400 text-emerald-400" : "text-zinc-400"
+            "px-4 py-2 text-sm font-medium transition-smooth -mb-px",
+            activeTab === "setups"
+              ? "border-b-2 border-accent text-accent"
+              : "text-muted hover:text-foreground border-b-2 border-transparent"
           )}
         >
           Trade Setups
@@ -316,38 +320,38 @@ export default function SREnginePage() {
       {activeTab === "setups" && (
         <div className="space-y-3">
           {setupsList.length === 0 ? (
-            <div className="text-sm text-zinc-400">
+            <div className="glass-card p-5 text-sm text-muted">
               No active S&R setups. Setups appear here once a LiquidityZone is broken on a 15m, 1h, or 4h timeframe.
             </div>
           ) : (
             setupsList.map((s) => (
-              <div key={s.id} className={cn("rounded-xl border p-4", getDirectionBg(s.direction))}>
+              <div key={s.id} className={cn("glass-card p-4 border-l-4", s.direction === "bullish" ? "border-l-bull" : "border-l-bear")}>
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="text-sm font-medium">
-                      <span className={cn("mr-2 font-semibold", getDirectionColor(s.direction))}>
+                    <div className="text-sm font-medium text-foreground">
+                      <span className={cn("mr-2 font-semibold", s.direction === "bullish" ? "text-bull-light" : "text-bear-light")}>
                         {s.direction.toUpperCase()}
                       </span>
                       {s.symbol} · {s.timeframe} ·{" "}
-                      <span className="uppercase text-zinc-300">S&R BREAK</span>
+                      <span className="uppercase text-muted">S&R BREAK</span>
                     </div>
-                    <div className="mt-1 text-xs text-zinc-400">
+                    <div className="mt-1 text-xs text-muted">
                       Posted {new Date(s.createdAt).toLocaleString()} · expires{" "}
                       {s.validUntil ? new Date(s.validUntil).toLocaleString() : "—"}
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className={cn("text-sm font-semibold", getGradeColor(s.qualityGrade))}>{s.qualityGrade}</div>
-                    <div className="text-xs text-zinc-400">conv {s.confidenceScore}/100</div>
+                    <div className={cn("text-sm font-semibold", s.qualityGrade.startsWith("A") ? "text-bull-light" : s.qualityGrade === "B" ? "text-accent-light" : "text-muted")}>{s.qualityGrade}</div>
+                    <div className="text-xs text-muted">conv {s.confidenceScore}/100</div>
                   </div>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-                  <div><div className="text-zinc-500">Entry</div><div>{s.entry.toFixed(5)}</div></div>
-                  <div><div className="text-zinc-500">Stop</div><div>{s.stopLoss.toFixed(5)}</div></div>
-                  <div><div className="text-zinc-500">TP1</div><div>{s.takeProfit1.toFixed(5)}</div></div>
-                  <div><div className="text-zinc-500">RR</div><div>{s.riskReward.toFixed(2)}R</div></div>
+                  <div><div className="text-muted">Entry</div><div className="font-mono text-foreground">{s.entry.toFixed(5)}</div></div>
+                  <div><div className="text-muted">Stop</div><div className="font-mono text-foreground">{s.stopLoss.toFixed(5)}</div></div>
+                  <div><div className="text-muted">TP1</div><div className="font-mono text-foreground">{s.takeProfit1.toFixed(5)}</div></div>
+                  <div><div className="text-muted">RR</div><div className="font-mono text-foreground">{s.riskReward.toFixed(2)}R</div></div>
                 </div>
-                {s.explanation && <div className="mt-3 text-xs text-zinc-300">{s.explanation}</div>}
+                {s.explanation && <div className="mt-3 text-xs text-muted leading-relaxed">{s.explanation}</div>}
               </div>
             ))
           )}
