@@ -8,6 +8,7 @@ import { AdminRiskTargetBar, AdminLotSizeForCard } from "@/components/admin/Admi
 import { useStableSetups } from "@/lib/dashboard/use-stable-setups";
 import { strategyMeta, FAMILY_STYLES } from "@/lib/strategy-registry";
 import { isBullishDirection } from "@/lib/setups/direction";
+import { FirstDroppedBadge } from "@/components/setups/FirstDroppedBadge";
 
 // "A & A+ Only" — narrower sister of the Strategy Bible. Hardcoded to
 // grade=A+,A so B/C/D never show up here, polls every 2 minutes (the
@@ -284,6 +285,8 @@ export default function AAndAplusPage() {
                       </span>
                     )}
                   </div>
+
+                  <FirstDroppedBadge at={s.createdAt} />
 
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-1 text-[11px] font-mono">
                     <Lvl label="Entry" value={fmt(s.entry, s.decimalPlaces)} tone="neutral" />
