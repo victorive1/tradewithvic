@@ -20,6 +20,10 @@ export interface TradeSetup {
   status: "active" | "near_entry" | "triggered" | "expired";
   validUntil: string;
   createdAt: string;
+  // Real, immutable "first dropped" instant (ISO), populated by
+  // /api/market/setups from the backlog capture. Absent on freshly
+  // generated setups that haven't been persisted yet.
+  firstDroppedAt?: string | null;
   scoringBreakdown: {
     trendAlignment: number;
     momentum: number;

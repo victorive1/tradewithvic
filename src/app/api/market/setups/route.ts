@@ -23,13 +23,17 @@ export async function GET() {
 
     const setups = generateSetups(quotes);
 
-    // Fire-and-forget: persist each setup's immutable first-dropped time
-    // into the backlog. Idempotent + never throws, and deliberately not
-    // awaited so it can't slow the response.
-    void captureEngineSetups(setups);
+    // Persist each setup's immutable first-dropped time into the backlog and
+    // get back the real DB-stamped origin time. Idempotent + never throws;
+    // a warm in-process cache keeps this cheap on the 60s poll path.
+    const stamps = await captureEngineSetups(setups);
+    const withStamps = setups.map((s) => ({
+      ...s,
+      firstDroppedAt: stamps.get(s.id) ?? null,
+    }));
 
     return NextResponse.json(
-      { setups, timestamp: Date.now(), count: setups.length },
+      { setups: withStamps, timestamp: Date.now(), count: withStamps.length },
       { headers: { "Cache-Control": "no-store, max-age=0" } },
     );
   } catch (error: any) {

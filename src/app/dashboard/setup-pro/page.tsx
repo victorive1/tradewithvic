@@ -9,6 +9,7 @@ import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
 import { TimeframeFilter, type TimeframeValue, matchesTimeframe, buildTimeframeCounts } from "@/components/dashboard/TimeframeFilter";
 import { computeOneR } from "@/lib/setups/one-r";
 import { AdminRiskTargetBar, AdminLotSizeForCard } from "@/components/admin/AdminRiskTarget";
+import { FirstDroppedBadge } from "@/components/setups/FirstDroppedBadge";
 
 function ProSetupCard({ setup, onViewChart }: { setup: TradeSetup; onViewChart: (symbol: string) => void }) {
   const [expanded, setExpanded] = useState(false);
@@ -31,6 +32,12 @@ function ProSetupCard({ setup, onViewChart }: { setup: TradeSetup; onViewChart: 
             <span className="text-lg font-black text-accent-light">{setup.confidenceScore}%</span>
           </div>
         </div>
+
+        {setup.firstDroppedAt && (
+          <div className="mb-4 -mt-1">
+            <FirstDroppedBadge at={setup.firstDroppedAt} />
+          </div>
+        )}
 
         {/* Real TradingView Chart */}
         <div className="h-64 rounded-xl overflow-hidden border border-border/30 mb-4 relative">

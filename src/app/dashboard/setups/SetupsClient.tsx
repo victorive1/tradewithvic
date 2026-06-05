@@ -139,7 +139,7 @@ export function SetupsClient({ initialSetups, lastUpdated, paused = false }: { i
           </h2>
           <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
             {highQuality.map((setup) => (
-              <SetupCard key={setup.id} setup={setup} justUpdated={changedIds.has(setup.id)} />
+              <SetupCard key={setup.id} setup={setup} justUpdated={changedIds.has(setup.id)} firstDroppedAt={setup.firstDroppedAt ?? undefined} />
             ))}
           </div>
         </div>
@@ -154,7 +154,7 @@ export function SetupsClient({ initialSetups, lastUpdated, paused = false }: { i
           </h2>
           <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
             {moderate.map((setup) => (
-              <SetupCard key={setup.id} setup={setup} justUpdated={changedIds.has(setup.id)} />
+              <SetupCard key={setup.id} setup={setup} justUpdated={changedIds.has(setup.id)} firstDroppedAt={setup.firstDroppedAt ?? undefined} />
             ))}
           </div>
         </div>

@@ -6,6 +6,7 @@ import type { TradeSetup } from "@/lib/setup-engine";
 import { TimeframeFilter, type TimeframeValue, matchesTimeframe, buildTimeframeCounts } from "@/components/dashboard/TimeframeFilter";
 import { computeOneR } from "@/lib/setups/one-r";
 import { AdminRiskTargetBar, AdminLotSizeForCard } from "@/components/admin/AdminRiskTarget";
+import { FirstDroppedBadge } from "@/components/setups/FirstDroppedBadge";
 
 // ==================== 13 STRATEGY FRAMEWORK ====================
 const STRATEGIES = [
@@ -226,6 +227,12 @@ export default function SignalChannelPage() {
                     <span className={cn("text-[10px] font-medium px-2 py-0.5 rounded-full border capitalize", statusColors[signal.signalStatus])}>{signal.signalStatus}</span>
                   </div>
                 </div>
+
+                {signal.firstDroppedAt && (
+                  <div className="mb-3">
+                    <FirstDroppedBadge at={signal.firstDroppedAt} />
+                  </div>
+                )}
 
                 {/* Levels */}
                 <div className="grid grid-cols-5 gap-2 mb-2">
