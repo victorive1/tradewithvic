@@ -1,39 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
 import { TimeframeFilter, type TimeframeValue, matchesTimeframe, buildTimeframeCounts } from "@/components/dashboard/TimeframeFilter";
-import { ALL_INSTRUMENTS } from "@/lib/constants";
-import type { MarketQuote } from "@/lib/market-data";
 import { computeOneR } from "@/lib/setups/one-r";
 import { AdminRiskTargetBar, AdminLotSizeForCard } from "@/components/admin/AdminRiskTarget";
 import { useStableSetups } from "@/lib/dashboard/use-stable-setups";
-
-const breakoutTypes = ["All", "Structure", "Momentum", "Range", "Retest", "FVG"] as const;
-type BreakoutType = (typeof breakoutTypes)[number];
-
-interface Breakout {
-  symbol: string;            // canonical (EURUSD)
-  displayName: string;       // formatted (EUR/USD)
-  type: Exclude<BreakoutType, "All">;
-  direction: "Bullish" | "Bearish";
-  timeframe: string;
-  htfBias: string;
-  confidence: "A+" | "A" | "B+" | "B";
-  score: number;
-  zone: string;
-  posted: string;
-  reasoning: string;
-  entryLow: number;
-  entryHigh: number;
-  stopLoss: number;
-  takeProfit1: number;
-  takeProfit2: number;
-  decimals: number;
-  price: number;
-  changePct: number;
-}
+import { type Breakout, type BreakoutType, breakoutTypes } from "@/lib/breakouts/derive";
+import { FirstDroppedBadge } from "@/components/setups/FirstDroppedBadge";
 
 function fmt(n: number, decimals: number): string {
   return decimals > 0 ? n.toFixed(decimals) : Math.round(n).toLocaleString();
@@ -46,88 +21,11 @@ function computeRR(b: Pick<Breakout, "entryLow" | "entryHigh" | "stopLoss" | "ta
   return Math.abs(b.takeProfit2 - entry) / risk;
 }
 
-function timeframeForMove(absChange: number): string {
-  // Rough heuristic: big % moves read as higher-TF breakouts, small ones as intraday.
-  if (absChange > 1.5) return "4h";
-  if (absChange > 0.6) return "1h";
-  if (absChange > 0.25) return "15m";
-  return "5m";
-}
-
-/**
- * Derive a live breakout signal from a single MarketQuote.
- * Returns null if the quote doesn't represent a current breakout —
- * no signal is the honest answer when the market is range-bound.
- */
-function deriveBreakout(q: MarketQuote): Breakout | null {
-  const changePct = q.changePercent ?? 0;
-  const absChange = Math.abs(changePct);
-  const range = (q.high ?? 0) - (q.low ?? 0);
-  if (!q.price || range <= 0) return null;
-
-  const pricePos = (q.price - q.low) / range;
-  const rangePct = (range / q.price) * 100;
-
-  // Gate: meaningful directional move AND price closing near the extreme
-  // it just broke. Avoids flagging chop as a breakout.
-  const isBullish = changePct > 0.25 && pricePos > 0.70;
-  const isBearish = changePct < -0.25 && pricePos < 0.30;
-  if (!isBullish && !isBearish) return null;
-
-  const direction: "Bullish" | "Bearish" = isBullish ? "Bullish" : "Bearish";
-  const inst = ALL_INSTRUMENTS.find((i) => i.symbol === q.symbol);
-  const decimals = inst?.decimals ?? 2;
-
-  // Classify breakout type from the shape of the session read.
-  let type: Exclude<BreakoutType, "All"> = "Structure";
-  if (absChange > 0.75) type = "Momentum";
-  else if (rangePct > 0.9) type = "Range";
-  else if (pricePos > 0.60 && pricePos < 0.85 && isBullish) type = "Retest";
-  else if (pricePos > 0.15 && pricePos < 0.40 && isBearish) type = "Retest";
-  else if (rangePct > 0.45) type = "FVG";
-
-  // Score: confidence in the read from move magnitude, position near extreme,
-  // and meaningful range (avoid low-volatility signal dilution).
-  const score = Math.min(100, Math.round(
-    40 + absChange * 22 + (pricePos > 0.85 || pricePos < 0.15 ? 15 : 6) + Math.min(18, rangePct * 12),
-  ));
-  const confidence: Breakout["confidence"] =
-    score >= 90 ? "A+" : score >= 80 ? "A" : score >= 70 ? "B+" : "B";
-
-  // Trade levels derived from the same session range that produced the score.
-  const entry = q.price;
-  const entryBand = Math.max(range * 0.03, q.price * 0.0005);
-  const entryLow = entry - entryBand;
-  const entryHigh = entry + entryBand;
-  const stopLoss = isBullish ? q.low - range * 0.12 : q.high + range * 0.12;
-  const risk = Math.abs(entry - stopLoss);
-  const takeProfit1 = isBullish ? entry + risk * 1.5 : entry - risk * 1.5;
-  const takeProfit2 = isBullish ? entry + risk * 2.5 : entry - risk * 2.5;
-
-  const tf = timeframeForMove(absChange);
-  const htfBias = isBullish
-    ? `Bullish session (${absChange.toFixed(2)}%)`
-    : `Bearish session (${absChange.toFixed(2)}%)`;
-  const zone = isBullish
-    ? (pricePos > 0.9 ? "Breaking Session High" : "Leaving Demand Zone")
-    : (pricePos < 0.1 ? "Breaking Session Low" : "Rejecting Supply Zone");
-
-  const reasoning = isBullish
-    ? `${q.displayName} is pressing ${pricePos > 0.9 ? "into session highs" : "toward session highs"} with a ${absChange.toFixed(2)}% move over the session (range ${rangePct.toFixed(2)}%). Price is sitting at ${((pricePos) * 100).toFixed(0)}% of the day's range, consistent with a ${type.toLowerCase()} breakout. Stop sits beneath the session demand; targets step at 1R / 2R.`
-    : `${q.displayName} is pressing ${pricePos < 0.1 ? "into session lows" : "toward session lows"} with a ${absChange.toFixed(2)}% decline over the session (range ${rangePct.toFixed(2)}%). Price is sitting at ${((pricePos) * 100).toFixed(0)}% of the day's range, consistent with a ${type.toLowerCase()} breakout. Stop sits above the session supply; targets step at 1R / 2R.`;
-
-  return {
-    symbol: q.symbol,
-    displayName: q.displayName,
-    type, direction, timeframe: tf, htfBias,
-    confidence, score, zone, posted: "live", reasoning,
-    entryLow, entryHigh, stopLoss, takeProfit1, takeProfit2, decimals,
-    price: q.price, changePct,
-  };
-}
-
+// deriveBreakout now lives in @/lib/breakouts/derive so the API route can
+// run it server-side for backlog capture. This page consumes the derived
+// breakouts (with their first-dropped stamp) from /api/market/breakouts.
 export default function BreakoutsPage() {
-  const [quotes, setQuotes] = useState<MarketQuote[]>([]);
+  const [feed, setFeed] = useState<Breakout[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<BreakoutType>("All");
   const [timeframe, setTimeframe] = useState<TimeframeValue>("all");
@@ -143,10 +41,10 @@ export default function BreakoutsPage() {
     async function load() {
       if (pausedRef.current) return;
       try {
-        const res = await fetch("/api/market/quotes", { cache: "no-store" });
+        const res = await fetch("/api/market/breakouts", { cache: "no-store" });
         const data = await res.json();
-        if (!cancelled && Array.isArray(data.quotes)) {
-          setQuotes(data.quotes);
+        if (!cancelled && Array.isArray(data.breakouts)) {
+          setFeed(data.breakouts);
           setLastUpdated(data.timestamp ?? Date.now());
         }
       } catch { /* silent */ }
@@ -157,16 +55,11 @@ export default function BreakoutsPage() {
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
-  // Re-derive on each quotes change. Sorting happens server-flavor (highest
-  // first) BUT useStableSetups merges this list against the previously
-  // displayed order so cards keep their slots — so a small score wiggle
-  // doesn't reshuffle the page.
-  const derived = useMemo(() => {
-    return quotes
-      .map(deriveBreakout)
-      .filter((b): b is Breakout => b !== null)
-      .sort((a, b) => b.score - a.score);
-  }, [quotes]);
+  // Breakouts come pre-derived and pre-sorted (highest score first) from the
+  // API, which also stamps each one's immutable first-dropped time. We still
+  // run them through useStableSetups so cards keep their slots across refreshes
+  // and a small score wiggle doesn't reshuffle the page.
+  const derived = feed;
 
   // Stable id per breakout: symbol-only is too coarse (a symbol can flip
   // bullish/bearish between sessions); we include direction so a flip
@@ -268,6 +161,7 @@ export default function BreakoutsPage() {
                     <span className="bg-accent/10 text-accent-light px-2 py-0.5 rounded-full border border-accent/20">{b.zone}</span>
                     <span className="text-muted">HTF: {b.htfBias}</span>
                     <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-bull pulse-live" />Active · {b.posted}</span>
+                    {b.firstDroppedAt && <FirstDroppedBadge at={b.firstDroppedAt} compact />}
                   </div>
 
                   {/* Trade setup — levels derived from the live session range */}
