@@ -7,6 +7,7 @@ import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
 import { computeOneR } from "@/lib/setups/one-r";
 import { LotSizeForCard } from "@/components/admin/AdminRiskTarget";
+import { FirstDroppedBadge } from "@/components/setups/FirstDroppedBadge";
 
 interface Signal {
   id: string;
@@ -176,6 +177,7 @@ function SignalCard({ signal }: { signal: Signal }) {
               <span className="text-[10px] text-muted uppercase tracking-wider">{signal.classification}</span>
             </div>
             <div className="text-[11px] text-muted">{timeAgo(signal.capturedAt)} · horizon {signal.horizon}</div>
+            <div className="mt-1"><FirstDroppedBadge at={signal.capturedAt} /></div>
           </div>
           <div className="text-right shrink-0">
             <div className={cn("inline-flex items-baseline gap-1 text-3xl font-bold font-mono tabular-nums",
