@@ -7,6 +7,7 @@ import { TimeframeFilter, type TimeframeValue, matchesTimeframe, buildTimeframeC
 import { ALL_INSTRUMENTS } from "@/lib/constants";
 import { computeOneR } from "@/lib/setups/one-r";
 import { AdminRiskTargetBar, AdminLotSizeForCard } from "@/components/admin/AdminRiskTarget";
+import { FirstDroppedBadge } from "@/components/setups/FirstDroppedBadge";
 
 type OBStatus = "fresh" | "tested" | "mitigated";
 
@@ -30,6 +31,7 @@ interface OrderBlockSignal {
   currentPrice: number;
   confidence: number;
   barsSinceBos: number;
+  firstDroppedAt?: string | null;
 }
 
 function fmt(n: number, decimals: number): string {
@@ -226,6 +228,8 @@ export default function OrderBlocksPage() {
                       <span className="text-muted font-mono text-[10px]">{ob.confidence}</span>
                     </span>
                   </div>
+
+                  {ob.firstDroppedAt && <FirstDroppedBadge at={ob.firstDroppedAt} />}
 
                   {/* Trade setup */}
                   <div className="rounded-xl border border-border/50 bg-surface-2/40 p-3 space-y-2">
