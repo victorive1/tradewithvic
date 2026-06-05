@@ -6,6 +6,7 @@ import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
 import { computeOneR } from "@/lib/setups/one-r";
 import { AdminRiskTargetBar, AdminLotSizeForCard } from "@/components/admin/AdminRiskTarget";
 import { useStableSetups } from "@/lib/dashboard/use-stable-setups";
+import { FirstDroppedBadge } from "@/components/setups/FirstDroppedBadge";
 
 // Inverse FVG signals — data flows:
 //   Brain scan cron (every 2min) → detectInverseFVG() in
@@ -232,6 +233,8 @@ export default function InverseFvgPage() {
                     <span className="bg-surface-2 px-2 py-0.5 rounded">inverse_fvg</span>
                     <span>{timeAgo(s.createdAt)}</span>
                   </div>
+
+                  <FirstDroppedBadge at={s.createdAt} />
 
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 text-[11px] font-mono">
                     <div className="rounded-lg bg-surface-3/40 border border-border/30 p-2 text-center">
