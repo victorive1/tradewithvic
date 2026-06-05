@@ -6,8 +6,11 @@ import { ALL_INSTRUMENTS } from "@/lib/constants";
 import { computeOneR } from "@/lib/setups/one-r";
 import { isBullishDirection } from "@/lib/setups/direction";
 import { AdminRiskTargetBar, AdminLotSizeForCard } from "@/components/admin/AdminRiskTarget";
+import { useCurrentUser } from "@/components/auth/useCurrentUser";
+import { hasAccess } from "@/lib/auth/roles";
+import { AlertsBacklogPanel } from "./AlertsBacklogPanel";
 
-type AlertView = "inbox" | "setups" | "rules" | "history" | "settings";
+type AlertView = "inbox" | "setups" | "rules" | "history" | "backlog" | "settings";
 type AlertCategory = "price" | "signal" | "volatility" | "macro" | "sentiment" | "engine" | "custom";
 type AlertUrgency = "low" | "medium" | "high" | "critical";
 type DeliveryChannel = "in_app" | "push" | "email";
@@ -132,6 +135,8 @@ interface EliteSetup {
 type SetupFilter = "all" | "a_plus" | "a" | "long" | "short";
 
 export default function AlertsPage() {
+  const { user } = useCurrentUser();
+  const canSeeBacklog = hasAccess(user?.role, "agent");
   const [view, setView] = useState<AlertView>("inbox");
   const [rules, setRules] = useState<AlertRule[]>([]);
   const [notifications, setNotifications] = useState<AlertNotification[]>([]);
@@ -342,6 +347,7 @@ export default function AlertsPage() {
           { id: "setups" as AlertView, l: `🎯 Trade Setups${setups.length > 0 ? ` (${setups.length})` : ""}` },
           { id: "rules" as AlertView, l: `My Rules (${rules.length})` },
           { id: "history" as AlertView, l: "History" },
+          ...(canSeeBacklog ? [{ id: "backlog" as AlertView, l: "📚 Backlog" }] : []),
           { id: "settings" as AlertView, l: "Settings" },
         ].map((v) => (
           <button key={v.id} onClick={() => setView(v.id)} className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-smooth", view === v.id ? "bg-accent text-white" : "bg-surface-2 text-muted-light border border-border/50")}>{v.l}</button>
@@ -637,6 +643,9 @@ export default function AlertsPage() {
           </table>
         </div>
       )}
+
+      {/* BACKLOG — agent/admin only; 30-day history with immutable first-dropped time */}
+      {view === "backlog" && canSeeBacklog && <AlertsBacklogPanel />}
 
       {/* SETTINGS */}
       {view === "settings" && (

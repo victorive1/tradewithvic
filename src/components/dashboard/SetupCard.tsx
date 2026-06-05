@@ -7,8 +7,21 @@ import { AdminLotSizeForCard } from "@/components/admin/AdminRiskTarget";
 import { ExecuteTradeButton } from "@/components/trading/ExecuteTradeButton";
 import { computeOneR } from "@/lib/setups/one-r";
 import { isBullishDirection } from "@/lib/setups/direction";
+import { FirstDroppedBadge } from "@/components/setups/FirstDroppedBadge";
 
-export function SetupCard({ setup, justUpdated = false }: { setup: TradeSetup; justUpdated?: boolean }) {
+export function SetupCard({
+  setup,
+  justUpdated = false,
+  // Immutable origin time of the setup (the persisted DB createdAt). Only
+  // pass this for DB-backed setups — live screener cards recompute their
+  // createdAt each poll, so leaving it undefined keeps a bogus time off
+  // those cards while still surfacing it everywhere it's real.
+  firstDroppedAt,
+}: {
+  setup: TradeSetup;
+  justUpdated?: boolean;
+  firstDroppedAt?: string | Date;
+}) {
   const [expanded, setExpanded] = useState(false);
   const isBuy = isBullishDirection(setup.direction);
 
@@ -49,6 +62,13 @@ export function SetupCard({ setup, justUpdated = false }: { setup: TradeSetup; j
           <span className="bg-surface-2 px-2 py-1 rounded">{setup.setupType}</span>
           <span className="capitalize bg-surface-2 px-2 py-1 rounded">{setup.category}</span>
         </div>
+
+        {/* Immutable "first dropped" origin time — only when DB-backed */}
+        {firstDroppedAt !== undefined && (
+          <div className="mb-4 -mt-1">
+            <FirstDroppedBadge at={firstDroppedAt} />
+          </div>
+        )}
 
         {/* Trade levels */}
         <div className="grid grid-cols-3 gap-3 mb-4">

@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { computeOneR } from "@/lib/setups/one-r";
 import { QuantCardNotes } from "./QuantCardNotes";
 import { AdminLotSizeForCard } from "@/components/admin/AdminRiskTarget";
+import { FirstDroppedBadge } from "@/components/setups/FirstDroppedBadge";
 
 export interface SetupRow {
   id: string;
@@ -23,6 +24,9 @@ export interface SetupRow {
   qualityGrade: string;
   explanation: string | null;
   invalidation: string | null;
+  // Immutable "first dropped" origin time (TradeSetup.createdAt). Arrives
+  // as a Date across the RSC boundary; FirstDroppedBadge accepts both.
+  createdAt: string | Date;
 }
 
 export interface StrategyMeta {
@@ -188,6 +192,8 @@ function QuantSetupCard({ setup, strategies }: { setup: SetupRow; strategies: St
         <div className="text-[11px] uppercase tracking-wider text-accent-light font-semibold">
           {strategyLabel}
         </div>
+
+        <FirstDroppedBadge at={setup.createdAt} />
 
         <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px] font-mono">
           <div className="flex justify-between"><span className="text-muted">Entry</span><span>{setup.entry.toFixed(5)}</span></div>

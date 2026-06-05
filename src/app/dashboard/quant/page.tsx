@@ -60,6 +60,7 @@ export default async function QuantPage() {
       qualityGrade: true,
       explanation: true,
       invalidation: true,
+      createdAt: true,
     },
   })) as SetupRow[];
 
