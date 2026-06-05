@@ -53,9 +53,16 @@ export interface FirstDropped {
   hhmm: string;
   /** The dominant session, e.g. { key: "london", label: "London" }. */
   session: FxSession;
+  /** UTC calendar date, e.g. "5 Jun 2026". */
+  date: string;
   /** Full sentence, e.g. "First dropped at 12:45 UTC · London session". */
   line: string;
 }
+
+const MONTHS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+] as const;
 
 function coerce(at: Date | string | number): Date {
   return at instanceof Date ? at : new Date(at);
@@ -73,10 +80,12 @@ export function formatFirstDropped(at: Date | string | number): FirstDropped {
   const d = coerce(at);
   const session = sessionForUtc(d);
   const hhmm = `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`;
+  const date = `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
   return {
     iso: d.toISOString(),
     hhmm,
     session,
+    date,
     line: `First dropped at ${hhmm} UTC · ${session.label} session`,
   };
 }

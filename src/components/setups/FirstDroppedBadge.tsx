@@ -26,10 +26,14 @@ const SESSION_CLASS: Record<string, string> = {
 export function FirstDroppedBadge({
   at,
   compact = false,
+  withDate = false,
   className,
 }: {
   at: Date | string | number;
   compact?: boolean;
+  // Include the UTC calendar date (e.g. "5 Jun 2026") in the line. Off by
+  // default so live cards stay terse; the Backlog turns it on.
+  withDate?: boolean;
   className?: string;
 }) {
   const fd = formatFirstDropped(at);
@@ -60,12 +64,14 @@ export function FirstDroppedBadge({
       {compact ? (
         <span className="font-mono tabular-nums">
           {fd.hhmm} UTC
+          {withDate && <span className="ml-1 font-sans text-foreground/80">· {fd.date}</span>}
           <span className={cn("ml-1 font-sans", sessionClass)}>· {fd.session.label}</span>
         </span>
       ) : (
         <span>
           First dropped at{" "}
           <span className="font-mono tabular-nums text-foreground/90">{fd.hhmm} UTC</span>
+          {withDate && <span className="text-foreground/80"> · {fd.date}</span>}
           <span className={cn("font-medium", sessionClass)}> · {fd.session.label} session</span>
         </span>
       )}

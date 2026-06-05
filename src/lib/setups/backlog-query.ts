@@ -10,6 +10,13 @@ export const RETENTION_DAYS = 30;
 // surface `capped` so the UI never silently looks "complete".
 export const PER_SOURCE_CAP = 750;
 
+export interface BacklogOrigin {
+  /** Human-readable tab/signal name, e.g. "Order Block Signals". */
+  label: string;
+  /** Dashboard route the setup came from, for a direct link. */
+  href: string | null;
+}
+
 export interface BacklogItem {
   id: string;
   source: "setup" | "intraday";
@@ -26,6 +33,39 @@ export interface BacklogItem {
   status: string;
   explanation: string | null;
   createdAt: string; // ISO — the immutable "first dropped" instant
+  /** Which tab/signal produced this setup. */
+  origin: BacklogOrigin;
+}
+
+// Resolve the exact source tab/signal for a persisted TradeSetup. Captured
+// rows carry a prefixed id (eng_/ob_/engulf_/brk_) identifying the surface
+// precisely; brain-detected rows are matched by setupType.
+function originForSetup(rawId: string, setupType: string): BacklogOrigin {
+  if (rawId.startsWith("eng_")) return { label: "Trade Setups", href: "/dashboard/setups" };
+  if (rawId.startsWith("ob_")) return { label: "Order Block Signals", href: "/dashboard/order-blocks" };
+  if (rawId.startsWith("engulf_")) return { label: "Engulfing", href: "/dashboard/engulfing" };
+  if (rawId.startsWith("brk_")) return { label: "Breakout Signals", href: "/dashboard/breakouts" };
+
+  switch (setupType) {
+    case "inverse_fvg":
+      return { label: "Inverse FVG", href: "/dashboard/inverse-fvg" };
+    case "bullish_fvg_inversion":
+      return { label: "Bullish FVG Inversion", href: "/dashboard/bullish-fvg-inversion" };
+    case "triple_lock":
+      return { label: "Power of 3 (Triple Lock)", href: "/dashboard/triple-lock" };
+    case "sr_zone_break":
+      return { label: "Support & Resistance", href: "/dashboard/levels" };
+    case "order_block":
+    case "breaker_block":
+    case "fvg_continuation":
+      return { label: "Quant Signals", href: "/dashboard/quant" };
+    default:
+      // Fall back to a Title Cased setupType so nothing is unlabeled.
+      return {
+        label: setupType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+        href: null,
+      };
+  }
 }
 
 export interface BacklogResult {
@@ -113,6 +153,7 @@ export async function loadBacklog(): Promise<BacklogResult> {
       status: s.status,
       explanation: s.explanation,
       createdAt: s.createdAt.toISOString(),
+      origin: originForSetup(s.id, s.setupType),
     })),
     ...miniSignals.map((s): BacklogItem => ({
       id: `mini_${s.id}`,
@@ -130,6 +171,7 @@ export async function loadBacklog(): Promise<BacklogResult> {
       status: s.status,
       explanation: s.explanation,
       createdAt: s.createdAt.toISOString(),
+      origin: { label: `Intraday · ${s.template.replace(/_/g, " ")}`, href: "/dashboard/intraday-prediction" },
     })),
   ].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 

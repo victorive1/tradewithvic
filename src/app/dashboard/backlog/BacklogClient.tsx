@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { isBullishDirection } from "@/lib/setups/direction";
 import { FirstDroppedBadge } from "@/components/setups/FirstDroppedBadge";
@@ -61,17 +62,25 @@ export function BacklogClient({
 }) {
   const [source, setSource] = useState<SourceFilter>("all");
   const [session, setSession] = useState<SessionFilter>("all");
+  const [origin, setOrigin] = useState<string>("all");
   const [query, setQuery] = useState("");
+
+  // Distinct source signals/tabs present in the window, for the filter.
+  const originOptions = useMemo(
+    () => Array.from(new Set(items.map((i) => i.origin.label))).sort((a, b) => a.localeCompare(b)),
+    [items],
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toUpperCase();
     return items.filter((it) => {
       if (source !== "all" && it.source !== source) return false;
       if (session !== "all" && sessionForUtc(new Date(it.createdAt)).key !== session) return false;
+      if (origin !== "all" && it.origin.label !== origin) return false;
       if (q && !it.symbol.toUpperCase().includes(q)) return false;
       return true;
     });
-  }, [items, source, session, query]);
+  }, [items, source, session, origin, query]);
 
   // Group by UTC calendar day for a scannable timeline.
   const groups = useMemo(() => {
@@ -96,8 +105,8 @@ export function BacklogClient({
         </div>
         <p className="text-sm text-muted mt-1">
           Every trade setup dropped in the last {retentionDays} days. Each one is stamped with the
-          exact UTC time and trading session it was <em>first detected</em> — that origin time never
-          changes.
+          exact UTC date, time, and trading session it was <em>first detected</em> — that origin
+          never changes — plus the signal/tab it came from.
         </p>
       </div>
 
@@ -118,6 +127,17 @@ export function BacklogClient({
               {t.label}
             </button>
           ))}
+          <select
+            value={origin}
+            onChange={(e) => setOrigin(e.target.value)}
+            className="bg-surface-2 border border-border rounded-lg px-3 py-1.5 text-xs text-foreground focus:outline-none focus:border-accent/50"
+            title="Filter by source signal / tab"
+          >
+            <option value="all">All signals</option>
+            {originOptions.map((o) => (
+              <option key={o} value={o}>{o}</option>
+            ))}
+          </select>
           <div className="flex-1 min-w-[160px]">
             <input
               value={query}
@@ -148,7 +168,9 @@ export function BacklogClient({
       <div className="flex items-center justify-between text-xs text-muted">
         <span>
           {filtered.length} setup{filtered.length === 1 ? "" : "s"}
-          {source !== "all" || session !== "all" || query ? ` (filtered from ${items.length})` : ""}
+          {source !== "all" || session !== "all" || origin !== "all" || query
+            ? ` (filtered from ${items.length})`
+            : ""}
         </span>
         {capped && (
           <span className="text-warn">
@@ -217,25 +239,33 @@ function BacklogCard({ item }: { item: BacklogItem }) {
           </div>
         </div>
 
-        {/* The immutable first-dropped origin time */}
+        {/* The immutable first-dropped origin time + date */}
+        <div className="mb-2">
+          <FirstDroppedBadge at={item.createdAt} withDate />
+        </div>
+
+        {/* Source signal / tab this setup came from */}
         <div className="mb-3">
-          <FirstDroppedBadge at={item.createdAt} />
+          {item.origin.href ? (
+            <Link
+              href={item.origin.href}
+              className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-accent/10 text-accent-light border border-accent/25 hover:bg-accent/20 transition-smooth"
+              title={`From ${item.origin.label} — open tab`}
+            >
+              <span className="opacity-70">From</span> {item.origin.label}
+              <span aria-hidden>↗</span>
+            </Link>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-surface-2 text-muted-light border border-border/40">
+              <span className="opacity-70">From</span> {item.origin.label}
+            </span>
+          )}
         </div>
 
         {/* Meta row */}
         <div className="flex items-center gap-2 mb-3 text-[10px] text-muted flex-wrap">
           <span className="bg-surface-2 px-2 py-0.5 rounded">{item.timeframe}</span>
           <span className="bg-surface-2 px-2 py-0.5 rounded">{item.kind}</span>
-          <span
-            className={cn(
-              "px-2 py-0.5 rounded",
-              item.source === "setup"
-                ? "bg-accent/10 text-accent-light"
-                : "bg-foreground/5 text-muted-light",
-            )}
-          >
-            {item.source === "setup" ? "Trade Setup" : "Intraday"}
-          </span>
           <span className="bg-surface-2 px-2 py-0.5 rounded capitalize">{item.status.replace(/_/g, " ")}</span>
         </div>
 
