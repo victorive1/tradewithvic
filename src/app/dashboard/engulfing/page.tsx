@@ -3,6 +3,8 @@ import { cn } from "@/lib/utils";
 import { ALL_INSTRUMENTS } from "@/lib/constants";
 import { computeOneR } from "@/lib/setups/one-r";
 import { AdminRiskTargetBar, AdminLotSizeForCard } from "@/components/admin/AdminRiskTarget";
+import { FirstDroppedBadge } from "@/components/setups/FirstDroppedBadge";
+import { captureSetups } from "@/lib/setups/backlog-capture";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -34,6 +36,14 @@ interface EngulfingSetup {
   session: string;
   reason: string;
   postedAt: Date;
+  firstDroppedAt?: string | null;
+}
+
+function engulfingGrade(eps: number): string {
+  if (eps >= 0.8) return "A+";
+  if (eps >= 0.7) return "A";
+  if (eps >= 0.6) return "B";
+  return "C";
 }
 
 const TIMEFRAMES = ["15min", "1h", "4h"] as const;
@@ -198,6 +208,31 @@ async function loadSetups(): Promise<EngulfingSetup[]> {
     results.push(setup);
   }
   results.sort((a, b) => b.eps - a.eps);
+
+  // Engulfing setups are detected on-page-load and never otherwise
+  // persisted. Capture each into the backlog (keyed by the engulfing
+  // candle's close time, which is stable per detection) and stamp the
+  // real immutable first-dropped time onto the card.
+  const sig = (s: EngulfingSetup) =>
+    `engulf_${s.symbol}_${s.timeframe}_${s.direction}_${s.postedAt.toISOString()}`;
+  const stamps = await captureSetups(
+    results.map((s) => ({
+      signature: sig(s),
+      symbol: s.symbol,
+      direction: s.direction,
+      setupType: "engulfing",
+      timeframe: s.timeframe,
+      entry: s.entry,
+      stopLoss: s.stopLoss,
+      takeProfit1: s.takeProfit,
+      riskReward: s.rr,
+      confidenceScore: Math.round(s.eps * 100),
+      qualityGrade: engulfingGrade(s.eps),
+      explanation: s.reason,
+    })),
+  );
+  for (const s of results) s.firstDroppedAt = stamps.get(sig(s)) ?? null;
+
   return results;
 }
 
@@ -283,6 +318,12 @@ export default async function EngulfingPage() {
                       <EPSMeter eps={setup.eps} />
                     </div>
                   </div>
+
+                  {setup.firstDroppedAt && (
+                    <div className="-mt-2 mb-4">
+                      <FirstDroppedBadge at={setup.firstDroppedAt} />
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-5 gap-3 mb-4">
                     <div className="bg-surface-2 rounded-lg p-3 text-center">
