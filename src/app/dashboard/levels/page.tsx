@@ -5,6 +5,7 @@ import { cn, getDirectionBg, getDirectionColor, getGradeColor } from "@/lib/util
 import { ALL_INSTRUMENTS } from "@/lib/constants";
 import { TradingViewWidget } from "@/components/charts/TradingViewWidget";
 import { useTheme } from "@/components/ui/ThemeProvider";
+import { FirstDroppedBadge } from "@/components/setups/FirstDroppedBadge";
 
 interface SRZone {
   id: string;
@@ -338,6 +339,9 @@ export default function SREnginePage() {
                     <div className="mt-1 text-xs text-muted">
                       Posted {new Date(s.createdAt).toLocaleString()} · expires{" "}
                       {s.validUntil ? new Date(s.validUntil).toLocaleString() : "—"}
+                    </div>
+                    <div className="mt-1">
+                      <FirstDroppedBadge at={s.createdAt} />
                     </div>
                   </div>
                   <div className="text-right">
